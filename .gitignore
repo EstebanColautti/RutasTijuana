@@ -1,0 +1,16 @@
+.DS_Store
+Thumbs.db
+Desktop.ini
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.ipa
+*.dSYM/
+*.xcarchive/
+.env
+.env.*
+*.p12
+*.mobileprovision
