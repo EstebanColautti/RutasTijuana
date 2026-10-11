@@ -11,6 +11,8 @@
 7. Integrar cuando las verificaciones sean correctas y la rama esté actualizada.
 8. Usar squash, eliminar la rama y actualizar la copia local de `main`.
 
+El proceso aplica también a cambios pequeños. Cada avance debe indicar la etapa actual, el issue, la rama o PR y lo que falta verificar. La tarea solo se considera cerrada cuando la integración y la limpieza están comprobadas; las pruebas pendientes deben quedar explícitas.
+
 ## Ramas y commits
 
 Ramas: `feat/numero-descripcion`, `fix/numero-descripcion`, `docs/numero-descripcion` o `chore/numero-descripcion`.

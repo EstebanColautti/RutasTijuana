@@ -13,3 +13,12 @@
 - Eliminar la rama tras la integración y comprobar el estado final de main.
 - Publicar etiquetas y releases únicamente para entregas validadas y autorizadas.
 - No inventar rutas, horarios, datos estadísticos, resultados de pruebas ni capturas.
+
+## Seguimiento de cada avance
+
+- Aplicar el flujo completo también a cambios pequeños de código, documentación o configuración.
+- En cada actualización de avance, recordar brevemente la etapa actual, el issue, la rama o PR y la siguiente verificación pendiente. Usar enlaces cuando existan.
+- Antes de integrar, comprobar el último commit, las verificaciones, las conversaciones y que la rama esté actualizada.
+- Si se propone saltar una etapa, señalar qué falta y completar el proceso antes de continuar. No interpretar urgencia o tamaño del cambio como una excepción.
+- Si una validación requiere intervención del usuario, indicar la acción concreta y mantener el cambio pendiente; no declarar la validación realizada.
+- Al cerrar, informar PR integrado, comprobaciones realizadas, issue cerrado y rama eliminada, o identificar lo que siga pendiente.
