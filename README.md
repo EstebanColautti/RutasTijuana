@@ -36,5 +36,3 @@ docs/
 ```
 
 La compilación para iOS, macOS y visionOS se verifica en GitHub Actions. Los comandos y el flujo de validación están en [Desarrollo](docs/DESARROLLO.md).
-
-Los cambios se realizan mediante issues, ramas y pull requests. El proceso está en [Colaboración](CONTRIBUTING.md).
