@@ -1,16 +1,8 @@
 # Rutas Tijuana
 
-Proyecto de ICB103 · Estadística Aplicada · CETYS Universidad · Equipo 6 · 2026S2.
-
-Prototipo para ayudar a habitantes de Tijuana que dependen del transporte público a consultar información clara sobre rutas, paradas, horarios y frecuencias.
+Prototipo de una app de rutas en Tijuana, desarrollado en SwiftUI.
 
 La app permite elegir origen y destino, seleccionar paradas cercanas y consultar un trayecto en el mapa. Incluye un circuito ficticio con seis paradas para probar la navegación. No contiene rutas, paradas ni horarios de transporte reales.
-
-## Alcance
-
-La primera función prevista es la consulta de horarios y frecuencias por ruta, con fuente y fecha de actualización. También se contempla una ficha con origen, destino y paradas principales. El mapa de recorridos y la consulta de paradas cercanas requieren datos oficiales y validación.
-
-El contexto, los requisitos y las métricas están en [Proyecto](docs/PROYECTO.md).
 
 ## Requisitos
 
@@ -42,7 +34,6 @@ RutasTijuana/
 RutasTijuana.xcodeproj/
 docs/
   DESARROLLO.md
-  PROYECTO.md
 tests/
   main.swift
 ```
