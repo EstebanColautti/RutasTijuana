@@ -43,3 +43,8 @@ jobs:
           -destination '${{ matrix.destination }}'
           CODE_SIGNING_ALLOWED=NO
           build
+      - name: Test
+        if: matrix.platform == 'macOS'
+        run: |
+          swiftc RutasTijuana/TransitRoute.swift tests/main.swift -o "$RUNNER_TEMP/route-tests"
+          "$RUNNER_TEMP/route-tests"
