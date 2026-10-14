@@ -40,6 +40,10 @@ Pagos, transacciones y seguimiento permanente de ubicación quedan fuera del alc
 
 ## Estado y evaluación
 
+La base actual sigue el wireframe de inicio, origen, destino y trayecto, con un circuito ficticio de seis paradas. Incluye selección manual, ubicación opcional en iOS y validación de destinos. Los horarios siguen sin datos disponibles. La simulación permite probar navegación y lógica; no demuestra que exista un servicio de transporte con ese recorrido.
+
+La ficha S18 conserva el estado de la entrega anterior:
+
 S18 corresponde a una interacción mínima: la app muestra nombre y propósito, y el botón **Consultar horarios** cambia el estado de **Pendiente** a **Consulta registrada**. No muestra horarios reales.
 
 La ficha registra tres comprobaciones técnicas: apertura de la app, nombre y propósito visibles, y cambio de estado del botón. Reporta 3 de 3 pruebas superadas; ese resultado describe únicamente esas pruebas, no la utilidad de la app ni su impacto social.

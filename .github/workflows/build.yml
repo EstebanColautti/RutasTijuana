@@ -17,7 +17,7 @@ jobs:
   build:
     name: ${{ matrix.platform }}
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -43,3 +43,20 @@ jobs:
           -destination '${{ matrix.destination }}'
           CODE_SIGNING_ALLOWED=NO
           build
+      - name: Test
+        if: matrix.platform == 'macOS'
+        run: |
+          swiftc RutasTijuana/TransitRoute.swift tests/main.swift -o "$RUNNER_TEMP/route-tests"
+          "$RUNNER_TEMP/route-tests"
+      - name: iPhone tests
+        if: matrix.platform == 'iOS'
+        run: |
+          simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+          xcodebuild test -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" CODE_SIGNING_ALLOWED=NO
+      - name: Save test results
+        if: always() && matrix.platform == 'iOS'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: iPhone-tests
+          path: ${{ runner.temp }}/UITests.xcresult
+          retention-days: 7

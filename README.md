@@ -4,7 +4,7 @@ Proyecto de ICB103 · Estadística Aplicada · CETYS Universidad · Equipo 6 · 
 
 Prototipo para ayudar a habitantes de Tijuana que dependen del transporte público a consultar información clara sobre rutas, paradas, horarios y frecuencias.
 
-La interfaz muestra el estado de una consulta y lo actualiza al pulsar **Consultar horarios**. Esta versión no incluye datos de rutas, horarios ni conexión con servicios externos.
+La app permite elegir origen y destino, seleccionar paradas cercanas y consultar un trayecto en el mapa. Incluye un circuito ficticio con seis paradas para probar la navegación. No contiene rutas, paradas ni horarios de transporte reales.
 
 ## Alcance
 
@@ -34,11 +34,15 @@ Seleccionar el esquema **RutasTijuana**, elegir un simulador o **My Mac** y ejec
 RutasTijuana/
   RutasTijuanaApp.swift
   ContentView.swift
+  TransitRoute.swift
+  LocationService.swift
   Assets.xcassets/
 RutasTijuana.xcodeproj/
 docs/
   DESARROLLO.md
   PROYECTO.md
+tests/
+  main.swift
 ```
 
 La compilación para iOS, macOS y visionOS se verifica en GitHub Actions. Los comandos y el flujo de validación están en [Desarrollo](docs/DESARROLLO.md).
