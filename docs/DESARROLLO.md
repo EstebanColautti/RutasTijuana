@@ -1,5 +1,17 @@
 # Desarrollo
 
+## VS Code
+
+Abrir `RutasTijuana.code-workspace` o seleccionar **Archivo > Abrir carpeta** y elegir la raíz del proyecto. Las extensiones recomendadas son Swift y EditorConfig.
+
+`Ctrl+Shift+B` comprueba el formato del diff. En **Terminal > Ejecutar tarea** están las pruebas de lógica, el estado de Git y la compilación iOS para Mac.
+
+Las pruebas de lógica funcionan en Windows con Swift, las herramientas C++ de Visual Studio y el SDK de Windows instalados. La interfaz SwiftUI, MapKit, el simulador y la compilación de la app requieren macOS con Xcode; el compilador de Windows no incluye esos frameworks.
+
+```sh
+code RutasTijuana.code-workspace
+```
+
 ## Organización
 
 `ContentView` contiene el flujo de inicio, origen, destino y resultado. `TransitRoute` calcula paradas cercanas y el recorrido de un circuito en sentido único. `LocationService` obtiene una ubicación puntual en iOS, solo después de pedirla; permite continuar manualmente si no está disponible.

@@ -14,6 +14,8 @@ La app permite elegir origen y destino, seleccionar paradas cercanas y consultar
 
 ## Ejecutar
 
+Para editar en VS Code, abrir `RutasTijuana.code-workspace`. Las tareas y los requisitos del entorno están en [Desarrollo](docs/DESARROLLO.md).
+
 ```sh
 git clone https://github.com/EstebanColautti/RutasTijuana.git
 cd RutasTijuana
