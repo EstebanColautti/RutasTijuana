@@ -45,9 +45,7 @@ jobs:
           build
       - name: Test
         if: matrix.platform == 'macOS'
-        run: |
-          swiftc RutasTijuana/TransitRoute.swift tests/main.swift -o "$RUNNER_TEMP/route-tests"
-          "$RUNNER_TEMP/route-tests"
+        run: bash scripts/test-logic.sh
       - name: iPhone tests
         if: matrix.platform == 'iOS'
         run: |
