@@ -67,6 +67,7 @@ struct ContentView: View {
                 Button("Cambiar destino", role: .cancel) {
                     destination = nil
                     destinationID = nil
+                    selectedStop = nil
                 }
             } message: {
                 Text("Elige una parada de bajada distinta de la parada de origen.")
@@ -119,7 +120,7 @@ struct ContentView: View {
                     Annotation("Origen A", coordinate: origin.coordinate) { pin("A", color: .blue) }
                 }
                 if let destination {
-                    Annotation("Destino B", coordinate: destination.coordinate) { pin("B", color: .primary) }
+                    Annotation("Destino B", coordinate: destination.coordinate) { pin("B", color: .indigo) }
                 }
             }
             .mapStyle(.standard(elevation: .flat))
@@ -235,11 +236,13 @@ struct ContentView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("stop-\(option.id)")
                 .accessibilityAddTraits(selectedID == option.id ? .isSelected : [])
             }
         } else {
             ForEach(route.stops) { stop in
                 Button(stop.name) { select(stop.point) }.frame(minHeight: 44)
+                    .accessibilityIdentifier("stop-\(stop.id)")
             }
         }
     }
@@ -252,6 +255,7 @@ struct ContentView: View {
     private func primaryButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) { Text(title).frame(maxWidth: .infinity, minHeight: 32) }
             .buttonStyle(.borderedProminent).controlSize(.large).disabled(disabled)
+            .accessibilityIdentifier(title)
     }
 
     private func pin(_ text: String, color: Color) -> some View {
