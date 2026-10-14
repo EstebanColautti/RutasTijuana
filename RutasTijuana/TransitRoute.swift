@@ -31,10 +31,15 @@ struct TransitRoute {
     let coverageRadius: Double
 
     func nearbyStops(to point: GeoPoint) -> [NearbyStop] {
-        Array(stops.map { NearbyStop(stop: $0, distance: point.distance(to: $0.point)) }
-            .filter { $0.distance <= coverageRadius }
-            .sorted { $0.distance == $1.distance ? $0.id < $1.id : $0.distance < $1.distance }
-            .prefix(3))
+        let distances: [NearbyStop] = stops.map { stop in
+            NearbyStop(stop: stop, distance: point.distance(to: stop.point))
+        }
+        let covered = distances.filter { $0.distance <= coverageRadius }
+        let sorted = covered.sorted { first, second in
+            if first.distance == second.distance { return first.id < second.id }
+            return first.distance < second.distance
+        }
+        return Array(sorted.prefix(3))
     }
 
     func journey(from origin: String, to destination: String) -> [TransitStop]? {
