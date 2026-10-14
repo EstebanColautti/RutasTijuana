@@ -1,7 +1,5 @@
 # Rutas Tijuana
 
-
-
 Prototipo de una app de rutas en Tijuana, desarrollado en SwiftUI.
 
 La app permite elegir origen y destino, seleccionar paradas cercanas y consultar un trayecto en el mapa. Incluye un circuito ficticio con seis paradas para probar la navegación. No contiene rutas, paradas ni horarios de transporte reales.
@@ -36,7 +34,6 @@ RutasTijuana/
 RutasTijuana.xcodeproj/
 docs/
   DESARROLLO.md
-
 tests/
   main.swift
 ```
