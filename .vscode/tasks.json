@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Validar cambios",
+      "type": "process",
+      "command": "git",
+      "args": ["diff", "--check", "HEAD"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": [],
+      "group": {"kind": "build", "isDefault": true}
+    },
+    {
+      "label": "Pruebas de lógica",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/test-logic.sh"],
+      "windows": {
+        "command": "powershell",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/test-logic.ps1"]
+      },
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": [],
+      "group": {"kind": "test", "isDefault": true}
+    },
+    {
+      "label": "Compilar iOS (Mac)",
+      "type": "process",
+      "command": "xcodebuild",
+      "args": ["-project", "RutasTijuana.xcodeproj", "-scheme", "RutasTijuana", "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator", "CODE_SIGNING_ALLOWED=NO", "build"],
+      "windows": {
+        "command": "powershell",
+        "args": ["-NoProfile", "-Command", "Write-Error 'La app iOS se compila en macOS con Xcode. En Windows puedes ejecutar las pruebas de lógica y consultar GitHub Actions.'; exit 1"]
+      },
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    },
+    {
+      "label": "Estado de Git",
+      "type": "process",
+      "command": "git",
+      "args": ["status", "--short", "--branch"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    }
+  ]
+}
