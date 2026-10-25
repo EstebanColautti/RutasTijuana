@@ -46,6 +46,11 @@ jobs:
       - name: Test
         if: matrix.platform == 'macOS'
         run: bash scripts/test-logic.sh
+      - name: Catalog tools
+        if: matrix.platform == 'macOS'
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          node --test tests/catalog-preview.test.cjs
       - name: iPhone tests
         if: matrix.platform == 'iOS'
         run: |

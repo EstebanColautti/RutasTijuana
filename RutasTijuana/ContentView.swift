@@ -97,6 +97,11 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             demoNotice
             Spacer()
+            NavigationLink { CatalogView() } label: {
+                Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 32)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            .accessibilityIdentifier("Explorar recorridos")
             Text("Puedes elegir tu ubicación manualmente. No se guarda.")
                 .font(.footnote).foregroundStyle(.secondary)
             primaryButton("Elegir ubicación inicial") { stage = .origin }

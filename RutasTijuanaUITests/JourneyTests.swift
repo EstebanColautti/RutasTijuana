@@ -40,6 +40,21 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["Ver trayecto"].isEnabled)
     }
 
+    func testCatalogSearchAndSelection() {
+        app.terminate()
+        app.launchArguments = ["--catalog-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        tap("catalog-sample-route")
+        XCTAssertTrue(app.staticTexts["Horario y frecuencia: dato no disponible"].waitForExistence(timeout: 5))
+        capture("Recorridos")
+        let search = app.textFields["catalog-search"]
+        search.tap()
+        search.typeText("sin coincidencias")
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
+    }
+
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
