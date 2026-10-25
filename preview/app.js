@@ -36,7 +36,7 @@ function render() {
     visible.sort((a, b) => distances.get(a.id) - distances.get(b.id) || a.id.localeCompare(b.id));
   }
   if (!visible.some(f => f.id === selected)) selected = null;
-  $('count').textContent = visible.length + ' elementos'; $('clear').hidden = !reference;
+  $('count').textContent = 'Resultados: ' + visible.length; $('clear').hidden = !reference;
   $('hint').textContent = $('routes').checked ? 'Toca el mapa para consultar trazados a 1 km' : 'Áreas y referencias; no son paradas confirmadas';
   $('list').replaceChildren();
   for (const feature of visible) {

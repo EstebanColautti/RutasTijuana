@@ -17,11 +17,10 @@ struct CatalogView: View {
     private var matches: [CatalogFeature] {
         let rows = catalog?.matching(query, groupID: groupID, routesOnly: routesOnly) ?? []
         guard let reference else { return rows }
-        return rows.filter { ($0.distance(to: reference) ?? .infinity) <= 1_000 }.sorted {
-            let a = $0.distance(to: reference) ?? .infinity
-            let b = $1.distance(to: reference) ?? .infinity
-            return a == b ? $0.id < $1.id : a < b
-        }
+        return rows.compactMap { feature -> (CatalogFeature, Double)? in
+            guard let distance = feature.distance(to: reference), distance <= 1_000 else { return nil }
+            return (feature, distance)
+        }.sorted { $0.1 == $1.1 ? $0.0.id < $1.0.id : $0.1 < $1.1 }.map { $0.0 }
     }
 
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
@@ -74,14 +73,14 @@ struct CatalogView: View {
                 } description: {
                     Text("Abre un catálogo local para explorar sus recorridos y referencias.")
                 } actions: {
-                    Button("Abrir catálogo") { importing = true }.buttonStyle(.borderedProminent)
+                    Button("Abrir catálogo") { importing = true }.buttonStyle(.borderedProminent).disabled(loading)
                 }
             }
             if loading { ProgressView("Abriendo catálogo…").padding() }
         }
         .navigationTitle("Recorridos")
         .toolbar {
-            ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true } }
+            ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             switch result {
@@ -115,7 +114,7 @@ struct CatalogView: View {
                 Toggle("Solo recorridos", isOn: $routesOnly).font(.caption)
             }
             HStack {
-                Text("\(matches.count) elementos").font(.caption).foregroundStyle(.secondary)
+                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if reference != nil {
                     Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
@@ -202,7 +201,9 @@ struct CatalogView: View {
                     try RouteCatalog.decode(data, allowPrivate: allowPrivate)
                 }.value
                 catalog = decoded; selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
-            } catch { errorMessage = error.localizedDescription }
+            } catch let error as CatalogError { errorMessage = error.localizedDescription }
+            catch is DecodingError { errorMessage = "El archivo no tiene un formato de catálogo válido." }
+            catch { errorMessage = "No se pudo leer el archivo seleccionado." }
         }
     }
 

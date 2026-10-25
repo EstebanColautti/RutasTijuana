@@ -11,7 +11,7 @@
     if (data.schemaVersion !== 1 || !Array.isArray(data.groups) || !Array.isArray(data.features) || data.features.length > 10000) throw new Error('El formato del catálogo no es compatible.');
     const ids = new Set(), groups = new Set();
     for (const group of data.groups) {
-      if (typeof group.id !== 'string' || typeof group.name !== 'string' || groups.has(group.id)) throw new Error('Los grupos no son válidos.');
+      if (typeof group.id !== 'string' || !group.id || typeof group.name !== 'string' || !group.name || groups.has(group.id)) throw new Error('Los grupos no son válidos.');
       groups.add(group.id);
     }
     for (const feature of data.features) {

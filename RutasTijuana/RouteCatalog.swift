@@ -152,6 +152,7 @@ struct RouteCatalog: Codable, Sendable {
         guard allowPrivate || value.readyForDistribution else { throw CatalogError.privateDataset }
         let groupIDs = Set(value.groups.map(\.id))
         guard groupIDs.count == value.groups.count,
+              value.groups.allSatisfy({ !$0.id.isEmpty && !$0.name.isEmpty }),
               Set(value.features.map(\.id)).count == value.features.count,
               value.features.count <= 10_000,
               value.features.allSatisfy({ !$0.id.isEmpty && !$0.name.isEmpty && groupIDs.contains($0.groupID)
