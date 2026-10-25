@@ -36,6 +36,19 @@
       "problemMatcher": []
     },
     {
+      "label": "Vista local",
+      "type": "process",
+      "command": "python3",
+      "args": ["-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "preview"],
+      "windows": {
+        "command": "py",
+        "args": ["-3", "-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "preview"]
+      },
+      "options": {"cwd": "${workspaceFolder}"},
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "Estado de Git",
       "type": "process",
       "command": "git",

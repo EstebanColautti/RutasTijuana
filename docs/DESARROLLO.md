@@ -32,7 +32,9 @@ La app no calcula recorridos operativos, paradas ni transbordos desde una línea
 
 ## Vista en Windows
 
-Abrir `preview/index.html` y seleccionar el mismo catálogo local. La vista web reproduce la consulta, los filtros y la selección sobre una cuadrícula local; la app nativa usa MapKit. No requiere un servidor ni carga recursos externos. La validación final de la interfaz nativa se realiza con Xcode y las pruebas de iPhone.
+En VS Code, ejecutar la tarea **Vista local** y abrir `http://127.0.0.1:8766`. Seleccionar el mismo catálogo local con **Abrir catálogo**. La vista web reproduce la consulta, los filtros y la selección sobre una cuadrícula local; la app nativa usa MapKit.
+
+El servidor solo entrega los archivos de `preview`. El catálogo se procesa en el navegador sin enviarlo al servidor ni cargar recursos externos. La tarea necesita Python 3 y se detiene desde el terminal de VS Code. La validación final de la interfaz nativa se realiza con Xcode y las pruebas de iPhone.
 
 ## Componentes
 
