@@ -4,6 +4,10 @@ Prototipo de una app de rutas en Tijuana, desarrollado en SwiftUI.
 
 La app permite elegir origen y destino, seleccionar paradas cercanas y consultar un trayecto en el mapa. Incluye un circuito ficticio con seis paradas para probar la navegación. No contiene rutas, paradas ni horarios de transporte reales.
 
+**Explorar recorridos** permite abrir un catálogo JSON local, buscar por nombre o grupo y consultar trazados próximos a un punto. Las áreas se muestran como referencias. La cercanía no confirma un lugar de ascenso ni un trayecto peatonal.
+
+Los catálogos de evaluación se abren únicamente en compilaciones de desarrollo. Se mantienen en memoria y fuera del paquete de la app. La carga, el formato y la vista para Windows están descritos en [Desarrollo](docs/DESARROLLO.md).
+
 ## Requisitos
 
 - macOS con Xcode 16.4 o posterior.

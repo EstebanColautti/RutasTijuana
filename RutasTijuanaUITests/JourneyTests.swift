@@ -37,7 +37,24 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.alerts["Destino no válido"].waitForExistence(timeout: 5))
         capture("Destino no válido")
         tap("Cambiar destino")
-        XCTAssertFalse(app.buttons["Ver trayecto"].isEnabled)
+        let disabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == false"),
+                                                 object: app.buttons["Ver trayecto"])
+        XCTAssertEqual(XCTWaiter.wait(for: [disabled], timeout: 5), .completed)
+    }
+
+    func testCatalogSearchAndSelection() {
+        app.terminate()
+        app.launchArguments = ["--catalog-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        tap("catalog-sample-route")
+        XCTAssertTrue(app.staticTexts["Horario y frecuencia: dato no disponible"].waitForExistence(timeout: 5))
+        capture("Recorridos")
+        let search = app.textFields["catalog-search"]
+        search.tap()
+        search.typeText("sin coincidencias")
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
     }
 
     private func tap(_ identifier: String) {

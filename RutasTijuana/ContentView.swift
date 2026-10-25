@@ -73,7 +73,7 @@ struct ContentView: View {
                 Text("Elige una parada de bajada distinta de la parada de origen.")
             }
             .onChange(of: selectedStop) { _, id in
-                guard stage != .journey,
+                guard !invalidDestination, stage != .journey,
                       let stop = route.stops.first(where: { $0.id == id }) else { return }
                 select(stop.point)
             }
@@ -97,6 +97,11 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             demoNotice
             Spacer()
+            NavigationLink { CatalogView() } label: {
+                Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 32)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            .accessibilityIdentifier("Explorar recorridos")
             Text("Puedes elegir tu ubicación manualmente. No se guarda.")
                 .font(.footnote).foregroundStyle(.secondary)
             primaryButton("Elegir ubicación inicial") { stage = .origin }
@@ -125,7 +130,7 @@ struct ContentView: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .onTapGesture { position in
-                guard stage != .journey, let point = proxy.convert(position, from: .local) else { return }
+                guard !invalidDestination, stage != .journey, let point = proxy.convert(position, from: .local) else { return }
                 select(GeoPoint(latitude: point.latitude, longitude: point.longitude))
             }
             .overlay(alignment: .topLeading) {
@@ -183,7 +188,12 @@ struct ContentView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             choices(point: destination, selectedID: destinationID, isOrigin: false)
             primaryButton("Ver trayecto", disabled: destinationID == nil) {
-                if originID == destinationID { invalidDestination = true }
+                if originID == destinationID {
+                    destination = nil
+                    destinationID = nil
+                    selectedStop = nil
+                    invalidDestination = true
+                }
                 else {
                     selectedStop = nil
                     stage = .journey

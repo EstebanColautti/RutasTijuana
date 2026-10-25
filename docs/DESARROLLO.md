@@ -14,6 +14,30 @@ code RutasTijuana.code-workspace
 
 ## Organización
 
+`RouteCatalog` valida el esquema local, conserva coordenadas y anillos, filtra por nombre o grupo y calcula distancia al segmento más próximo. `CatalogView` muestra el catálogo y permite importar un JSON desde el selector de archivos. La consulta de trayectos de demostración sigue separada.
+
+## Catálogo local
+
+El archivo tiene `schemaVersion`, `version`, `publishable`, `licenseStatus`, `groups` y `features`. Cada elemento conserva `id`, `name`, `groupID`, `kind`, `color`, `verified` y una geometría GeoJSON. `kind` distingue `route`, `area` y `reference`. Las coordenadas usan longitud, latitud y altitud opcional. Los identificadores y las referencias de grupo deben ser únicos y válidos.
+
+```sh
+python scripts/prepare_catalog.py --data <carpeta-de-datos> --out local-data/TransitCatalog.json
+```
+
+El preparador usa `data/processed/all_features.geojson`, `data/processed/dataset_metadata.json` y `data/intermediate/layers.json`. Conserva los vértices y elimina los campos que la interfaz no necesita. La carpeta `local-data` está excluida de Git y fuera de los recursos de Xcode.
+
+En la app, abrir **Explorar recorridos > Abrir catálogo** y elegir el JSON. El archivo no se guarda, no se sube ni se incorpora al bundle. Debug permite catálogos de evaluación; Release exige `publishable=true` y `licenseStatus=verified`. Esos valores deben corresponder a una revisión real de los datos.
+
+La app no calcula recorridos operativos, paradas ni transbordos desde una línea. Los catálogos sin verificación muestran ese estado y no ofrecen horarios o frecuencias supuestos. Los polígonos mantienen sus anillos interiores.
+
+## Vista en Windows
+
+En VS Code, ejecutar la tarea **Vista local** y abrir `http://127.0.0.1:8766`. Seleccionar el mismo catálogo local con **Abrir catálogo**. La vista web reproduce la consulta, los filtros y la selección sobre una cuadrícula local; la app nativa usa MapKit.
+
+El servidor solo entrega los archivos de `preview`. El catálogo se procesa en el navegador sin enviarlo al servidor ni cargar recursos externos. La tarea necesita Python 3 y se detiene desde el terminal de VS Code. La validación final de la interfaz nativa se realiza con Xcode y las pruebas de iPhone.
+
+## Componentes
+
 `ContentView` contiene el flujo de inicio, origen, destino y resultado. `TransitRoute` calcula paradas cercanas y el recorrido de un circuito en sentido único. `LocationService` obtiene una ubicación puntual en iOS, solo después de pedirla; permite continuar manualmente si no está disponible.
 
 Las seis paradas y sus coordenadas son ficticias. Las distancias se calculan en línea recta, no como caminos peatonales. El mapa base necesita conexión. No se guardan ubicaciones ni consultas.

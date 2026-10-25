@@ -9,7 +9,7 @@ if (-not $compiler) { throw 'No se encontro Swift en PATH. Reinicia VS Code desp
 $buildPath = Join-Path $projectRoot 'build'
 New-Item -ItemType Directory -Force -Path $buildPath | Out-Null
 $executable = Join-Path $buildPath 'route-tests.exe'
-& $compiler.Source (Join-Path $projectRoot 'RutasTijuana\TransitRoute.swift') (Join-Path $projectRoot 'tests\main.swift') -o $executable
+& $compiler.Source (Join-Path $projectRoot 'RutasTijuana\TransitRoute.swift') (Join-Path $projectRoot 'RutasTijuana\RouteCatalog.swift') (Join-Path $projectRoot 'tests\main.swift') -o $executable
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron compilar las pruebas.' }
 & $executable
 if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de lógica.' }
