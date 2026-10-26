@@ -85,7 +85,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["06:00–20:00"].exists)
         capture("Información")
-        tap("Cerrar")
+        tap("catalog-information-close")
         XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 5))
     }
 

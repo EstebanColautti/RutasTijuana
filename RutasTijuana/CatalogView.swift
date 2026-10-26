@@ -221,7 +221,7 @@ struct CatalogView: View {
             }
             .navigationTitle(feature.name)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingInformation = false } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingInformation = false }.accessibilityIdentifier("catalog-information-close") } }
         }
     }
 
