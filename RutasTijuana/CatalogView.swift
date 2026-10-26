@@ -191,7 +191,6 @@ struct CatalogView: View {
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.thinMaterial)
-        .accessibilityIdentifier("catalog-detail")
     }
 
     private func informationSheet(_ feature: CatalogFeature) -> some View {
