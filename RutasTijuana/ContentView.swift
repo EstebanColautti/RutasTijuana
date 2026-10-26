@@ -169,6 +169,10 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 demoNotice
+                if !connectivity.isConnected {
+                    Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if stage == .origin { originPanel }
                 else if stage == .destination { destinationPanel }
                 else { journeyPanel }
@@ -193,6 +197,15 @@ struct ContentView: View {
             }
             #endif
             searchField
+            if search.isEmpty && !scenario.places.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(Array(Set(scenario.places.map(\.category))).sorted(), id: \.self) { category in
+                            Button(categoryTitle(category)) { search = category }.buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
             choices(point: origin, selectedID: originID, isOrigin: true)
             primaryButton("Continuar", disabled: originID == nil) {
                 cancelLocation()
@@ -212,6 +225,15 @@ struct ContentView: View {
             Text("Toca el mapa o elige una parada para marcar el destino.")
                 .font(.subheadline).foregroundStyle(.secondary)
             searchField
+            if search.isEmpty && !scenario.places.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(Array(Set(scenario.places.map(\.category))).sorted(), id: \.self) { category in
+                            Button(categoryTitle(category)) { search = category }.buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
             choices(point: destination, selectedID: destinationID, isOrigin: false)
             primaryButton("Ver trayecto", disabled: destinationID == nil) {
                 if originID == destinationID {
@@ -236,8 +258,12 @@ struct ContentView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             Text("Horario y frecuencia: dato no disponible").font(.footnote)
             if let first = trip.first, let last = trip.last {
+                Label("Acércate al origen · Camino peatonal no disponible", systemImage: "figure.walk")
+                    .font(.footnote).foregroundStyle(.secondary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
+                Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             if let stop = route.stops.first(where: { $0.id == selectedStop }) {
                 Label(stop.name, systemImage: "bus").font(.subheadline)
@@ -304,6 +330,17 @@ struct ContentView: View {
     private var demoNotice: some View {
         Label("Evaluación · Servicio y coordenadas sin verificar", systemImage: "info.circle")
             .font(.caption).foregroundStyle(.secondary)
+    }
+
+    private func categoryTitle(_ category: String) -> String {
+        switch category {
+        case "hospital": return "Salud"
+        case "culture": return "Cultura"
+        case "shopping": return "Comercio"
+        case "park": return "Parques"
+        case "sport": return "Deportes"
+        default: return "Transporte"
+        }
     }
 
     private var searchField: some View {
