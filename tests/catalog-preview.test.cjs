@@ -24,3 +24,14 @@ test('areas never become nearby boarding candidates', () => {
   const feature = { ...sample().features[0], kind: 'area' };
   assert.equal(model.nearby(feature, [1, 0]), null);
 });
+
+test('information is searchable and validates field types', () => {
+  const data = sample();
+  data.features[0].information = { description: 'Lugar de ejemplo', fields: [
+    { category: 'fare', label: 'Tarifa', value: '$9', evidence: 'Tarifa $9', inferred: false }
+  ] };
+  const decoded = model.parse(JSON.stringify(data));
+  assert.equal(model.search(decoded, 'LUGAR $9').length, 1);
+  data.features[0].information.fields[0].value = 9;
+  assert.throws(() => model.parse(JSON.stringify(data)));
+});

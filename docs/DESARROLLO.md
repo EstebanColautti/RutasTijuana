@@ -26,9 +26,9 @@ python scripts/prepare_catalog.py --data <carpeta-de-datos> --out local-data/Tra
 
 El preparador usa `data/processed/all_features.geojson`, `data/processed/dataset_metadata.json` y `data/intermediate/layers.json`. Conserva los vértices y elimina los campos que la interfaz no necesita. La carpeta `local-data` está excluida de Git y fuera de los recursos de Xcode.
 
-En la app, abrir **Explorar recorridos > Abrir catálogo** y elegir el JSON. El archivo no se guarda, no se sube ni se incorpora al bundle. Debug permite catálogos de evaluación; Release exige `publishable=true` y `licenseStatus=verified`. Esos valores deben corresponder a una revisión real de los datos.
+En la app, abrir **Explorar recorridos > Abrir catálogo** y elegir el JSON. El archivo no se guarda, no se sube ni se incorpora al bundle. Debug permite catálogos de evaluación; Release exige `publishable=true` y `licenseStatus=verified`.
 
-La app no calcula recorridos operativos, paradas ni transbordos desde una línea. Los catálogos sin verificación muestran ese estado y no ofrecen horarios o frecuencias supuestos. Los polígonos mantienen sus anillos interiores.
+El detalle de cada elemento muestra la descripción, los horarios y tarifas presentes, los destinos mencionados, los campos adicionales y las medidas geométricas. Los polígonos mantienen sus anillos interiores.
 
 ## Vista en Windows
 
@@ -80,6 +80,8 @@ Para revisar la interfaz en Xcode:
 
 **Abrir datos de evaluación** carga un JSON privado en memoria, solo en Debug. El esquema contiene `schemaVersion: 1`, `name`, `coverageRadius`, `stops` y `places`. Cada parada incluye `id`, `name` y `point` con `latitude` y `longitude`. Cada lugar incluye `id`, `name`, `subtitle`, `category`, `stopID` y `keywords`. Las referencias deben apuntar a paradas existentes.
 
-Las asociaciones sirven para ensayar la interfaz. No acreditan cercanía física ni servicio de transporte. Release rechaza estos archivos. No se guardan consultas ni archivos importados.
+Las asociaciones sirven para ensayar la interfaz. Release utiliza el catálogo de distribución. No se guardan consultas ni archivos importados.
 
 El panel inferior conserva el mapa visible y puede ampliarse. La búsqueda ignora acentos y mayúsculas. Cambiar origen conserva la consulta hasta elegir otro punto; una nueva consulta borra las selecciones. Sin conexión se mantiene la lista; la disponibilidad del mapa depende de MapKit.
+
+La información ampliada es opcional: `information.description` contiene el texto completo y `information.fields` conserva filas con `category`, `label`, `value`, `evidence` e `inferred`. Los catálogos anteriores siguen siendo compatibles. La búsqueda incluye este contenido. Las imágenes adjuntas se conservan como enlaces de texto y no se cargan automáticamente.

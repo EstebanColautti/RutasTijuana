@@ -75,6 +75,20 @@ final class JourneyTests: XCTestCase {
         capture("Búsqueda sin conexión")
     }
 
+    func testCatalogInformation() {
+        app.terminate()
+        app.launchArguments = ["--catalog-info-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        tap("catalog-sample-route")
+        tap("catalog-information")
+        XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["06:00–20:00"].exists)
+        capture("Información")
+        tap("Cerrar")
+        XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 5))
+    }
+
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)

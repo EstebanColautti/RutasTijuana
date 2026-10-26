@@ -328,7 +328,7 @@ struct ContentView: View {
     }
 
     private var demoNotice: some View {
-        Label("Evaluación · Servicio y coordenadas sin verificar", systemImage: "info.circle")
+        Label("Datos de evaluación", systemImage: "info.circle")
             .font(.caption).foregroundStyle(.secondary)
     }
 
