@@ -98,6 +98,22 @@ struct CatalogGroup: Codable, Identifiable, Equatable, Sendable {
     let name: String
 }
 
+struct CatalogInformation: Codable, Equatable, Sendable {
+    struct Field: Codable, Equatable, Sendable {
+        let category: String
+        let label: String
+        let value: String
+        let evidence: String
+        let inferred: Bool
+    }
+    let description: String
+    let fields: [Field]
+
+    var searchableText: String {
+        ([description] + fields.map { "\($0.label) \($0.value)" }).joined(separator: " ")
+    }
+}
+
 struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     enum Kind: String, Codable, Sendable { case route, area, reference }
     let id: String
@@ -107,6 +123,7 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     let color: String
     let verified: Bool
     let geometry: CatalogGeometry
+    var information: CatalogInformation? = nil
 
     func distance(to point: GeoPoint) -> Double? {
         guard kind == .route, point.latitude.isFinite, point.longitude.isFinite,
@@ -164,7 +181,7 @@ struct RouteCatalog: Codable, Sendable {
         let terms = Self.fold(query).split(whereSeparator: \.isWhitespace)
         let names = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
         return features.filter { feature in
-            let text = Self.fold(feature.name + " " + (names[feature.groupID] ?? ""))
+            let text = Self.fold(feature.name + " " + (names[feature.groupID] ?? "") + " " + (feature.information?.searchableText ?? ""))
             return (!routesOnly || feature.kind == .route) && (groupID == nil || feature.groupID == groupID)
                 && terms.allSatisfy { text.contains($0) }
         }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -172,6 +189,16 @@ struct RouteCatalog: Codable, Sendable {
 
     private static func fold(_ value: String) -> String {
         value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "es_MX"))
+    }
+
+    static var informationSample: RouteCatalog {
+        let base = sample
+        var feature = base.features[0]
+        feature.information = CatalogInformation(description: "Descripción de ejemplo",
+            fields: [.init(category: "schedule", label: "Horario mencionado", value: "06:00–20:00",
+                           evidence: "Horario: 06:00–20:00", inferred: false)])
+        return RouteCatalog(schemaVersion: 1, version: "sample", publishable: true, licenseStatus: "verified",
+                            groups: base.groups, features: [feature])
     }
 
     static var sample: RouteCatalog {

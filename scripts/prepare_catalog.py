@@ -4,6 +4,11 @@ import json
 import math
 from pathlib import Path
 
+try:
+    from scripts.catalog_information import information_index, build_information
+except ModuleNotFoundError:
+    from catalog_information import information_index, build_information
+
 
 def read(path):
     return json.loads(path.read_text(encoding='utf-8-sig'))
@@ -62,6 +67,7 @@ def prepare(data, output):
         raise ValueError('Se necesita una colección GeoJSON.')
     names = {row['layer_id']: row['name'] for row in layers}
     features = []
+    information = information_index(data)
     for feature in collection['features']:
         properties = feature.get('properties') or {}
         geometry = feature.get('geometry')
@@ -83,7 +89,8 @@ def prepare(data, output):
         features.append({'id': feature['id'], 'name': str(properties.get('name') or '').strip(),
                          'groupID': group_id, 'kind': kind, 'color': style_color(properties),
                          'verified': properties.get('verification_status') == 'externally_verified',
-                         'geometry': geometry})
+                         'geometry': geometry,
+                         'information': build_information(feature, names[group_id], information)})
     if len(features) != len({row['id'] for row in features}) or any(not row['name'] for row in features):
         raise ValueError('Los nombres o identificadores no son válidos.')
     used_groups = {row['groupID'] for row in features}

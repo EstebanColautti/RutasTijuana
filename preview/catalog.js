@@ -17,6 +17,7 @@
     for (const feature of data.features) {
       if (typeof feature.id !== 'string' || !feature.id || ids.has(feature.id) || typeof feature.name !== 'string' || !feature.name || !groups.has(feature.groupID)) throw new Error('Los identificadores o referencias no son válidos.');
       ids.add(feature.id);
+      if (feature.information != null && (typeof feature.information.description !== 'string' || !Array.isArray(feature.information.fields) || feature.information.fields.some(f => !f || ['category', 'label', 'value', 'evidence'].some(k => typeof f[k] !== 'string') || typeof f.inferred !== 'boolean'))) throw new Error('La información del catálogo no es compatible.');
       if (!['route', 'area', 'reference'].includes(feature.kind) || !feature.geometry || !['Point', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'].includes(feature.geometry.type)) throw new Error('La geometría no es compatible.');
       const points = positions(feature.geometry);
       if (!points.length || points.some(p => !Array.isArray(p) || ![2, 3].includes(p.length) || p.some(n => typeof n !== 'number' || !Number.isFinite(n)) || Math.abs(p[0]) > 180 || Math.abs(p[1]) > 90)) throw new Error('Las coordenadas no son válidas.');
@@ -29,7 +30,7 @@
   function search(data, query, groupID = '', routesOnly = true) {
     const names = new Map(data.groups.map(g => [g.id, g.name]));
     const terms = fold(query).trim().split(/\s+/).filter(Boolean);
-    return data.features.filter(f => (!routesOnly || f.kind === 'route') && (!groupID || f.groupID === groupID) && terms.every(t => fold(f.name + ' ' + names.get(f.groupID)).includes(t)))
+    return data.features.filter(f => (!routesOnly || f.kind === 'route') && (!groupID || f.groupID === groupID) && terms.every(t => fold(f.name + ' ' + names.get(f.groupID) + ' ' + (f.information ? f.information.description + ' ' + f.information.fields.map(v => v.label + ' ' + v.value).join(' ') : '')).includes(t)))
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }) || a.id.localeCompare(b.id));
   }
 

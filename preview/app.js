@@ -37,7 +37,7 @@ function render() {
   }
   if (!visible.some(f => f.id === selected)) selected = null;
   $('count').textContent = 'Resultados: ' + visible.length; $('clear').hidden = !reference;
-  $('hint').textContent = $('routes').checked ? 'Toca el mapa para consultar trazados a 1 km' : 'Áreas y referencias; no son paradas confirmadas';
+  $('hint').textContent = $('routes').checked ? 'Toca el mapa para consultar trazados a 1 km' : 'Áreas y referencias';
   $('list').replaceChildren();
   for (const feature of visible) {
     const row = document.createElement('button'); row.className = 'row' + (selected === feature.id ? ' selected' : '');
@@ -51,9 +51,21 @@ function render() {
   const feature = visible.find(f => f.id === selected); $('detail').hidden = !feature;
   if (feature) {
     $('name').textContent = feature.name;
-    $('status').textContent = feature.kind === 'route' ? 'Recorrido de referencia · Sentido sin verificar' : 'Área de referencia · Ascenso y descenso sin verificar';
-    $('schedule').textContent = feature.kind === 'route' ? 'Horario y frecuencia: dato no disponible' : '';
-    $('distance-note').textContent = feature.kind === 'route' ? 'La cercanía al trazado no confirma dónde subir ni un camino peatonal.' : '';
+    $('information').hidden = !feature.information;
+    $('information-body').replaceChildren();
+    if (feature.information) {
+      const description = document.createElement('pre'); description.textContent = feature.information.description;
+      $('information-body').append(description);
+      for (const field of feature.information.fields) {
+        const label = document.createElement('strong'); label.textContent = field.label;
+        const value = document.createElement('pre'); value.textContent = field.value;
+        const kind = document.createElement('small'); kind.textContent = field.inferred ? 'Cálculo o referencia deducida' : 'Texto disponible';
+        $('information-body').append(label, value, kind, document.createElement('hr'));
+      }
+    }
+    $('status').textContent = feature.kind === 'route' ? 'Recorrido' : 'Área de referencia';
+    $('schedule').textContent = feature.kind === 'route' && !feature.information ? 'Horario y frecuencia: dato no disponible' : '';
+    $('distance-note').textContent = feature.kind === 'route' ? 'Distancia al trazado en línea recta.' : '';
   }
   if (!bounds) fit(visible);
   draw();

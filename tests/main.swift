@@ -41,7 +41,7 @@ let privateData = try JSONSerialization.data(withJSONObject: sampleObject)
 check(rejects(privateData, allowPrivate: false), "El catálogo privado no se permite en distribución")
 check(try RouteCatalog.decode(privateData, allowPrivate: true).features.count == 1, "Carga interna de catálogo privado")
 sampleObject["publishable"] = true
-check(rejects(try JSONSerialization.data(withJSONObject: sampleObject), allowPrivate: false), "La licencia pendiente no se habilita cambiando una bandera")
+check(rejects(try JSONSerialization.data(withJSONObject: sampleObject), allowPrivate: false), "La política de distribución comprueba ambos campos")
 sampleObject["schemaVersion"] = 99
 check(rejects(try JSONSerialization.data(withJSONObject: sampleObject)), "Versión no compatible")
 sampleObject["schemaVersion"] = 1
@@ -119,3 +119,13 @@ if let path = ProcessInfo.processInfo.environment["SCENARIO_TEST_FILE"] {
     check(!local.stops.isEmpty && !local.places.isEmpty, "Escenario local")
 }
 print("Pruebas de escenarios correctas")
+
+var enriched = RouteCatalog.sample
+var enrichedFeature = enriched.features[0]
+enrichedFeature.information = CatalogInformation(description: "Salida desde Lugar de ejemplo",
+    fields: [.init(category: "fare", label: "Tarifa", value: "$9", evidence: "Tarifa: $9", inferred: false)])
+let enrichedCatalog = RouteCatalog(schemaVersion: 1, version: "test", publishable: true,
+    licenseStatus: "verified", groups: enriched.groups, features: [enrichedFeature])
+let informationRoundTrip = try RouteCatalog.decode(JSONEncoder().encode(enrichedCatalog), allowPrivate: true)
+check(informationRoundTrip.features[0].information == enrichedFeature.information, "Información completa de ida y vuelta")
+check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descripción y campos")

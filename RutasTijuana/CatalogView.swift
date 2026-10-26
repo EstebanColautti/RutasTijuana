@@ -11,6 +11,7 @@ struct CatalogView: View {
     @State private var reference: GeoPoint?
     @State private var importing = false
     @State private var loading = false
+    @State private var showingInformation = false
     @State private var errorMessage: String?
     @State private var camera: MapCameraPosition = .automatic
 
@@ -29,7 +30,7 @@ struct CatalogView: View {
         VStack(spacing: 0) {
             if let catalog {
                 if !catalog.readyForDistribution {
-                    Label("Evaluación interna · Información sin verificar", systemImage: "info.circle")
+                    Label("Catálogo local", systemImage: "info.circle")
                         .font(.caption).padding(10).frame(maxWidth: .infinity)
                         .background(.orange.opacity(0.1))
                 }
@@ -78,6 +79,9 @@ struct CatalogView: View {
             }
             if loading { ProgressView("Abriendo catálogo…").padding() }
         }
+        .sheet(isPresented: $showingInformation) {
+            if let selection { informationSheet(selection) }
+        }
         .navigationTitle("Recorridos")
         .toolbar {
             ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
@@ -94,6 +98,7 @@ struct CatalogView: View {
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { catalog = .sample }
+            if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { catalog = .informationSample }
             #endif
         }
         .onChange(of: query) { _, _ in selectedID = nil }
@@ -157,7 +162,7 @@ struct CatalogView: View {
                 reference = GeoPoint(latitude: point.latitude, longitude: point.longitude)
             }
             .overlay(alignment: .topLeading) {
-                Text(routesOnly ? "Toca el mapa para consultar trazados a 1 km" : "Áreas y referencias; no son paradas confirmadas")
+                Text(routesOnly ? "Toca el mapa para consultar trazados a 1 km" : "Áreas y referencias")
                     .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .padding(10).allowsHitTesting(false)
             }
@@ -171,16 +176,53 @@ struct CatalogView: View {
                 Spacer()
                 Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
             }
-            Text(feature.kind == .route ? "Recorrido de referencia · Sentido sin verificar" : "Área de referencia · Ascenso y descenso sin verificar")
+            Text(feature.kind == .route ? "Recorrido" : "Área de referencia")
                 .font(.caption).foregroundStyle(.secondary)
             if feature.kind == .route {
-                Text("Horario y frecuencia: dato no disponible").font(.caption)
-                Text("La cercanía al trazado no confirma dónde subir ni un camino peatonal.")
+                if feature.information == nil {
+                    Text("Horario y frecuencia: dato no disponible").font(.caption)
+                }
+                Text("Distancia al trazado en línea recta.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            if feature.information != nil {
+                Button("Ver información disponible") { showingInformation = true }
+                    .accessibilityIdentifier("catalog-information")
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.thinMaterial)
-        .accessibilityIdentifier("catalog-detail")
+    }
+
+    private func informationSheet(_ feature: CatalogFeature) -> some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Información del catálogo y detalles geométricos.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                if let information = feature.information {
+                    if !information.description.isEmpty {
+                        Section("Descripción disponible") { Text(information.description).textSelection(.enabled) }
+                    }
+                    ForEach(Array(information.fields.enumerated()), id: \.offset) { item in
+                        Section(item.element.label) {
+                            Text(item.element.value).textSelection(.enabled)
+                            if item.element.inferred {
+                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("Texto disponible").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if !item.element.evidence.isEmpty && item.element.evidence != item.element.value {
+                                Text("Texto: \(item.element.evidence)").font(.caption).textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(feature.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingInformation = false }.accessibilityIdentifier("catalog-information-close") } }
+        }
     }
 
     private func load(_ url: URL) {

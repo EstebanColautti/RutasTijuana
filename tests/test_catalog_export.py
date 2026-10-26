@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.prepare_catalog import prepare, validate_geometry
+from scripts.catalog_information import build_information
 
 
 class CatalogExportTests(unittest.TestCase):
@@ -29,9 +30,27 @@ class CatalogExportTests(unittest.TestCase):
             result = json.loads(first)
             self.assertFalse(result['publishable'])
             self.assertEqual(result['features'][0]['geometry'], geometry)
-            self.assertEqual(set(result['features'][0]), {'id', 'name', 'groupID', 'kind', 'color', 'verified', 'geometry'})
+            self.assertEqual(set(result['features'][0]), {'id', 'name', 'groupID', 'kind', 'color', 'verified', 'geometry', 'information'})
+            self.assertEqual(result['features'][0]['information']['description'], 'Información ajena al catálogo')
             self.assertNotIn('inputs', result)
             self.assertNotIn('source_locator', result['features'][0])
+
+    def test_information_preserves_context_and_media_without_namespace_links(self):
+        feature = {'id': 'f', 'geometry': {'type': 'LineString', 'coordinates': [[0, 0], [1, 1]]},
+                   'properties': {'name': 'R2: Lugar A-Lugar B', 'classification': 'route_geometry'}}
+        source = {'name_raw': feature['properties']['name'], 'description_text': 'Tarifa día $9; noche $11\nPrimera salida: 04:20 am',
+                  'description_raw': '<img src="https://example.test/image.png">',
+                  'extended_data': [{'name': 'campo', 'value': 'valor', 'raw_properties': {'tag': 'http://example.test/xml'}}],
+                  'geometry_metrics': {'length_m': 1200, 'first_vertex': [0, 0]}}
+        facts = {'f': [{'field': 'fare_claim', 'value': {'amount_decimal': '9'}, 'raw_evidence': 'Tarifa día $9; noche $11'}]}
+        result = build_information(feature, 'Grupo', ({'f': source}, facts, {}))
+        fields = result['fields']
+        self.assertEqual(result['description'], source['description_text'])
+        self.assertTrue(any(row['category'] == 'schedule' and '04:20 am' in row['value'] for row in fields))
+        self.assertTrue(any(row['category'] == 'fare' and 'noche $11' in row['value'] for row in fields))
+        self.assertEqual([row['value'] for row in fields if row['category'] == 'media'], ['https://example.test/image.png'])
+        self.assertTrue(any(row['label'] == 'campo' and row['value'] == 'valor' for row in fields))
+        self.assertTrue(all(row['inferred'] for row in fields if row['category'] == 'geometry'))
 
     def test_rejects_invalid_or_empty_lines(self):
         for coordinates in ([], [[0, 0]], [[0, 100], [0, 0]], [[True, 0], [0, 0]]):
