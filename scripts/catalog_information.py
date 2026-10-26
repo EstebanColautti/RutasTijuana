@@ -83,13 +83,13 @@ def build_information(feature, group_name, index):
             if re.search(pattern, line, re.I):
                 add(category, label, line, line)
     name = str(props.get('name') or '')
-    code = re.match(r'^\s*(R\d+[A-Za-z]?)\s*:', name, re.I)
+    code = re.search(r'\b(R\d+[A-Za-z]?)\s*:', name, re.I)
     if code:
         add('name', 'Código en el nombre', code.group(1), name)
-    components = [v.strip() for v in re.split(r'\s*[-–→]\s*', re.sub(r'^\s*R\d+[A-Za-z]?\s*:\s*', '', name, flags=re.I)) if v.strip()]
+    components = [v.strip() for v in re.split(r'(?<!\d)[-–→]|[-–→](?!\d)', re.sub(r'^\s*R\d+[A-Za-z]?\s*:\s*', '', name, flags=re.I)) if v.strip()]
     if len(components) >= 2:
         add('places', 'Referencias separadas del nombre', ' · '.join(components), name, True)
-    for match in re.finditer(r'\b(?:ida|vuelta|regreso)\b', name + '\n' + text, re.I):
+    for match in re.finditer(r'\b(?:ida|vuelta|regreso)\b', name, re.I):
         add('direction', 'Mención de sentido', match.group(), name + '\n' + text)
     add('attribute', 'Clasificación del elemento', props.get('classification'))
     for attribute in source.get('extended_data', []):
