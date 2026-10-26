@@ -10,7 +10,7 @@ final class JourneyTests: XCTestCase {
 
     func testJourneyAndReset() {
         capture("Inicio")
-        tap("Elegir ubicación inicial")
+        tap("Elegir ubicaciÃ³n inicial")
         tap("stop-demo-1")
         capture("Origen")
         tap("Continuar")
@@ -18,24 +18,24 @@ final class JourneyTests: XCTestCase {
         capture("Destino")
         tap("Ver trayecto")
         XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Bájate en Parada 4"].exists)
+        XCTAssertTrue(app.staticTexts["BÃ¡jate en Parada 4"].exists)
         capture("Trayecto")
         tap("Regresar")
         tap("Ver trayecto")
         XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
         tap("Nueva consulta")
-        tap("Elegir ubicación inicial")
+        tap("Elegir ubicaciÃ³n inicial")
         XCTAssertFalse(app.buttons["Continuar"].isEnabled)
     }
 
     func testSameStopIsRejected() {
-        tap("Elegir ubicación inicial")
+        tap("Elegir ubicaciÃ³n inicial")
         tap("stop-demo-1")
         tap("Continuar")
         tap("stop-demo-1")
         tap("Ver trayecto")
-        XCTAssertTrue(app.alerts["Destino no válido"].waitForExistence(timeout: 5))
-        capture("Destino no válido")
+        XCTAssertTrue(app.alerts["Destino no vÃ¡lido"].waitForExistence(timeout: 5))
+        capture("Destino no vÃ¡lido")
         tap("Cambiar destino")
         let disabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == false"),
                                                  object: app.buttons["Ver trayecto"])
@@ -55,6 +55,20 @@ final class JourneyTests: XCTestCase {
         search.typeText("sin coincidencias")
         XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
+    }
+
+    func testSearchWithoutConnection() {
+        app.terminate()
+        app.launchArguments = ["--offline"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        XCTAssertTrue(app.staticTexts["Sin conexión · Puedes elegir de la lista"].waitForExistence(timeout: 5))
+        let search = app.textFields["journey-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("sin coincidencias")
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        capture("Búsqueda sin conexión")
     }
 
     private func tap(_ identifier: String) {

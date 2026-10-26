@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import UniformTypeIdentifiers
 
 private extension GeoPoint {
     var coordinate: CLLocationCoordinate2D {
@@ -9,7 +10,13 @@ private extension GeoPoint {
 
 struct ContentView: View {
     private enum Stage { case home, origin, destination, journey }
-    private let route = TransitRoute.demonstration
+    @State private var scenario = JourneyScenario.sample
+    private var route: TransitRoute { scenario.route }
+    @State private var search = ""
+    @State private var importing = false
+    @State private var importError: String?
+    @State private var detent: PresentationDetent = .medium
+    @StateObject private var connectivity = ConnectivityMonitor()
     @State private var stage = Stage.home
     @State private var origin: GeoPoint?
     @State private var destination: GeoPoint?
@@ -44,34 +51,48 @@ struct ContentView: View {
             Group {
                 if stage == .home { welcome }
                 else {
-                    VStack(spacing: 0) {
-                        routeMap.frame(minHeight: 180)
-                        panel
-                    }
+                    routeMap
+                        .overlay(alignment: .top) {
+                            if !connectivity.isConnected {
+                                Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
+                                    .font(.caption).padding(10).background(.regularMaterial, in: Capsule()).padding()
+                            }
+                        }
                 }
             }
-            .navigationTitle(title)
+            .sheet(isPresented: Binding(get: { stage != .home }, set: { _ in })) {
+                NavigationStack {
+                    panel
+                        .navigationTitle(title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(action: back) {
+                                    Label(stage == .destination ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
+                                }
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large], selection: $detent)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .interactiveDismissDisabled()
+                .presentationDragIndicator(.visible)
+                .alert("Destino no válido", isPresented: $invalidDestination) {
+                    Button("Cambiar destino", role: .cancel) { }
+                } message: {
+                    Text("Elige una parada de bajada distinta de la parada de origen.")
+                }
+            }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+                importScenario(result)
+            }
+            .alert("No se pudo abrir", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
+                Button("Aceptar", role: .cancel) { importError = nil }
+            } message: { Text(importError ?? "") }
+            .navigationTitle(stage == .home ? "" : title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                if stage != .home {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(action: back) {
-                            Label(stage == .destination ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
-                        }
-                    }
-                }
-            }
-            .alert("Destino no válido", isPresented: $invalidDestination) {
-                Button("Cambiar destino", role: .cancel) {
-                    destination = nil
-                    destinationID = nil
-                    selectedStop = nil
-                }
-            } message: {
-                Text("Elige una parada de bajada distinta de la parada de origen.")
-            }
             .onChange(of: selectedStop) { _, id in
                 guard !invalidDestination, stage != .journey,
                       let stop = route.stops.first(where: { $0.id == id }) else { return }
@@ -96,6 +117,10 @@ struct ContentView: View {
             Text("Consulta cómo llegar de un punto A a un punto B en transporte público.")
                 .foregroundStyle(.secondary)
             demoNotice
+            #if DEBUG
+            Button("Abrir datos de evaluación") { importing = true }
+                .buttonStyle(.bordered)
+            #endif
             Spacer()
             NavigationLink { CatalogView() } label: {
                 Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 32)
@@ -104,7 +129,7 @@ struct ContentView: View {
             .accessibilityIdentifier("Explorar recorridos")
             Text("Puedes elegir tu ubicación manualmente. No se guarda.")
                 .font(.footnote).foregroundStyle(.secondary)
-            primaryButton("Elegir ubicación inicial") { stage = .origin }
+            primaryButton("Elegir ubicación inicial") { stage = .origin; search = "" }
         }
         .padding(24)
     }
@@ -134,7 +159,7 @@ struct ContentView: View {
                 select(GeoPoint(latitude: point.latitude, longitude: point.longitude))
             }
             .overlay(alignment: .topLeading) {
-                Text("Recorrido ficticio").font(.caption.weight(.medium)).padding(8)
+                Text("Recorrido de evaluación").font(.caption.weight(.medium)).padding(8)
                     .background(.regularMaterial, in: Capsule()).padding(12).allowsHitTesting(false)
             }
         }
@@ -143,8 +168,6 @@ struct ContentView: View {
     private var panel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Capsule().fill(.secondary.opacity(0.4))
-                    .frame(width: 36, height: 5).frame(maxWidth: .infinity)
                 demoNotice
                 if stage == .origin { originPanel }
                 else if stage == .destination { destinationPanel }
@@ -152,7 +175,7 @@ struct ContentView: View {
             }
             .padding(16)
         }
-        .frame(maxHeight: 350).background(.regularMaterial)
+        .frame(maxWidth: .infinity).background(.regularMaterial)
     }
 
     private var originPanel: some View {
@@ -169,9 +192,11 @@ struct ContentView: View {
                 Text(message).font(.footnote).foregroundStyle(.secondary)
             }
             #endif
+            searchField
             choices(point: origin, selectedID: originID, isOrigin: true)
             primaryButton("Continuar", disabled: originID == nil) {
                 cancelLocation()
+                search = ""
                 stage = .destination
                 selectedStop = nil
             }
@@ -186,6 +211,7 @@ struct ContentView: View {
             Text("Dónde te bajas").font(.title3.bold())
             Text("Toca el mapa o elige una parada para marcar el destino.")
                 .font(.subheadline).foregroundStyle(.secondary)
+            searchField
             choices(point: destination, selectedID: destinationID, isOrigin: false)
             primaryButton("Ver trayecto", disabled: destinationID == nil) {
                 if originID == destinationID {
@@ -206,7 +232,7 @@ struct ContentView: View {
     private var journeyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(route.name).font(.title3.bold())
-            Text("Sentido único · \(max(0, trip.count - 1)) tramos")
+            Text("Simulación en sentido único · \(max(0, trip.count - 1)) tramos")
                 .font(.subheadline).foregroundStyle(.secondary)
             Text("Horario y frecuencia: dato no disponible").font(.footnote)
             if let first = trip.first, let last = trip.last {
@@ -224,15 +250,33 @@ struct ContentView: View {
 
     @ViewBuilder
     private func choices(point: GeoPoint?, selectedID: String?, isOrigin: Bool) -> some View {
-        if let point {
+        if !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let stops = scenario.matchingStops(search)
+            let places = scenario.matchingPlaces(search)
+            if stops.isEmpty && places.isEmpty { Text("Sin coincidencias").foregroundStyle(.secondary) }
+            ForEach(places) { place in
+                if let stop = route.stops.first(where: { $0.id == place.stopID }) {
+                    Button { selectStop(stop, isOrigin: isOrigin) } label: {
+                        VStack(alignment: .leading) {
+                            Label(place.name, systemImage: place.symbol)
+                            Text("Referencia de evaluación · \(stop.name)").font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                    }.buttonStyle(.plain).accessibilityIdentifier("place-\(place.id)")
+                }
+            }
+            ForEach(stops) { stop in
+                Button(stop.name) { selectStop(stop, isOrigin: isOrigin) }
+                    .frame(minHeight: 44).accessibilityIdentifier("stop-\(stop.id)")
+            }
+        } else if let point {
             let nearby = route.nearbyStops(to: point)
             if nearby.isEmpty {
-                Text("No hay paradas de demostración a menos de 2 km. Elige un punto cerca del recorrido.")
+                Text("No hay paradas de evaluación dentro del área de consulta. Elige otra en la lista.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(nearby) { option in
                 Button {
-                    if isOrigin { originID = option.id } else { destinationID = option.id }
+                    if isOrigin { originID = option.id; destination = nil; destinationID = nil } else { destinationID = option.id }
                 } label: {
                     HStack {
                         VStack(alignment: .leading) {
@@ -258,8 +302,42 @@ struct ContentView: View {
     }
 
     private var demoNotice: some View {
-        Label("Demostración · Datos ficticios", systemImage: "info.circle")
+        Label("Evaluación · Servicio y coordenadas sin verificar", systemImage: "info.circle")
             .font(.caption).foregroundStyle(.secondary)
+    }
+
+    private var searchField: some View {
+        TextField("Buscar parada o lugar", text: $search)
+            .textFieldStyle(.roundedBorder)
+            .autocorrectionDisabled()
+            .accessibilityIdentifier("journey-search")
+    }
+
+    private func selectStop(_ stop: TransitStop, isOrigin: Bool) {
+        cancelLocation()
+        if isOrigin { origin = stop.point; originID = stop.id; destination = nil; destinationID = nil }
+        else { destination = stop.point; destinationID = stop.id }
+        search = ""
+        camera = .region(MKCoordinateRegion(center: stop.point.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.024, longitudeDelta: 0.024)))
+    }
+
+    private func importScenario(_ result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 2_000_000 else {
+                throw ScenarioError.invalid
+            }
+            #if DEBUG
+            scenario = try JourneyScenario.decode(Data(contentsOf: url), allowEvaluation: true)
+            #else
+            scenario = try JourneyScenario.decode(Data(contentsOf: url), allowEvaluation: false)
+            #endif
+            reset()
+            camera = .automatic
+        } catch { importError = "El archivo no es compatible o no está autorizado para esta versión." }
     }
 
     private func primaryButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
@@ -287,12 +365,13 @@ struct ContentView: View {
     private func select(_ point: GeoPoint) {
         cancelLocation()
         let closest = route.nearbyStops(to: point).first?.id
-        if stage == .origin { origin = point; originID = closest }
+        if stage == .origin { origin = point; originID = closest; destination = nil; destinationID = nil }
         else if stage == .destination { destination = point; destinationID = closest }
     }
 
     private func back() {
         cancelLocation()
+        search = ""
         selectedStop = nil
         switch stage {
         case .home: break
@@ -304,6 +383,7 @@ struct ContentView: View {
 
     private func reset() {
         cancelLocation()
+        search = ""
         origin = nil
         destination = nil
         originID = nil
