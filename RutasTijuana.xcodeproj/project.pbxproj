@@ -4,6 +4,8 @@
 	};
 	objectVersion = 77;
 	objects = {
+        000000000000000000000701 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
+        000000000000000000000702 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = "<group>"; };
 
 		000000000000000000000120 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RutasTijuana.app; sourceTree = BUILT_PRODUCTS_DIR; };
 
@@ -23,6 +25,8 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010,
+                000000000000000000000701,
+                000000000000000000000702,
 				000000000000000000000030,
 				000000000000000000000020,
 			);
@@ -222,6 +226,7 @@
 		};
 		000000000000000111000000 = {
 			isa = XCBuildConfiguration;
+            baseConfigurationReference = 000000000000000000000701;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -229,6 +234,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
                 INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación se usa para sugerir paradas cercanas durante la consulta. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -260,6 +266,7 @@
 		};
 		000000000000000112000000 = {
 			isa = XCBuildConfiguration;
+            baseConfigurationReference = 000000000000000000000702;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -267,6 +274,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
                 INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación se usa para sugerir paradas cercanas durante la consulta. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

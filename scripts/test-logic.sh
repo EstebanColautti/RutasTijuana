@@ -2,5 +2,5 @@
 set -euo pipefail
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$project_root/build"
-swiftc "$project_root/RutasTijuana/TransitRoute.swift" "$project_root/RutasTijuana/RouteCatalog.swift" "$project_root/RutasTijuana/JourneyScenario.swift" "$project_root/tests/main.swift" -o "$project_root/build/route-tests"
+swiftc "$project_root/RutasTijuana/TransitRoute.swift" "$project_root/RutasTijuana/RouteCatalog.swift" "$project_root/RutasTijuana/JourneyScenario.swift" "$project_root/RutasTijuana/CatalogSync.swift" "$project_root/RutasTijuana/CatalogCache.swift" "$project_root/tests/main.swift" -o "$project_root/build/route-tests"
 "$project_root/build/route-tests"

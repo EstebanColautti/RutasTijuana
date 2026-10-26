@@ -5,6 +5,7 @@ final class JourneyTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        app.launchArguments = ["--ui-testing"]
         app.launch()
     }
 
@@ -87,6 +88,21 @@ final class JourneyTests: XCTestCase {
         capture("Información")
         tap("catalog-information-close")
         XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 5))
+    }
+
+    func testCatalogPersistsAcrossLaunches() {
+        app.terminate()
+        app.launchArguments = ["--catalog-persistence-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        tap("Explorar recorridos")
+        XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 5))
+        tap("catalog-sample-route")
+        XCTAssertTrue(app.staticTexts["Recorrido de ejemplo"].firstMatch.waitForExistence(timeout: 5))
+        capture("Catálogo guardado")
     }
 
     private func tap(_ identifier: String) {

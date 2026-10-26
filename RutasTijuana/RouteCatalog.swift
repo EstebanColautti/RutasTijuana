@@ -115,7 +115,7 @@ struct CatalogInformation: Codable, Equatable, Sendable {
 }
 
 struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case route, area, reference }
+    enum Kind: String, Codable, Sendable { case route, area, reference, stop }
     let id: String
     let name: String
     let groupID: String
@@ -160,13 +160,13 @@ struct RouteCatalog: Codable, Sendable {
     let groups: [CatalogGroup]
     let features: [CatalogFeature]
 
-    var readyForDistribution: Bool { publishable && licenseStatus == "verified" }
+    var readyForDistribution: Bool { publishable && ["verified", "published"].contains(licenseStatus) }
 
     static func decode(_ data: Data, allowPrivate: Bool) throws -> RouteCatalog {
         guard data.count <= 16 * 1024 * 1024 else { throw CatalogError.tooLarge }
         let value = try JSONDecoder().decode(Self.self, from: data)
         guard value.schemaVersion == 1 else { throw CatalogError.unsupportedVersion }
-        guard allowPrivate || value.readyForDistribution else { throw CatalogError.privateDataset }
+        guard allowPrivate || (value.publishable && value.licenseStatus == "verified") else { throw CatalogError.privateDataset }
         let groupIDs = Set(value.groups.map(\.id))
         guard groupIDs.count == value.groups.count,
               value.groups.allSatisfy({ !$0.id.isEmpty && !$0.name.isEmpty }),

@@ -17,3 +17,15 @@ xcuserdata/
 local-data/
 __pycache__/
 *.pyc
+
+node_modules/
+admin/dist/
+.supabase/
+supabase/.temp/
+Configuration.local.xcconfig
+admin/qa.html
+admin/src/qa.tsx
+
+!**/.env.example
+
+*.local.xcconfig
