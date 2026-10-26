@@ -54,17 +54,16 @@ xcodebuild -project RutasTijuana.xcodeproj -scheme RutasTijuana \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-Para macOS, usar `-destination 'platform=macOS'`. Para visionOS, usar `-destination 'generic/platform=visionOS Simulator'` con su SDK instalado.
+El destino de la app es iPhone con iOS 17 o posterior.
 
 ## Validación
 
-GitHub Actions compila las tres plataformas en cada push a `main` y en los pull requests. La ejecución manual se inicia desde la pestaña **Actions**.
+GitHub Actions compila para iPhone en cada push a `main` y en los pull requests. La ejecución manual se inicia desde la pestaña **Actions**.
 
-Las pruebas de lógica se ejecutan en el trabajo macOS de GitHub Actions:
+Las pruebas de lógica se ejecutan en el runner de macOS de GitHub Actions:
 
 ```sh
-swiftc RutasTijuana/TransitRoute.swift tests/main.swift -o /tmp/route-tests
-/tmp/route-tests
+bash scripts/test-logic.sh
 ```
 
 Para revisar la interfaz en Xcode:
@@ -76,3 +75,11 @@ Para revisar la interfaz en Xcode:
 5. Pulsar **Nueva consulta** y comprobar que se borren ambos puntos.
 6. Probar ubicación permitida, denegada y fuera del circuito; la selección manual debe seguir disponible.
 7. Revisar modo oscuro, texto grande y lectura con VoiceOver.
+
+## Escenarios de evaluación
+
+**Abrir datos de evaluación** carga un JSON privado en memoria, solo en Debug. El esquema contiene `schemaVersion: 1`, `name`, `coverageRadius`, `stops` y `places`. Cada parada incluye `id`, `name` y `point` con `latitude` y `longitude`. Cada lugar incluye `id`, `name`, `subtitle`, `category`, `stopID` y `keywords`. Las referencias deben apuntar a paradas existentes.
+
+Las asociaciones sirven para ensayar la interfaz. No acreditan cercanía física ni servicio de transporte. Release rechaza estos archivos. No se guardan consultas ni archivos importados.
+
+El panel inferior conserva el mapa visible y puede ampliarse. La búsqueda ignora acentos y mayúsculas. Cambiar origen conserva la consulta hasta elegir otro punto; una nueva consulta borra las selecciones. Sin conexión se mantiene la lista; la disponibilidad del mapa depende de MapKit.

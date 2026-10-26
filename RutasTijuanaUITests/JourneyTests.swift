@@ -57,6 +57,24 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
     }
 
+    func testSearchWithoutConnection() {
+        app.terminate()
+        app.launchArguments = ["--offline"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        XCTAssertTrue(app.staticTexts.matching(identifier: "Sin conexión · Puedes elegir de la lista").firstMatch.waitForExistence(timeout: 5))
+        let search = app.textFields["journey-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("PARADA 4")
+        XCTAssertTrue(app.buttons["stop-demo-4"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["stop-demo-1"].exists)
+        search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8))
+        search.typeText("sin coincidencias")
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        capture("Búsqueda sin conexión")
+    }
+
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)

@@ -15,19 +15,9 @@ concurrency:
 
 jobs:
   build:
-    name: ${{ matrix.platform }}
+    name: iPhone
     runs-on: macos-15
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: iOS
-            destination: generic/platform=iOS Simulator
-          - platform: macOS
-            destination: platform=macOS
-          - platform: visionOS
-            destination: generic/platform=visionOS Simulator
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
@@ -40,24 +30,21 @@ jobs:
           -project RutasTijuana.xcodeproj
           -scheme RutasTijuana
           -configuration Release
-          -destination '${{ matrix.destination }}'
+          -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
           build
       - name: Test
-        if: matrix.platform == 'macOS'
         run: bash scripts/test-logic.sh
       - name: Catalog tools
-        if: matrix.platform == 'macOS'
         run: |
           python3 -m unittest discover -s tests -p 'test_*.py'
           node --test tests/catalog-preview.test.cjs
       - name: iPhone tests
-        if: matrix.platform == 'iOS'
         run: |
           simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
           xcodebuild test -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" CODE_SIGNING_ALLOWED=NO
       - name: Save test results
-        if: always() && matrix.platform == 'iOS'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: iPhone-tests

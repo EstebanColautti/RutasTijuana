@@ -92,3 +92,30 @@ if let path = ProcessInfo.processInfo.environment["CATALOG_TEST_FILE"] {
     check(local.features.filter { $0.kind == .route }.count == originals.filter { $0["kind"] as? String == "route" }.count, "Recuento de recorridos del catálogo local")
 }
 print("Pruebas de catálogo correctas")
+
+let scenario = JourneyScenario.sample
+let scenarioData = try JSONEncoder().encode(scenario)
+let decodedScenario = try JourneyScenario.decode(scenarioData, allowEvaluation: true)
+check(decodedScenario.stops.count == 6, "Escenario de evaluación")
+check(decodedScenario.matchingStops("PARADA 1").count == 1, "Búsqueda de paradas")
+check(decodedScenario.matchingStops("inexistente").isEmpty, "Sin coincidencias")
+do {
+    _ = try JourneyScenario.decode(scenarioData, allowEvaluation: false)
+    fatalError("Release debe rechazar escenarios de evaluación")
+} catch ScenarioError.evaluationOnly { }
+let malformedScenario = JourneyScenario(schemaVersion: 1, name: "Ejemplo", coverageRadius: 100,
+    stops: scenario.stops, places: [JourneyPlace(id: "1", name: "Referencia", subtitle: "",
+        category: "culture", stopID: "missing", keywords: [])])
+do {
+    _ = try JourneyScenario.decode(JSONEncoder().encode(malformedScenario), allowEvaluation: true)
+    fatalError("Debe rechazar referencias sin parada")
+} catch ScenarioError.invalid { }
+let searchScenario = JourneyScenario(schemaVersion: 1, name: "Ejemplo", coverageRadius: 100,
+    stops: scenario.stops, places: [JourneyPlace(id: "1", name: "Lugar de prueba", subtitle: "Cultura",
+        category: "culture", stopID: scenario.stops[0].id, keywords: ["música"])])
+check(searchScenario.matchingPlaces("MUSICA cultura").count == 1, "Búsqueda por palabras y acentos")
+if let path = ProcessInfo.processInfo.environment["SCENARIO_TEST_FILE"] {
+    let local = try JourneyScenario.decode(Data(contentsOf: URL(fileURLWithPath: path)), allowEvaluation: true)
+    check(!local.stops.isEmpty && !local.places.isEmpty, "Escenario local")
+}
+print("Pruebas de escenarios correctas")
