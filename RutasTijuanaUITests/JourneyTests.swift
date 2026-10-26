@@ -10,7 +10,7 @@ final class JourneyTests: XCTestCase {
 
     func testJourneyAndReset() {
         capture("Inicio")
-        tap("Elegir ubicaciÃ³n inicial")
+        tap("Elegir ubicación inicial")
         tap("stop-demo-1")
         capture("Origen")
         tap("Continuar")
@@ -18,24 +18,24 @@ final class JourneyTests: XCTestCase {
         capture("Destino")
         tap("Ver trayecto")
         XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["BÃ¡jate en Parada 4"].exists)
+        XCTAssertTrue(app.staticTexts["Bájate en Parada 4"].exists)
         capture("Trayecto")
         tap("Regresar")
         tap("Ver trayecto")
         XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
         tap("Nueva consulta")
-        tap("Elegir ubicaciÃ³n inicial")
+        tap("Elegir ubicación inicial")
         XCTAssertFalse(app.buttons["Continuar"].isEnabled)
     }
 
     func testSameStopIsRejected() {
-        tap("Elegir ubicaciÃ³n inicial")
+        tap("Elegir ubicación inicial")
         tap("stop-demo-1")
         tap("Continuar")
         tap("stop-demo-1")
         tap("Ver trayecto")
-        XCTAssertTrue(app.alerts["Destino no vÃ¡lido"].waitForExistence(timeout: 5))
-        capture("Destino no vÃ¡lido")
+        XCTAssertTrue(app.alerts["Destino no válido"].waitForExistence(timeout: 5))
+        capture("Destino no válido")
         tap("Cambiar destino")
         let disabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == false"),
                                                  object: app.buttons["Ver trayecto"])
