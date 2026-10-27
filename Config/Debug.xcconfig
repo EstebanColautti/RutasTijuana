@@ -1,0 +1,4 @@
+CATALOG_MANIFEST_URL = http:/$()/127.0.0.1:54321/functions/v1/catalog
+OTHER_LDFLAGS = $(inherited) -lsqlite3
+INFOPLIST_FILE = Config/DebugInfo.plist
+#include? "Debug.local.xcconfig"

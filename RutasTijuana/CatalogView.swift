@@ -3,7 +3,9 @@ import MapKit
 import UniformTypeIdentifiers
 
 struct CatalogView: View {
-    @State private var catalog: RouteCatalog?
+    @ObservedObject private var repository = CatalogRepository.shared
+    @State private var privateCatalog: RouteCatalog?
+    private var catalog: RouteCatalog? { privateCatalog ?? repository.catalog }
     @State private var query = ""
     @State private var groupID: String?
     @State private var routesOnly = true
@@ -43,7 +45,7 @@ struct CatalogView: View {
                         fit(feature)
                     } label: {
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : "square.dashed")
+                            Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
                                 .foregroundStyle(color(feature.color))
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(feature.name).fontWeight(.medium)
@@ -72,19 +74,26 @@ struct CatalogView: View {
                 ContentUnavailableView {
                     Label("Recorridos", systemImage: "map")
                 } description: {
-                    Text("Abre un catálogo local para explorar sus recorridos y referencias.")
+                    Text("Descarga el catálogo para consultar sus recorridos y referencias.")
                 } actions: {
-                    Button("Abrir catálogo") { importing = true }.buttonStyle(.borderedProminent).disabled(loading)
+                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(.borderedProminent).disabled(repository.isUpdating)
                 }
             }
-            if loading { ProgressView("Abriendo catálogo…").padding() }
+            if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
+            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.secondary).padding(10) }
         }
         .sheet(isPresented: $showingInformation) {
             if let selection { informationSheet(selection) }
         }
         .navigationTitle("Recorridos")
         .toolbar {
+            ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
+                privateCatalog = nil
+                Task { await repository.update(force: true) }
+            }.disabled(repository.isUpdating) }
+            #if DEBUG
             ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
+            #endif
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             switch result {
@@ -96,9 +105,10 @@ struct CatalogView: View {
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) { Button("Aceptar") { errorMessage = nil } } message: { Text(errorMessage ?? "") }
         .task {
+            await repository.open()
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { catalog = .sample }
-            if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { catalog = .informationSample }
+            if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { privateCatalog = .sample }
+            if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { privateCatalog = .informationSample }
             #endif
         }
         .onChange(of: query) { _, _ in selectedID = nil }
@@ -176,7 +186,7 @@ struct CatalogView: View {
                 Spacer()
                 Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
             }
-            Text(feature.kind == .route ? "Recorrido" : "Área de referencia")
+            Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(.caption).foregroundStyle(.secondary)
             if feature.kind == .route {
                 if feature.information == nil {
@@ -242,7 +252,7 @@ struct CatalogView: View {
                 let decoded = try await Task.detached(priority: .userInitiated) {
                     try RouteCatalog.decode(data, allowPrivate: allowPrivate)
                 }.value
-                catalog = decoded; selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
+                privateCatalog = decoded; selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
             } catch let error as CatalogError { errorMessage = error.localizedDescription }
             catch is DecodingError { errorMessage = "El archivo no tiene un formato de catálogo válido." }
             catch { errorMessage = "No se pudo leer el archivo seleccionado." }

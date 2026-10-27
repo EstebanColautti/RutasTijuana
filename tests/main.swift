@@ -129,3 +129,97 @@ let enrichedCatalog = RouteCatalog(schemaVersion: 1, version: "test", publishabl
 let informationRoundTrip = try RouteCatalog.decode(JSONEncoder().encode(enrichedCatalog), allowPrivate: true)
 check(informationRoundTrip.features[0].information == enrichedFeature.information, "Información completa de ida y vuelta")
 check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descripción y campos")
+
+final class MemoryCatalogCache: CatalogCache {
+    var snapshot: CatalogSnapshot?
+    var attempted: Date?
+    var failWrites = false
+    func current() throws -> CatalogSnapshot? { snapshot }
+    func replace(_ snapshot: CatalogSnapshot) throws {
+        if failWrites { throw CatalogSyncError.storage }
+        self.snapshot = snapshot
+    }
+    func lastAttempt() throws -> Date? { attempted }
+    func recordAttempt(_ date: Date) throws { attempted = date }
+}
+final class FixtureCatalogTransport: CatalogTransport {
+    var values: [URL: Data] = [:]
+    var calls = 0
+    func fetch(_ url: URL, limit: Int) async throws -> Data {
+        calls += 1
+        guard let value = values[url] else { throw CatalogSyncError.response }
+        return value
+    }
+}
+let syncEndpoint = URL(string: "https://example.test/functions/v1/catalog")!
+let snapshotURL = URL(string: "https://example.test/functions/v1/catalog?version=one")!
+let publishedData = Data("""
+{"schemaVersion":2,"version":"one","groups":[{"id":"g","name":"Ejemplo"}],"features":[{"id":"r","name":"Recorrido","groupID":"g","kind":"route","color":"#2476E8","geometry":{"type":"LineString","coordinates":[[-117,32.5],[-117.01,32.51]]},"information":{"description":"Texto público","fields":[]}}]}
+""".utf8)
+#if canImport(CryptoKit)
+import CryptoKit
+func fixtureDigest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format:"%02x",$0) }.joined() }
+#else
+func fixtureDigest(_ data: Data) -> String { String(repeating: data == publishedData ? "a" : "b", count:64) }
+#endif
+let syncCache = MemoryCatalogCache()
+let syncTransport = FixtureCatalogTransport()
+let validManifest = CatalogManifest(version:"one",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:snapshotURL)
+syncTransport.values[syncEndpoint] = try JSONEncoder().encode(validManifest)
+syncTransport.values[snapshotURL] = publishedData
+let synchronizer = CatalogSynchronizer(transport:syncTransport,cache:syncCache,digest:fixtureDigest,allowLoopbackHTTP:false)
+let firstSync = try await synchronizer.update(from:syncEndpoint,force:false,now:Date(timeIntervalSince1970:1000))
+check(firstSync?.features.count == 1, "Descarga del catálogo")
+check(syncCache.snapshot?.data == publishedData, "Contenido conservado sin cambios")
+_ = try await synchronizer.update(from:syncEndpoint,force:false,now:Date(timeIntervalSince1970:1100))
+check(syncTransport.calls == 2, "Intervalo de actualización")
+_ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1200))
+check(syncTransport.calls == 3, "La misma versión no se vuelve a descargar")
+let hostileManifest = CatalogManifest(version:"two",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:URL(string:"https://other.test/catalog")!)
+syncTransport.values[syncEndpoint] = try JSONEncoder().encode(hostileManifest)
+do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError("Debe rechazar otro origen") } catch CatalogSyncError.address { }
+check(syncCache.snapshot?.version == "one", "Conserva el catálogo ante un origen incorrecto")
+let corruptManifest = CatalogManifest(version:"two",schemaVersion:2,bytes:publishedData.count,sha256:String(repeating:"0",count:64),downloadURL:snapshotURL)
+syncTransport.values[syncEndpoint] = try JSONEncoder().encode(corruptManifest)
+do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError("Debe rechazar contenido alterado") } catch CatalogSyncError.integrity { }
+check(syncCache.snapshot?.version == "one", "Conserva el catálogo ante un fallo de integridad")
+syncTransport.values.removeAll()
+do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError("Debe informar la falta de conexión") } catch CatalogSyncError.response { }
+check(syncCache.snapshot?.version == "one", "Conserva la copia sin conexión")
+do { try CatalogSynchronizer.checkAddress(URL(string:"http://example.test/catalog")!,allowLoopbackHTTP:true); fatalError("No debe aceptar HTTP externo") } catch CatalogSyncError.address { }
+try CatalogSynchronizer.checkAddress(URL(string:"http://127.0.0.1:54321/functions/v1/catalog")!,allowLoopbackHTTP:true)
+let relativeCache = MemoryCatalogCache()
+let relativeTransport = FixtureCatalogTransport()
+relativeTransport.values[syncEndpoint] = try JSONEncoder().encode(CatalogManifest(version:"one",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:URL(string:"?version=one")!))
+relativeTransport.values[snapshotURL] = publishedData
+let relativeSync = CatalogSynchronizer(transport:relativeTransport,cache:relativeCache,digest:fixtureDigest,allowLoopbackHTTP:false)
+check(try await relativeSync.update(from:syncEndpoint,force:true)?.features.count == 1, "Dirección de descarga relativa")
+let tooBig = CatalogManifest(version:"two",schemaVersion:2,bytes:CatalogSynchronizer.maximumBytes+1,sha256:fixtureDigest(publishedData),downloadURL:snapshotURL)
+relativeTransport.values[syncEndpoint] = try JSONEncoder().encode(tooBig)
+do { _ = try await relativeSync.update(from:syncEndpoint,force:true); fatalError("Debe limitar el tamaño del manifiesto") } catch CatalogSyncError.format { }
+check(relativeCache.snapshot?.version == "one", "Un archivo demasiado grande no sustituye la copia")
+if let address = ProcessInfo.processInfo.environment["CATALOG_HTTP_TEST_URL"], let base = URL(string:address) {
+    let transport = NetworkCatalogTransport()
+    let bytes = try await transport.fetch(base.appendingPathComponent("ok"),limit:1024)
+    check(String(data:bytes,encoding:.utf8) == "{}", "Descarga HTTP acotada")
+    for path in ["large","stream","redirect","error"] {
+        do { _ = try await transport.fetch(base.appendingPathComponent(path),limit:1024); fatalError("Debe rechazar \(path)") }
+        catch { }
+    }
+}
+#if canImport(SQLite3)
+import SQLite3
+let cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+let cacheURL = cacheDirectory.appendingPathComponent("catalog.sqlite")
+let nativeCache = try SQLiteCatalogCache(url:cacheURL)
+try nativeCache.replace(.init(version:"one",sha256:fixtureDigest(publishedData),data:publishedData))
+let reopenedCache = try SQLiteCatalogCache(url:cacheURL)
+check(try reopenedCache.current()?.data == publishedData, "SQLite conserva los datos al reabrir")
+var database: OpaquePointer?
+check(sqlite3_open(cacheURL.path,&database) == SQLITE_OK, "Abrir base de prueba")
+check(sqlite3_exec(database,"CREATE TRIGGER reject_snapshot BEFORE INSERT ON snapshots WHEN NEW.version='broken' BEGIN SELECT RAISE(ABORT,'test'); END",nil,nil,nil) == SQLITE_OK, "Preparar fallo transaccional")
+sqlite3_close(database)
+do { try nativeCache.replace(.init(version:"broken",sha256:"broken",data:publishedData)); fatalError("Debe revertir la transacción") } catch CatalogSyncError.storage { }
+check(try nativeCache.current()?.version == "one", "SQLite revierte el reemplazo fallido")
+#endif
+print("Pruebas de actualización correctas")
