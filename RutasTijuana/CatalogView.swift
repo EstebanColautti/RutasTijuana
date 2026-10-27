@@ -45,7 +45,7 @@ struct CatalogView: View {
                         fit(feature)
                     } label: {
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : "square.dashed")
+                            Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
                                 .foregroundStyle(color(feature.color))
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(feature.name).fontWeight(.medium)
@@ -186,7 +186,7 @@ struct CatalogView: View {
                 Spacer()
                 Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
             }
-            Text(feature.kind == .route ? "Recorrido" : "Área de referencia")
+            Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(.caption).foregroundStyle(.secondary)
             if feature.kind == .route {
                 if feature.information == nil {

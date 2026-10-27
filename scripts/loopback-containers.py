@@ -6,7 +6,10 @@ import socket
 class Connection(http.client.HTTPConnection):
     def connect(self):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect('/run/user/' + str(os.getuid()) + '/podman/podman.sock')
+        address = os.environ.get('DOCKER_HOST', 'unix:///var/run/docker.sock')
+        if not address.startswith('unix://'):
+            raise RuntimeError('Se necesita un socket local de contenedores.')
+        self.sock.connect(address[7:])
 
 def request(method, path, body=None):
     connection = Connection('localhost')
@@ -17,6 +20,7 @@ def request(method, path, body=None):
         raise RuntimeError('Contenedor: ' + str(response.status) + ' ' + str(json.loads(data).get('message','')))
     return json.loads(data) if data else None
 
+changed = False
 for name in ('supabase_db_rutastijuana', 'supabase_kong_rutastijuana', 'supabase_inbucket_rutastijuana'):
     container = request('GET', '/containers/' + name + '/json')
     bindings = container['HostConfig'].get('PortBindings') or {}
@@ -31,7 +35,10 @@ for name in ('supabase_db_rutastijuana', 'supabase_kong_rutastijuana', 'supabase
         for item in values or []:
             item['HostIp'] = '127.0.0.1'
     spec['HostConfig']['PortBindings'] = bindings
-    spec['NetworkingConfig'] = {'EndpointsConfig': {network: {'Aliases':[name]} for network in container['NetworkSettings']['Networks']}}
+    spec['NetworkingConfig'] = {'EndpointsConfig': {
+        network: {'Aliases': list(set([name] + (settings.get('Aliases') or [])))}
+        for network, settings in container['NetworkSettings']['Networks'].items()
+    }}
     backup = name + '_binding_backup'
     request('POST', '/containers/' + name + '/stop?t=30')
     request('POST', '/containers/' + name + '/rename?name=' + backup)
@@ -46,4 +53,9 @@ for name in ('supabase_db_rutastijuana', 'supabase_kong_rutastijuana', 'supabase
             request('POST', '/containers/' + name + '/start')
         raise
     request('DELETE', '/containers/' + backup + '?v=false')
+    changed = True
     print(name + ': 127.0.0.1')
+
+if changed:
+    for name in ('supabase_auth_rutastijuana', 'supabase_rest_rutastijuana'):
+        request('POST', '/containers/' + name + '/restart?t=10')

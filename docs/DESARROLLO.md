@@ -26,7 +26,7 @@ python scripts/prepare_catalog.py --data <carpeta-de-datos> --out local-data/Tra
 
 El preparador usa `data/processed/all_features.geojson`, `data/processed/dataset_metadata.json` y `data/intermediate/layers.json`. Conserva los vértices y elimina los campos que la interfaz no necesita. La carpeta `local-data` está excluida de Git y fuera de los recursos de Xcode.
 
-En la app, abrir **Explorar recorridos > Abrir catálogo** y elegir el JSON. El archivo no se guarda, no se sube ni se incorpora al bundle. Debug permite catálogos de evaluación; Release exige `publishable=true` y `licenseStatus=verified`.
+En la app, abrir **Explorar recorridos > Abrir catálogo** y elegir el JSON. La importación de desarrollo no se guarda ni se incorpora al paquete. La distribución utiliza el catálogo publicado desde la API.
 
 El detalle de cada elemento muestra la descripción, los horarios y tarifas presentes, los destinos mencionados, los campos adicionales y las medidas geométricas. Los polígonos mantienen sus anillos interiores.
 
@@ -85,3 +85,47 @@ Las asociaciones sirven para ensayar la interfaz. Release utiliza el catálogo d
 El panel inferior conserva el mapa visible y puede ampliarse. La búsqueda ignora acentos y mayúsculas. Cambiar origen conserva la consulta hasta elegir otro punto; una nueva consulta borra las selecciones. Sin conexión se mantiene la lista; la disponibilidad del mapa depende de MapKit.
 
 La información ampliada es opcional: `information.description` contiene el texto completo y `information.fields` conserva filas con `category`, `label`, `value`, `evidence` e `inferred`. Los catálogos anteriores siguen siendo compatibles. La búsqueda incluye este contenido. Las imágenes adjuntas se conservan como enlaces de texto y no se cargan automáticamente.
+
+## Servicios y panel
+
+Las tareas **Servicios locales** y **Panel privado** preparan la base, la autenticación, la API y la administración. Las imágenes y la herramienta de Supabase se descargan desde sus distribuciones oficiales. Los servicios se limitan a `127.0.0.1`; no se crea ningún proyecto remoto.
+
+En Windows se necesita WSL con Podman y Python 3. Las tareas preparan Node.js y pnpm dentro de `local-data/tools` cuando es necesario, sin cambiar la configuración global. En macOS se utiliza Docker o un socket compatible. `scripts/local-stack.sh start` inicia la base; después, ejecutar `node scripts/local-config.mjs` y `pnpm dev`. La tarea de Windows realiza los dos primeros pasos.
+
+- Panel: `http://127.0.0.1:5173`.
+- Catálogo: `http://127.0.0.1:54321/functions/v1/catalog`.
+- Correo local de invitaciones: `http://127.0.0.1:54324`.
+
+La cuenta inicial es local y su contraseña está en `local-data/access.json`. El usuario configura TOTP al ingresar. Los registros públicos están separados del borrador: importar un catálogo conserva su información de trabajo y deja los elementos sin seleccionar para publicación. El administrador revisa la vista previa antes de publicar.
+
+Las invitaciones se reciben en el correo local. El editor configura su contraseña y autenticador desde el enlace. El administrador puede quitar su acceso desde **Equipo**. No existe registro público de usuarios del panel.
+
+**Exportar respaldo** descarga el borrador completo. Para recuperarlo, utilizar **Importar catálogo**, guardar y preparar una publicación cuando corresponda. **Restaurar publicación** cambia la versión disponible para la app y conserva el borrador de edición.
+
+La tarea **API local (desarrollo)** activa la recarga de funciones durante cambios de código. Para detener la base sin perder datos, usar **Detener servicios locales** y cerrar el terminal del panel.
+
+## Catálogo publicado
+
+La API devuelve un manifiesto con `version`, `schemaVersion`, `bytes`, `sha256` y `downloadURL`. La dirección de descarga puede ser relativa al manifiesto. El esquema 2 conserva grupos, identificadores, geometrías, descripciones y campos públicos. El contenido publicado se mantiene inmutable.
+
+`CatalogRepository` coordina la carga y actualización; `CatalogSynchronizer` comprueba el manifiesto y el contenido, y `SQLiteCatalogCache` reemplaza la copia mediante una transacción. Los datos privados importados no se escriben en esa base. Las descargas tienen límites de tamaño y tiempo y no siguen redirecciones.
+
+Las migraciones y funciones de Supabase se conservan en el repositorio. El panel utiliza únicamente la clave pública del proyecto; las operaciones administrativas de invitación se ejecutan en el servidor. Los permisos de edición y publicación se comprueban en PostgreSQL.
+
+## iPhone y conexión local
+
+Debug utiliza `http://127.0.0.1:54321/functions/v1/catalog`. Para un simulador de iPhone, los servicios deben ejecutarse en la misma Mac. La dirección local de Windows no es accesible desde un iPhone físico.
+
+La dirección se configura mediante `CATALOG_MANIFEST_URL`. Se puede sobrescribir en `Config/Debug.local.xcconfig` o `Config/Release.local.xcconfig`, excluidos de Git. Release admite únicamente HTTPS. Los entornos se cambian mediante configuración, sin modificar las pantallas.
+
+El proyecto no incluye datos reales ni credenciales. Para una futura instalación remota, aplicar las migraciones, configurar la autenticación por invitación y doble factor, definir el origen del panel en `ADMIN_ORIGIN` y establecer la dirección HTTPS del manifiesto. El panel genera archivos estáticos mediante `pnpm build`; no se despliega automáticamente.
+
+## Pruebas de administración
+
+```sh
+pnpm test
+pnpm build
+node --test tests/catalog-preview.test.cjs
+```
+
+Las pruebas de base ejecutan las migraciones en PostgreSQL mediante PGlite. Comprueban permisos, doble factor, publicación, conflictos, restauración y exclusión de campos privados. Las pruebas del panel comprueban edición y confirmación de publicación. Las pruebas Swift incluyen actualización y almacenamiento; GitHub Actions comprueba también SQLite y la interfaz de iPhone.

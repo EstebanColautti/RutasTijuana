@@ -77,15 +77,16 @@ struct CatalogSynchronizer {
         guard manifest.schemaVersion == 2, !manifest.version.isEmpty, manifest.bytes > 0,
               manifest.bytes <= Self.maximumBytes, manifest.sha256.count == 64,
               manifest.sha256.allSatisfy({ $0.isHexDigit && !$0.isUppercase }) else { throw CatalogSyncError.format }
-        try Self.checkAddress(manifest.downloadURL, allowLoopbackHTTP: allowLoopbackHTTP)
-        guard endpoint.scheme == manifest.downloadURL.scheme, endpoint.host == manifest.downloadURL.host,
-              endpoint.port == manifest.downloadURL.port else { throw CatalogSyncError.address }
+        guard let downloadURL = URL(string: manifest.downloadURL.absoluteString, relativeTo: endpoint)?.absoluteURL else { throw CatalogSyncError.address }
+        try Self.checkAddress(downloadURL, allowLoopbackHTTP: allowLoopbackHTTP)
+        guard endpoint.scheme == downloadURL.scheme, endpoint.host == downloadURL.host,
+              endpoint.port == downloadURL.port else { throw CatalogSyncError.address }
         if let current = try cache.current(), current.version == manifest.version {
             guard current.sha256 == manifest.sha256, current.data.count == manifest.bytes,
                   digest(current.data) == manifest.sha256 else { throw CatalogSyncError.integrity }
             return try JSONDecoder().decode(PublishedCatalog.self, from: current.data).catalog()
         }
-        let payload = try await transport.fetch(manifest.downloadURL, limit: manifest.bytes)
+        let payload = try await transport.fetch(downloadURL, limit: manifest.bytes)
         guard payload.count == manifest.bytes, digest(payload) == manifest.sha256 else { throw CatalogSyncError.integrity }
         let decoded = try JSONDecoder().decode(PublishedCatalog.self, from: payload)
         guard decoded.version == manifest.version else { throw CatalogSyncError.integrity }

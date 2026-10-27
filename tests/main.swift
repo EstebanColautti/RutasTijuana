@@ -188,6 +188,25 @@ do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError
 check(syncCache.snapshot?.version == "one", "Conserva la copia sin conexión")
 do { try CatalogSynchronizer.checkAddress(URL(string:"http://example.test/catalog")!,allowLoopbackHTTP:true); fatalError("No debe aceptar HTTP externo") } catch CatalogSyncError.address { }
 try CatalogSynchronizer.checkAddress(URL(string:"http://127.0.0.1:54321/functions/v1/catalog")!,allowLoopbackHTTP:true)
+let relativeCache = MemoryCatalogCache()
+let relativeTransport = FixtureCatalogTransport()
+relativeTransport.values[syncEndpoint] = try JSONEncoder().encode(CatalogManifest(version:"one",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:URL(string:"?version=one")!))
+relativeTransport.values[snapshotURL] = publishedData
+let relativeSync = CatalogSynchronizer(transport:relativeTransport,cache:relativeCache,digest:fixtureDigest,allowLoopbackHTTP:false)
+check(try await relativeSync.update(from:syncEndpoint,force:true)?.features.count == 1, "Dirección de descarga relativa")
+let tooBig = CatalogManifest(version:"two",schemaVersion:2,bytes:CatalogSynchronizer.maximumBytes+1,sha256:fixtureDigest(publishedData),downloadURL:snapshotURL)
+relativeTransport.values[syncEndpoint] = try JSONEncoder().encode(tooBig)
+do { _ = try await relativeSync.update(from:syncEndpoint,force:true); fatalError("Debe limitar el tamaño del manifiesto") } catch CatalogSyncError.format { }
+check(relativeCache.snapshot?.version == "one", "Un archivo demasiado grande no sustituye la copia")
+if let address = ProcessInfo.processInfo.environment["CATALOG_HTTP_TEST_URL"], let base = URL(string:address) {
+    let transport = NetworkCatalogTransport()
+    let bytes = try await transport.fetch(base.appendingPathComponent("ok"),limit:1024)
+    check(String(data:bytes,encoding:.utf8) == "{}", "Descarga HTTP acotada")
+    for path in ["large","stream","redirect","error"] {
+        do { _ = try await transport.fetch(base.appendingPathComponent(path),limit:1024); fatalError("Debe rechazar \(path)") }
+        catch { }
+    }
+}
 #if canImport(SQLite3)
 import SQLite3
 let cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
