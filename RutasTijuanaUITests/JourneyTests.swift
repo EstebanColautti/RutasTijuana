@@ -29,6 +29,42 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["Continuar"].isEnabled)
     }
 
+    func testWalkingGuide() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-fixture"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        tap("Iniciar guía")
+        XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 10))
+        capture("Guía")
+        tap("Ver pasos")
+        XCTAssertTrue(app.staticTexts["Continúa hasta la parada"].waitForExistence(timeout: 5))
+        tap("Cerrar")
+        tap("Finalizar")
+        app.buttons["Finalizar"].lastMatch.tap()
+        XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
+    }
+
+    func testWalkingFailure() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-error"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        XCTAssertTrue(app.staticTexts["walking-status"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Reintentar"].exists)
+        XCTAssertFalse(app.buttons["Iniciar guía"].exists)
+    }
+
     func testSameStopIsRejected() {
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")

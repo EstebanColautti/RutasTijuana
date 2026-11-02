@@ -122,13 +122,14 @@ extension MKPolyline {
     private var movementPoint: GeoPoint?
     private var nextRequest = Date.distantPast
     private var failures = 0
+    private var connected = true
     private let activity = NavigationActivityController()
 
-    init(destination: WalkingDestination, provider: WalkingRouteProvider = AppleWalkingRouteProvider(), locations: NavigationLocationProvider = AppleNavigationLocationProvider(), now: @escaping () -> Date = Date.init) {
-        self.destination = destination; self.provider = provider; self.locations = locations; self.now = now
+    init(destination: WalkingDestination, provider: WalkingRouteProvider? = nil, locations: NavigationLocationProvider? = nil, now: @escaping () -> Date = Date.init) {
+        self.destination = destination; self.provider = provider ?? AppleWalkingRouteProvider(); self.locations = locations ?? AppleNavigationLocationProvider(); self.now = now
         lastMovement = now()
-        locations.onFix = { [weak self] in self?.receive($0) }
-        locations.onError = { [weak self] text in
+        self.locations.onFix = { [weak self] in self?.receive($0) }
+        self.locations.onError = { [weak self] text in
             guard let self else { return }
             self.message = text
             self.activityUpdate()
@@ -171,6 +172,10 @@ extension MKPolyline {
         message = arrived ? "Llegaste a la parada" : "Guía finalizada"
         activity.end(message: message)
     }
+    func connectivityChanged(_ connected: Bool) {
+        self.connected = connected
+        if !connected { message = "Sin conexión · El camino actual sigue disponible"; activityUpdate() }
+    }
     func retry() {
         guard phase != .ended && phase != .arrived else { return }
         guard let fix, fix.isReliable(at: now()) else { locations.start(); message = "Obteniendo ubicación…"; return }
@@ -188,13 +193,13 @@ extension MKPolyline {
         if let updated = engine?.update(value, now: now()) {
             progress = updated
             if updated.arrived { finish(arrived: true); return }
-            message = request == nil ? "" : "Recalculando…"
+            message = !connected ? "Sin conexión · No se puede recalcular" : request == nil ? "" : "Recalculando…"
             if updated.offRoute && request == nil && now() >= nextRequest { calculate(value) }
             activityUpdate()
         }
     }
     private func calculate(_ value: WalkingFix) {
-        guard request == nil else { return }
+        guard request == nil, connected else { return }
         let token = UUID(); generation = token
         let navigating = phase == .navigating
         if !navigating { phase = .calculating }
@@ -205,6 +210,7 @@ extension MKPolyline {
             do {
                 let result = try await provider.route(from: value.point, to: destination)
                 guard !Task.isCancelled, generation == token else { return }
+                guard result.points.count >= 2, result.length.isFinite, result.length > 0, result.duration.isFinite, result.duration >= 0 else { throw URLError(.cannotParseResponse) }
                 route = result; engine = WalkingProgressEngine(route: result, destination: destination); progress = engine!.progress
                 phase = navigating ? .navigating : .preview
                 failures = 0
@@ -234,5 +240,26 @@ extension MKPolyline {
         guard phase == .navigating else { return }
         activity.update(destination: destination.name, instruction: instruction, meters: Int(progress.stepRemaining), status: message)
     }
+}
+#endif
+#if DEBUG
+@MainActor final class FixtureWalkingRouteProvider: WalkingRouteProvider {
+    func cancel() {}
+    func route(from: GeoPoint, to destination: WalkingDestination) async throws -> WalkingRoute {
+        if ProcessInfo.processInfo.arguments.contains("--walking-error") { throw URLError(.notConnectedToInternet) }
+        let length = from.distance(to: destination.point)
+        return WalkingRoute(points: [from, destination.point], steps: [WalkingStep(instruction: "Continúa hasta la parada", endDistance: length)], duration: 90)
+    }
+}
+@MainActor final class FixtureNavigationLocationProvider: NavigationLocationProvider {
+    var onFix: ((WalkingFix) -> Void)?
+    var onError: ((String) -> Void)?
+    let destination: WalkingDestination
+    init(destination: WalkingDestination) { self.destination = destination }
+    func start() {
+        onFix?(WalkingFix(point: GeoPoint(latitude: destination.point.latitude - 0.001, longitude: destination.point.longitude), accuracy: 5, timestamp: Date()))
+    }
+    func enableBackground() {}
+    func stop() {}
 }
 #endif

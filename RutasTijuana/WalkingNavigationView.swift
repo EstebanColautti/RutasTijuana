@@ -6,10 +6,19 @@ struct WalkingNavigationView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var camera: MapCameraPosition = .automatic
     @State private var follow = true
+    @StateObject private var connectivity = ConnectivityMonitor()
     @State private var showingSteps = false
     @State private var confirmEnd = false
     init(destination: WalkingDestination) {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--walking-fixture") {
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: FixtureWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination)))
+        } else {
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination))
+        }
+        #else
         _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination))
+        #endif
     }
     var body: some View {
         NavigationStack {
@@ -69,7 +78,8 @@ struct WalkingNavigationView: View {
             }
         }
         .interactiveDismissDisabled()
-        .task { model.prepare() }
+        .task { model.connectivityChanged(connectivity.isConnected); model.prepare() }
+        .onChange(of: connectivity.isConnected) { _, value in model.connectivityChanged(value) }
         .onDisappear { model.finish() }
     }
     private func recenter() {
