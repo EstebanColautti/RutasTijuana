@@ -11,6 +11,7 @@ struct CatalogView: View {
     @State private var routesOnly = true
     @State private var selectedID: String?
     @State private var reference: GeoPoint?
+    @State private var walkingDestination: WalkingDestination?
     @State private var importing = false
     @State private var loading = false
     @State private var showingInformation = false
@@ -85,6 +86,7 @@ struct CatalogView: View {
         .sheet(isPresented: $showingInformation) {
             if let selection { informationSheet(selection) }
         }
+        .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle("Recorridos")
         .toolbar {
             ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
@@ -188,6 +190,9 @@ struct CatalogView: View {
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(.caption).foregroundStyle(.secondary)
+            if feature.kind == .stop, case .point(let point) = feature.geometry {
+                Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
+            }
             if feature.kind == .route {
                 if feature.information == nil {
                     Text("Horario y frecuencia: dato no disponible").font(.caption)

@@ -223,3 +223,38 @@ do { try nativeCache.replace(.init(version:"broken",sha256:"broken",data:publish
 check(try nativeCache.current()?.version == "one", "SQLite revierte el reemplazo fallido")
 #endif
 print("Pruebas de actualización correctas")
+
+func testWalkingNavigation() {
+    let origin = GeoPoint(latitude: 32.5, longitude: -117)
+    func point(_ meters: Double, _ east: Double = 0) -> GeoPoint {
+        GeoPoint(latitude: origin.latitude + meters / 111_195, longitude: origin.longitude + east / (111_195 * cos(origin.latitude * .pi / 180)))
+    }
+    let target = WalkingDestination(id: "synthetic-stop", name: "Parada", point: point(200))
+    let route = WalkingRoute(points: [point(0), point(100), point(200)], steps: [WalkingStep(instruction: "Continúa", endDistance: 100), WalkingStep(instruction: "Gira", endDistance: 200)], duration: 150)
+    let start = Date(timeIntervalSince1970: 1_000)
+    func fix(_ meters: Double, _ seconds: Double, accuracy: Double = 5, east: Double = 0) -> WalkingFix {
+        WalkingFix(point: point(meters, east), accuracy: accuracy, timestamp: start.addingTimeInterval(seconds))
+    }
+    var engine = WalkingProgressEngine(route: route, destination: target)
+    assert(engine.update(fix(0, 0), now: start) != nil)
+    assert(engine.update(fix(100, 1), now: start.addingTimeInterval(1)) == nil)
+    assert(engine.progress.traveled < 1)
+    assert(engine.update(fix(10, 2, accuracy: 100), now: start.addingTimeInterval(2)) == nil)
+    assert(engine.update(fix(10, 3), now: start.addingTimeInterval(20)) == nil)
+    for n in 1...40 {
+        let time = Double(n * 3)
+        _ = engine.update(fix(Double(n * 5), time), now: start.addingTimeInterval(time))
+    }
+    assert(engine.progress.stepIndex == 1)
+    _ = engine.update(fix(200, 123), now: start.addingTimeInterval(123))
+    _ = engine.update(fix(200, 126), now: start.addingTimeInterval(126))
+    assert(engine.progress.arrived)
+    var off = WalkingProgressEngine(route: route, destination: target)
+    for n in 0...2 { _ = off.update(fix(0, Double(n * 4), east: 45), now: start.addingTimeInterval(Double(n * 4))) }
+    assert(off.progress.offRoute)
+    var mismatch = WalkingProgressEngine(route: route, destination: WalkingDestination(id: "different", name: "Otra", point: point(250)))
+    for n in 0...45 { _ = mismatch.update(fix(min(200, Double(n * 5)), Double(n * 3)), now: start.addingTimeInterval(Double(n * 3))) }
+    assert(!mismatch.progress.arrived)
+    print("Pruebas de navegación correctas")
+}
+testWalkingNavigation()

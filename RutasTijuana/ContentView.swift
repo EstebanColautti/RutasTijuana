@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var scenario = JourneyScenario.sample
     private var route: TransitRoute { scenario.route }
     @State private var search = ""
+    @State private var walkingDestination: WalkingDestination?
     @State private var importing = false
     @State private var importError: String?
     @State private var detent: PresentationDetent = .medium
@@ -73,6 +74,7 @@ struct ContentView: View {
                             }
                         }
                 }
+                .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -261,6 +263,8 @@ struct ContentView: View {
                 Label("Acércate al origen · Camino peatonal no disponible", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
+                Button("Ir a la parada") { walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point) }
+                    .accessibilityIdentifier("walking-start")
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)

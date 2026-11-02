@@ -1,3 +1,4 @@
+INFOPLIST_FILE = Config/AppInfo.plist
 CATALOG_MANIFEST_URL =
 OTHER_LDFLAGS = $(inherited) -lsqlite3
 #include? "Release.local.xcconfig"
