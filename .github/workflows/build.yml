@@ -48,7 +48,7 @@ jobs:
   web:
     name: Herramientas y panel
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -86,7 +86,7 @@ jobs:
   native:
     name: Lógica y Release
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
     runs-on: macos-15
     timeout-minutes: 15
     env:
@@ -114,14 +114,14 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure()
         with:
-          name: Release-diagnostics
+          name: Release-diagnostics-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release.log
           retention-days: 7
 
   ui:
     name: Interfaz iPhone
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -165,7 +165,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: iPhone-tests
+          name: iPhone-tests-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/UITests.xcresult
             ${{ runner.temp }}/ui-*.log
@@ -176,7 +176,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: iPhone-captures
+          name: iPhone-captures-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/ui-captures
             ${{ runner.temp }}/ui-summary.json
