@@ -8,9 +8,10 @@ struct CatalogView: View {
     private var catalog: RouteCatalog? { privateCatalog ?? repository.catalog }
     @State private var query = ""
     @State private var groupID: String?
-    @State private var routesOnly = true
+    @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
     @State private var reference: GeoPoint?
+    @State private var walkingDestination: WalkingDestination?
     @State private var importing = false
     @State private var loading = false
     @State private var showingInformation = false
@@ -18,7 +19,7 @@ struct CatalogView: View {
     @State private var camera: MapCameraPosition = .automatic
 
     private var matches: [CatalogFeature] {
-        let rows = catalog?.matching(query, groupID: groupID, routesOnly: routesOnly) ?? []
+        let rows = catalog?.matching(query, groupID: groupID, filter: filter) ?? []
         guard let reference else { return rows }
         return rows.compactMap { feature -> (CatalogFeature, Double)? in
             guard let distance = feature.distance(to: reference), distance <= 1_000 else { return nil }
@@ -39,37 +40,7 @@ struct CatalogView: View {
                 map.frame(minHeight: 180, maxHeight: 310)
                 filters
                 if let selection { detail(selection) }
-                List(matches) { feature in
-                    Button {
-                        selectedID = feature.id
-                        fit(feature)
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
-                                .foregroundStyle(color(feature.color))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(feature.name).fontWeight(.medium)
-                                Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
-                                if let reference, let distance = feature.distance(to: reference) {
-                                    Text("A \(Int(distance.rounded())) m del trazado")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            if selectedID == feature.id { Image(systemName: "checkmark") }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("catalog-\(feature.id)")
-                }
-                .listStyle(.plain)
-                .overlay {
-                    if matches.isEmpty {
-                        ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass",
-                                               description: Text("Cambia la búsqueda, el grupo o el punto de referencia."))
-                    }
-                }
+                featureList
             } else {
                 ContentUnavailableView {
                     Label("Recorridos", systemImage: "map")
@@ -85,6 +56,7 @@ struct CatalogView: View {
         .sheet(isPresented: $showingInformation) {
             if let selection { informationSheet(selection) }
         }
+        .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle("Recorridos")
         .toolbar {
             ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
@@ -113,12 +85,54 @@ struct CatalogView: View {
         }
         .onChange(of: query) { _, _ in selectedID = nil }
         .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
-        .onChange(of: routesOnly) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+        .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+    }
+
+    private var featureList: some View {
+        List(matches) { row($0) }
+            .listStyle(.plain)
+            .overlay {
+                if matches.isEmpty { emptySearch }
+            }
+    }
+
+    private var emptySearch: some View {
+        let description = "No hay resultados en " + filter.title.lowercased() + ". Cambia la búsqueda, el grupo o el punto de referencia."
+        return ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass", description: Text(description))
+    }
+
+    private func distanceCaption(_ feature: CatalogFeature, meters: Double) -> String {
+        "A " + WalkingFormat.distance(meters) + (feature.kind == .stop ? " de la parada" : " del trazado")
+    }
+
+    private func row(_ feature: CatalogFeature) -> some View {
+        Button {
+            selectedID = feature.id
+            fit(feature)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
+                    .foregroundStyle(color(feature.color))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(feature.name).fontWeight(.medium)
+                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
+                    if let reference, let distance = feature.distance(to: reference) {
+                        Text(distanceCaption(feature, meters: distance))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+                if selectedID == feature.id { Image(systemName: "checkmark") }
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("catalog-\(feature.id)")
     }
 
     private var filters: some View {
         VStack(spacing: 10) {
-            TextField("Buscar recorrido o grupo", text: $query)
+            TextField("Buscar nombre, grupo o información", text: $query)
                 .textFieldStyle(.roundedBorder).accessibilityIdentifier("catalog-search")
             HStack {
                 Picker("Grupo", selection: $groupID) {
@@ -126,7 +140,9 @@ struct CatalogView: View {
                     ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
                 }
                 .labelsHidden()
-                Toggle("Solo recorridos", isOn: $routesOnly).font(.caption)
+                Picker("Contenido", selection: $filter) {
+                    ForEach(CatalogFilter.allCases) { Text($0.title).tag($0) }
+                }.accessibilityIdentifier("catalog-filter")
             }
             HStack {
                 Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.secondary)
@@ -155,7 +171,7 @@ struct CatalogView: View {
                     }
                     if case .point(let point) = feature.geometry {
                         Annotation(feature.name, coordinate: point.coordinate) {
-                            Image(systemName: "mappin.circle").foregroundStyle(color(feature.color))
+                            Image(systemName: feature.kind == .stop ? "bus.fill" : "mappin.circle").foregroundStyle(color(feature.color))
                         }
                     }
                 }
@@ -167,12 +183,12 @@ struct CatalogView: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .onTapGesture { position in
-                guard routesOnly, let point = proxy.convert(position, from: .local) else { return }
+                guard filter.supportsProximity, let point = proxy.convert(position, from: .local) else { return }
                 selectedID = nil
                 reference = GeoPoint(latitude: point.latitude, longitude: point.longitude)
             }
             .overlay(alignment: .topLeading) {
-                Text(routesOnly ? "Toca el mapa para consultar trazados a 1 km" : "Áreas y referencias")
+                Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
                     .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .padding(10).allowsHitTesting(false)
             }
@@ -188,6 +204,9 @@ struct CatalogView: View {
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(.caption).foregroundStyle(.secondary)
+            if feature.kind == .stop, case .point(let point) = feature.geometry {
+                Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
+            }
             if feature.kind == .route {
                 if feature.information == nil {
                     Text("Horario y frecuencia: dato no disponible").font(.caption)

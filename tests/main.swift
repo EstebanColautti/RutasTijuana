@@ -223,3 +223,123 @@ do { try nativeCache.replace(.init(version:"broken",sha256:"broken",data:publish
 check(try nativeCache.current()?.version == "one", "SQLite revierte el reemplazo fallido")
 #endif
 print("Pruebas de actualización correctas")
+
+func testWalkingNavigation() {
+    let origin = GeoPoint(latitude: 32.5, longitude: -117)
+    func point(_ meters: Double, _ east: Double = 0) -> GeoPoint {
+        GeoPoint(latitude: origin.latitude + meters / 111_195, longitude: origin.longitude + east / (111_195 * cos(origin.latitude * .pi / 180)))
+    }
+    let target = WalkingDestination(id: "synthetic-stop", name: "Parada", point: point(200))
+    let route = WalkingRoute(points: [point(0), point(100), point(200)], steps: [WalkingStep(instruction: "Continúa", endDistance: 100), WalkingStep(instruction: "Gira", endDistance: 200)], duration: 150)
+    let start = Date(timeIntervalSince1970: 1_000)
+    func fix(_ meters: Double, _ seconds: Double, accuracy: Double = 5, east: Double = 0) -> WalkingFix {
+        WalkingFix(point: point(meters, east), accuracy: accuracy, timestamp: start.addingTimeInterval(seconds))
+    }
+    var engine = WalkingProgressEngine(route: route, destination: target)
+    assert(engine.update(fix(0, 0), now: start) != nil)
+    assert(engine.update(fix(100, 1), now: start.addingTimeInterval(1)) == nil)
+    assert(engine.progress.traveled < 1)
+    assert(engine.update(fix(10, 2, accuracy: 100), now: start.addingTimeInterval(2)) == nil)
+    assert(engine.update(fix(10, 3), now: start.addingTimeInterval(20)) == nil)
+    for n in 1...40 {
+        let time = Double(n * 3)
+        _ = engine.update(fix(Double(n * 5), time), now: start.addingTimeInterval(time))
+    }
+    assert(engine.progress.stepIndex == 1)
+    _ = engine.update(fix(200, 123), now: start.addingTimeInterval(123))
+    _ = engine.update(fix(200, 126), now: start.addingTimeInterval(126))
+    assert(engine.progress.arrived)
+    var off = WalkingProgressEngine(route: route, destination: target)
+    for n in 0...2 { _ = off.update(fix(0, Double(n * 4), east: 45), now: start.addingTimeInterval(Double(n * 4))) }
+    assert(off.progress.offRoute)
+    var mismatch = WalkingProgressEngine(route: route, destination: WalkingDestination(id: "different", name: "Otra", point: point(250)))
+    for n in 0...45 { _ = mismatch.update(fix(min(200, Double(n * 5)), Double(n * 3)), now: start.addingTimeInterval(Double(n * 3))) }
+    assert(!mismatch.progress.arrived)
+    var noisy = WalkingProgressEngine(route: route, destination: target)
+    for n in 0...2 { _ = noisy.update(fix(0, Double(n * 4), accuracy: 30, east: 45), now: start.addingTimeInterval(Double(n * 4))) }
+    assert(!noisy.progress.offRoute)
+    var imprecise = WalkingProgressEngine(route: route, destination: target)
+    for n in 0...45 { _ = imprecise.update(fix(min(200, Double(n * 5)), Double(n * 3), accuracy: 25), now: start.addingTimeInterval(Double(n * 3))) }
+    assert(!imprecise.progress.arrived)
+    let loop = WalkingRoute(points: [point(0), point(200), point(200, 10), point(0, 10)], steps: [], duration: 300)
+    var parallel = WalkingProgressEngine(route: loop, destination: target)
+    _ = parallel.update(fix(0, 0, east: 10), now: start)
+    assert(parallel.progress.traveled < 50)
+    print("Pruebas de navegación correctas")
+}
+testWalkingNavigation()
+
+func testWalkingPresentation() {
+    let now = Date(timeIntervalSince1970: 1000)
+    let p = GeoPoint(latitude: 32, longitude: -117)
+    let fresh = WalkingFix(point: p, accuracy: 5, timestamp: now)
+    let jump = WalkingFix(point: GeoPoint(latitude: 33, longitude: -117), accuracy: 5, timestamp: now.addingTimeInterval(1))
+    check(!jump.isPlausible(after: fresh), "Descartar un salto de GPS antes de mostrarlo")
+    check(!fresh.isPlausible(after: fresh), "Descartar una posición repetida")
+    check(WalkingSessionStatus.startDecision(fix: nil, origin: p, now: now) == .locate, "Inicio sin ubicación")
+    check(WalkingSessionStatus.startDecision(fix: fresh, origin: p, now: now.addingTimeInterval(10)) == .locate, "Ubicación antigua")
+    check(WalkingSessionStatus.startDecision(fix: fresh, origin: p, now: now) == .start, "Inicio con ubicación fiable")
+    check(WalkingSessionStatus.startDecision(fix: fresh, origin: GeoPoint(latitude: 32.001, longitude: -117), now: now) == .recalculate, "Origen desplazado")
+    var status = WalkingSessionStatus()
+    status.connected = false; status.error = .unavailable; status.endpointGap = 60
+    check(status.messages(hasRoute: true).count == 4, "Avisos simultáneos")
+    status.location = .ready
+    check(status.messages(hasRoute: true).count == 3, "Una posición nueva conserva los otros avisos")
+    status.connected = true
+    check(status.messages(hasRoute: true).count == 2, "Recuperar conexión conserva error y separación")
+    check(status.offersRetry(phase: .preview), "Reintento ante error")
+    status.calculating = true
+    check(!status.offersRetry(phase: .preview), "Sin reintento duplicado")
+    status.calculating = false; status.error = nil
+    check(!status.offersRetry(phase: .navigating), "Sin reintento durante guía correcta")
+    status.error = .network
+    status.connected = false
+    check(!status.messages(hasRoute: true).contains("No se pudo conectar. Vuelve a intentarlo."), "Sin duplicar el aviso de conexión")
+    status.connected = true
+    check(status.offersRetry(phase: .preview), "Recuperar conexión conserva el reintento de una consulta fallida")
+    for phase: WalkingPhase in [.locating, .calculating, .preview, .navigating, .paused, .arrived, .ended] {
+        for error: WalkingCalculationError? in [nil, .network, .unavailable, .timeout] {
+            var actions = WalkingSessionStatus()
+            actions.error = error
+            check(!(actions.offersStart(phase: phase) && actions.offersRetry(phase: phase)), "Una acción principal por estado")
+        }
+    }
+    status.terminal = "Llegaste"
+    check(status.messages(hasRoute: true) == ["Llegaste"], "Fin de sesión")
+    check(WalkingFormat.distance(1500) == "1,5 km", "Formato kilómetros")
+    check(WalkingFormat.distance(-3) == "0 m", "Distancia no negativa")
+    check(WalkingFormat.duration(30) == "Menos de 1 min", "Trayecto corto")
+    check(WalkingFormat.duration(0, arrived: true) == "Llegaste", "Duración al llegar")
+    let stop = CatalogFeature(id: "synthetic-stop", name: "Parada", groupID: "sample", kind: .stop, color: "#2476E8", verified: false, geometry: .point(CatalogPosition(longitude: -117, latitude: 32)))
+    let mixed = RouteCatalog(schemaVersion: 1, version: "sample", publishable: false, licenseStatus: "private", groups: sample.groups, features: sample.features + [area, stop])
+    check(mixed.matching("", filter: .stops).map(\.id) == [stop.id], "Filtro de paradas")
+    check(stop.distance(to: p) == 0, "Cercanía a una parada puntual")
+    check(area.distance(to: p) == nil, "Las áreas no se convierten en paradas cercanas")
+    check(mixed.matching("", filter: .areas).map(\.id) == [area.id], "Filtro de áreas")
+    check(mixed.matching("", filter: .all).count == mixed.matching("", routesOnly: false).count, "Compatibilidad de filtros")
+    check(!CatalogFilter.areas.supportsProximity && CatalogFilter.stops.supportsProximity, "Cercanía solo en geometrías de transporte")
+    print("Pruebas de presentación correctas")
+}
+testWalkingPresentation()
+
+
+func testWalkingTurns() {
+    let origin = GeoPoint(latitude: 32.5, longitude: -117)
+    func point(_ north: Double, _ east: Double) -> GeoPoint {
+        GeoPoint(latitude: origin.latitude + north / 111_195, longitude: origin.longitude + east / (111_195 * cos(origin.latitude * .pi / 180)))
+    }
+    let route = WalkingRoute(points: [point(0, 0), point(100, 0), point(100, 100)], steps: [WalkingStep(instruction: "Gira", endDistance: 100), WalkingStep(instruction: "Continúa", endDistance: 200)], duration: 180)
+    let destination = WalkingDestination(id: "turn-stop", name: "Parada", point: point(100, 100))
+    var engine = WalkingProgressEngine(route: route, destination: destination)
+    let start = Date(timeIntervalSince1970: 1000)
+    for n in 0...40 {
+        let meters = Double(n * 5)
+        let fix = WalkingFix(point: meters <= 100 ? point(meters, 0) : point(100, meters - 100), accuracy: 5, timestamp: start.addingTimeInterval(Double(n * 3)))
+        _ = engine.update(fix, now: fix.timestamp)
+        if n < 20 { check(engine.progress.stepIndex == 0, "No anticipar el siguiente tramo") }
+    }
+    check(engine.progress.stepIndex == 1, "Avance tras un giro")
+    check(engine.progress.remaining < 1, "Distancia sobre dos segmentos")
+    print("Pruebas de giros correctas")
+}
+testWalkingTurns()

@@ -129,3 +129,21 @@ node --test tests/catalog-preview.test.cjs
 ```
 
 Las pruebas de base ejecutan las migraciones en PostgreSQL mediante PGlite. Comprueban permisos, doble factor, publicación, conflictos, restauración y exclusión de campos privados. Las pruebas del panel comprueban edición y confirmación de publicación. Las pruebas Swift incluyen actualización y almacenamiento; GitHub Actions comprueba también SQLite y la interfaz de iPhone.
+
+## Guía a pie
+
+**Ir a la parada** calcula un camino peatonal desde la ubicación actual mediante MapKit. La vista previa permite iniciar la guía o abrir Apple Maps. La guía muestra instrucciones, distancia y tiempo aproximado, recalcula ante desvíos persistentes y finaliza al llegar.
+
+La sesión utiliza ubicación precisa mientras está activa, también con la pantalla bloqueada. Su actividad en vivo muestra la siguiente indicación sin voz ni notificaciones. Al finalizar se detiene el seguimiento. Una sesión inactiva se pausa a los 15 minutos y su duración máxima es de dos horas.
+
+La ubicación y el camino permanecen en memoria; no se guardan en el catálogo ni se envían al servidor del proyecto. El cálculo y recálculo consultan los servicios de Apple. Sin conexión se conserva el camino ya recibido, sin garantizar disponibilidad de las imágenes del mapa. Cerrar la app termina la sesión.
+
+El destino debe ser una parada con coordenada puntual. Las áreas y los trazados no generan paradas automáticamente. Las pruebas utilizan destinos y posiciones sintéticas; `--walking-fixture` activa el proveedor de interfaz de Debug y `--walking-error` simula una consulta fallida.
+
+## Comprobaciones en GitHub
+
+El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pruebas de interfaz en otro runner de macOS. Cada trabajo muestra su resultado y el resumen final reúne los estados y duraciones. Los cambios documentales omiten las compilaciones; los cambios web omiten iPhone; los cambios compartidos o desconocidos ejecutan todo.
+
+La ejecución manual ofrece `full` y `native`. Desde una ejecución de Actions se pueden repetir únicamente los trabajos fallidos. Una actualización de la rama cancela su ejecución anterior. Las pruebas de iPhone conservan resultados, capturas y diagnósticos durante siete días.
+
+La caché contiene solo el almacén de dependencias de pnpm. Las pruebas nativas compilan app y extensión, comprueban sus versiones y permisos, y ejecutan la suite completa del simulador sobre los mismos productos compilados.

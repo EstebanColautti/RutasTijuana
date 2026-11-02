@@ -126,8 +126,12 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     var information: CatalogInformation? = nil
 
     func distance(to point: GeoPoint) -> Double? {
-        guard kind == .route, point.latitude.isFinite, point.longitude.isFinite,
+        guard point.latitude.isFinite, point.longitude.isFinite,
               (-90...90).contains(point.latitude), (-180...180).contains(point.longitude) else { return nil }
+        if kind == .stop, case .point(let position) = geometry {
+            return position.point.distance(to: point)
+        }
+        guard kind == .route else { return nil }
         return geometry.lines.flatMap { line in
             zip(line, line.dropFirst()).map { Self.segmentDistance(point, $0.point, $1.point) }
         }.min()
@@ -149,6 +153,28 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
         let along = atan2(sin(angular) * cos(difference), cos(angular))
         guard along >= 0, along <= length else { return min(start.distance(to: point), end.distance(to: point)) }
         return abs(asin(max(-1, min(1, sin(angular) * sin(difference))))) * radius
+    }
+}
+
+enum CatalogFilter: String, CaseIterable, Identifiable {
+    case all, routes, stops, areas
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "Todos"
+        case .routes: return "Recorridos"
+        case .stops: return "Paradas"
+        case .areas: return "Áreas y referencias"
+        }
+    }
+    var supportsProximity: Bool { self == .routes || self == .stops }
+    func includes(_ kind: CatalogFeature.Kind) -> Bool {
+        switch self {
+        case .all: return true
+        case .routes: return kind == .route
+        case .stops: return kind == .stop
+        case .areas: return kind == .area || kind == .reference
+        }
     }
 }
 
@@ -178,11 +204,15 @@ struct RouteCatalog: Codable, Sendable {
     }
 
     func matching(_ query: String, groupID: String? = nil, routesOnly: Bool = true) -> [CatalogFeature] {
+        matching(query, groupID: groupID, filter: routesOnly ? .routes : .all)
+    }
+
+    func matching(_ query: String, groupID: String? = nil, filter: CatalogFilter) -> [CatalogFeature] {
         let terms = Self.fold(query).split(whereSeparator: \.isWhitespace)
         let names = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
         return features.filter { feature in
             let text = Self.fold(feature.name + " " + (names[feature.groupID] ?? "") + " " + (feature.information?.searchableText ?? ""))
-            return (!routesOnly || feature.kind == .route) && (groupID == nil || feature.groupID == groupID)
+            return filter.includes(feature.kind) && (groupID == nil || feature.groupID == groupID)
                 && terms.allSatisfy { text.contains($0) }
         }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

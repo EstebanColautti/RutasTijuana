@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var scenario = JourneyScenario.sample
     private var route: TransitRoute { scenario.route }
     @State private var search = ""
+    @State private var walkingDestination: WalkingDestination?
     @State private var importing = false
     @State private var importError: String?
     @State private var detent: PresentationDetent = .medium
@@ -73,6 +74,7 @@ struct ContentView: View {
                             }
                         }
                 }
+                .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -108,6 +110,14 @@ struct ContentView: View {
     }
 
     private var welcome: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
+            }
+        }
+    }
+
+    private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             Spacer()
             Image(systemName: "bus.fill")
@@ -258,9 +268,11 @@ struct ContentView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             Text("Horario y frecuencia: dato no disponible").font(.footnote)
             if let first = trip.first, let last = trip.last {
-                Label("Acércate al origen · Camino peatonal no disponible", systemImage: "figure.walk")
+                Label("Camina hasta la parada de subida", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
+                Button("Ir a la parada") { walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point) }
+                    .accessibilityIdentifier("walking-start")
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -268,7 +280,7 @@ struct ContentView: View {
             if let stop = route.stops.first(where: { $0.id == selectedStop }) {
                 Label(stop.name, systemImage: "bus").font(.subheadline)
             }
-            Text("El mapa muestra una simulación. No indica un servicio real ni un camino peatonal.")
+            Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
                 .font(.footnote).foregroundStyle(.secondary)
             primaryButton("Nueva consulta", action: reset)
         }

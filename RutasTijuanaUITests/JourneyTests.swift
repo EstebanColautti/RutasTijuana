@@ -29,6 +29,81 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["Continuar"].isEnabled)
     }
 
+    func testWalkingGuide() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-fixture"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        tap("Iniciar guía")
+        XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 10))
+        capture("Guía")
+        tap("Ver pasos")
+        XCTAssertTrue(app.navigationBars["Indicaciones"].waitForExistence(timeout: 5))
+        tap("Cerrar")
+        tap("Finalizar")
+        app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
+        XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
+    }
+
+    func testWalkingFailure() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-error"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        XCTAssertTrue(app.staticTexts["walking-status"].waitForExistence(timeout: 5))
+        let retry = app.buttons["Reintentar"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        XCTAssertFalse(retry.isEnabled)
+        XCTAssertFalse(app.buttons["Iniciar guía"].exists)
+        capture("Guía sin conexión")
+    }
+
+    func testWalkingWarningAndLargeText() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-gap", "--walking-long", "--walking-dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        tap("Iniciar guía")
+        let warning = app.staticTexts["walking-status"]
+        XCTAssertTrue(warning.waitForExistence(timeout: 5))
+        XCTAssertTrue(warning.label.contains("El camino termina"))
+        let persisted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "NOT (label CONTAINS %@)", "El camino termina"), object: warning)
+        persisted.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 4), .completed)
+        XCTAssertFalse(app.buttons["Reintentar"].exists)
+        app.scrollViews.firstMatch.swipeDown()
+        capture("Guía con texto grande")
+    }
+
+    func testCatalogFilters() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        let filter = app.buttons["catalog-filter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        filter.tap()
+        tap("Paradas")
+        XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        capture("Filtro de paradas")
+    }
+
     func testSameStopIsRejected() {
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
