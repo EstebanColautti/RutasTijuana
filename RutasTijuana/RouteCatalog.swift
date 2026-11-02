@@ -126,8 +126,12 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     var information: CatalogInformation? = nil
 
     func distance(to point: GeoPoint) -> Double? {
-        guard kind == .route, point.latitude.isFinite, point.longitude.isFinite,
+        guard point.latitude.isFinite, point.longitude.isFinite,
               (-90...90).contains(point.latitude), (-180...180).contains(point.longitude) else { return nil }
+        if kind == .stop, case .point(let position) = geometry {
+            return position.point.distance(to: point)
+        }
+        guard kind == .route else { return nil }
         return geometry.lines.flatMap { line in
             zip(line, line.dropFirst()).map { Self.segmentDistance(point, $0.point, $1.point) }
         }.min()

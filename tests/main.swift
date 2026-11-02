@@ -306,6 +306,8 @@ func testWalkingPresentation() {
     let stop = CatalogFeature(id: "synthetic-stop", name: "Parada", groupID: "sample", kind: .stop, color: "#2476E8", verified: false, geometry: .point(CatalogPosition(longitude: -117, latitude: 32)))
     let mixed = RouteCatalog(schemaVersion: 1, version: "sample", publishable: false, licenseStatus: "private", groups: sample.groups, features: sample.features + [area, stop])
     check(mixed.matching("", filter: .stops).map(\.id) == [stop.id], "Filtro de paradas")
+    check(stop.distance(to: p) == 0, "Cercanía a una parada puntual")
+    check(area.distance(to: p) == nil, "Las áreas no se convierten en paradas cercanas")
     check(mixed.matching("", filter: .areas).map(\.id) == [area.id], "Filtro de áreas")
     check(mixed.matching("", filter: .all).count == mixed.matching("", routesOnly: false).count, "Compatibilidad de filtros")
     check(!CatalogFilter.areas.supportsProximity && CatalogFilter.stops.supportsProximity, "Cercanía solo en geometrías de transporte")
