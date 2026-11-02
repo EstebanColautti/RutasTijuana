@@ -304,3 +304,25 @@ func testWalkingPresentation() {
     print("Pruebas de presentación correctas")
 }
 testWalkingPresentation()
+
+
+func testWalkingTurns() {
+    let origin = GeoPoint(latitude: 32.5, longitude: -117)
+    func point(_ north: Double, _ east: Double) -> GeoPoint {
+        GeoPoint(latitude: origin.latitude + north / 111_195, longitude: origin.longitude + east / (111_195 * cos(origin.latitude * .pi / 180)))
+    }
+    let route = WalkingRoute(points: [point(0, 0), point(100, 0), point(100, 100)], steps: [WalkingStep(instruction: "Gira", endDistance: 100), WalkingStep(instruction: "Continúa", endDistance: 200)], duration: 180)
+    let destination = WalkingDestination(id: "turn-stop", name: "Parada", point: point(100, 100))
+    var engine = WalkingProgressEngine(route: route, destination: destination)
+    let start = Date(timeIntervalSince1970: 1000)
+    for n in 0...40 {
+        let meters = Double(n * 5)
+        let fix = WalkingFix(point: meters <= 100 ? point(meters, 0) : point(100, meters - 100), accuracy: 5, timestamp: start.addingTimeInterval(Double(n * 3)))
+        _ = engine.update(fix, now: fix.timestamp)
+        if n < 20 { check(engine.progress.stepIndex == 0, "No anticipar el siguiente tramo") }
+    }
+    check(engine.progress.stepIndex == 1, "Avance tras un giro")
+    check(engine.progress.remaining < 1, "Distancia sobre dos segmentos")
+    print("Pruebas de giros correctas")
+}
+testWalkingTurns()

@@ -155,7 +155,7 @@ jobs:
           if [ -d "$RUNNER_TEMP/UITests.xcresult" ]; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/UITests.xcresult" > "$RUNNER_TEMP/ui-summary.json"
             xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UITests.xcresult" --output-path "$RUNNER_TEMP/ui-captures"
-            python3 -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/ui-summary.json")); open(os.environ["GITHUB_STEP_SUMMARY"],"a").write("## Interfaz iPhone\n\n"+json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+            python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-summary.json" "$GITHUB_STEP_SUMMARY"
           fi
       - id: elapsed
         if: always()
