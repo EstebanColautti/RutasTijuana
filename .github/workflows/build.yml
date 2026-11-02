@@ -185,7 +185,7 @@ jobs:
   result:
     name: Resultado
     needs: [changes, web, native, ui]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
