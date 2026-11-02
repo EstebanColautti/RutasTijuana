@@ -46,7 +46,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Indicaciones"].waitForExistence(timeout: 5))
         tap("Cerrar")
         tap("Finalizar")
-        app.buttons["Finalizar"].lastMatch.tap()
+        app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
         XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
     }
 

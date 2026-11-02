@@ -39,6 +39,10 @@ struct WalkingNavigationView: View {
                 }
                 .onChange(of: camera.positionedByUser) { _, value in if value { follow = false } }
                 .onChange(of: model.fix?.timestamp) { _, _ in recenter() }
+                .onChange(of: model.phase) { _, phase in
+                    if phase == .preview { follow = false; camera = .automatic }
+                    if phase == .navigating { follow = true; recenter() }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     Button("Recentrar", systemImage: "location.fill") { follow = true; recenter() }
                         .padding().background(.regularMaterial, in: Capsule()).padding()
