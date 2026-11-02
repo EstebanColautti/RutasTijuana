@@ -23,6 +23,7 @@ struct WalkingNavigationView: View {
     }
     var body: some View {
         NavigationStack {
+            GeometryReader { geometry in
             VStack(spacing: 0) {
                 Map(position: $camera) {
                     if let route = model.route {
@@ -32,6 +33,10 @@ struct WalkingNavigationView: View {
                         Image(systemName: "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
                     }
                     if let fix = model.fix {
+                        if model.isLocationCurrent {
+                            MapCircle(center: fix.point.walkingCoordinate, radius: max(5, fix.accuracy))
+                                .foregroundStyle(.blue.opacity(0.15))
+                        }
                         Annotation("Tu ubicación", coordinate: fix.point.walkingCoordinate) {
                             Circle().fill(model.isLocationCurrent ? .blue : .gray).frame(width: 18, height: 18)
                                 .overlay(Circle().stroke(.white, lineWidth: 3))
@@ -75,8 +80,9 @@ struct WalkingNavigationView: View {
                         Button("Abrir en Apple Maps") { openMaps() }.font(.footnote)
                     }
                 }.padding().frame(maxWidth: .infinity, alignment: .leading)
-                }.frame(maxHeight: 340)
+                }.frame(maxHeight: min(360, geometry.size.height * 0.5))
                 .dynamicTypeSize(...DynamicTypeSize.accessibility5)
+            }
             }
             .navigationTitle("Ir a la parada").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Finalizar") { confirmEnd = true } } }

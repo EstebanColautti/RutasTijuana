@@ -126,6 +126,7 @@ extension MKPolyline {
     private var movementPoint: GeoPoint?
     private var nextRequest = Date.distantPast
     private var requestStarted: Date?
+    private var awaitingRetry = false
     private var failures = 0
     private let activity = NavigationActivityController()
 
@@ -193,7 +194,7 @@ extension MKPolyline {
     }
     func resume() {
         guard phase == .paused else { return }
-        phase = .locating; engine = nil; route = nil; fix = nil; routeOrigin = nil
+        phase = .locating; engine = nil; route = nil; fix = nil; routeOrigin = nil; awaitingRetry = false
         let connected = status.connected
         status = WalkingSessionStatus()
         status.connected = connected
@@ -206,7 +207,7 @@ extension MKPolyline {
         status.calculating = false
     }
     func finish(arrived: Bool = false) {
-        cancelRequest()
+        cancelRequest(); awaitingRetry = false
         locations.stop(); ticker?.cancel(); ticker = nil
         phase = arrived ? .arrived : .ended
         status.waitingToStart = false
@@ -226,7 +227,7 @@ extension MKPolyline {
     }
     func retry() {
         guard offersRetry, request == nil, status.connected, now() >= nextRequest else { return }
-        guard isLocationCurrent, let fix else { status.location = .acquiring; locations.start(); return }
+        guard isLocationCurrent, let fix else { awaitingRetry = true; status.location = .acquiring; locations.start(); return }
         calculate(fix)
     }
     private func receive(_ value: WalkingFix) {
@@ -239,6 +240,9 @@ extension MKPolyline {
         fix = value; status.location = .ready
         if movementPoint == nil || movementPoint!.distance(to: value.point) >= max(10, value.accuracy) {
             movementPoint = value.point; lastMovement = now()
+        }
+        if awaitingRetry, request == nil, status.connected, now() >= nextRequest {
+            awaitingRetry = false; calculate(value); return
         }
         if status.waitingToStart { continueStart(); return }
         if route == nil {

@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+import plistlib
 
 
 def load(name):
@@ -37,3 +39,23 @@ class CISelectionTests(unittest.TestCase):
         value = results(native='skipped', ui='skipped')
         value['changes']['outputs']['native'] = 'false'
         self.assertTrue(successful(value))
+
+
+class BundleTests(unittest.TestCase):
+    def test_extension_versions_and_capabilities(self):
+        validate = load('check_app_bundle').validate
+        with tempfile.TemporaryDirectory() as folder:
+            app = Path(folder) / 'App.app'
+            extension = app / 'PlugIns' / 'Navigation.appex'
+            extension.mkdir(parents=True)
+            info = {'CFBundleIdentifier': 'com.estebancolautti.rutastijuana', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '1.0', 'NSSupportsLiveActivities': True, 'UIBackgroundModes': ['location'], 'NSLocationWhenInUseUsageDescription': 'Ejemplo', 'NSLocationTemporaryUsageDescriptionDictionary': {'WalkingNavigation': 'Ejemplo'}}
+            widget = {'CFBundleIdentifier': info['CFBundleIdentifier'] + '.navigation', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '1.0', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.widgetkit-extension'}}
+            (app / 'Info.plist').write_bytes(plistlib.dumps(info))
+            (extension / 'Info.plist').write_bytes(plistlib.dumps(widget))
+            validate(app)
+            for key in ('CFBundleVersion', 'CFBundleShortVersionString', 'NSExtension'):
+                broken = dict(widget)
+                del broken[key]
+                (extension / 'Info.plist').write_bytes(plistlib.dumps(broken))
+                with self.assertRaises(AssertionError):
+                    validate(app)

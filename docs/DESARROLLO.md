@@ -139,3 +139,11 @@ La sesión utiliza ubicación precisa mientras está activa, también con la pan
 La ubicación y el camino permanecen en memoria; no se guardan en el catálogo ni se envían al servidor del proyecto. El cálculo y recálculo consultan los servicios de Apple. Sin conexión se conserva el camino ya recibido, sin garantizar disponibilidad de las imágenes del mapa. Cerrar la app termina la sesión.
 
 El destino debe ser una parada con coordenada puntual. Las áreas y los trazados no generan paradas automáticamente. Las pruebas utilizan destinos y posiciones sintéticas; `--walking-fixture` activa el proveedor de interfaz de Debug y `--walking-error` simula una consulta fallida.
+
+## Comprobaciones en GitHub
+
+El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pruebas de interfaz en otro runner de macOS. Cada trabajo muestra su resultado y el resumen final reúne los estados y duraciones. Los cambios documentales omiten las compilaciones; los cambios web omiten iPhone; los cambios compartidos o desconocidos ejecutan todo.
+
+La ejecución manual ofrece `full` y `native`. Desde una ejecución de Actions se pueden repetir únicamente los trabajos fallidos. Una actualización de la rama cancela su ejecución anterior. Las pruebas de iPhone conservan resultados, capturas y diagnósticos durante siete días.
+
+La caché contiene solo el almacén de dependencias de pnpm. Las pruebas nativas compilan app y extensión, comprueban sus versiones y permisos, y ejecutan la suite completa del simulador sobre los mismos productos compilados.
