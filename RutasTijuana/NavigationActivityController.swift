@@ -2,6 +2,14 @@ import ActivityKit
 import Foundation
 
 @MainActor final class NavigationActivityController {
+    private static var cleaned = false
+    static func clearPreviousSession() async {
+        guard !cleaned else { return }
+        cleaned = true
+        for activity in Activity<NavigationAttributes>.activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+    }
     private var activity: Activity<NavigationAttributes>?
     private var lastState: NavigationAttributes.ContentState?
     private var pending: Task<Void, Never>?

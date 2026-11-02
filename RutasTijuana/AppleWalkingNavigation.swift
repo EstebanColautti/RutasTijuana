@@ -26,7 +26,7 @@ import Combine
         }
         let length = zip(points, points.dropFirst()).reduce(0.0) { $0 + $1.0.distance(to: $1.1) }
         let ratio = distance > 0 ? length / distance : 1
-        return WalkingRoute(points: points, steps: steps.map { WalkingStep(instruction: $0.instruction, endDistance: $0.endDistance * ratio) }, duration: route.expectedTravelTime)
+        return WalkingRoute(points: points, steps: steps.enumerated().map { index, step in WalkingStep(instruction: index + 1 < steps.count ? steps[index + 1].instruction : "Continúa hasta la parada", endDistance: step.endDistance * ratio) }, duration: route.expectedTravelTime)
     }
 }
 
@@ -44,14 +44,16 @@ extension MKPolyline {
 @MainActor protocol NavigationLocationProvider: AnyObject {
     var onFix: ((WalkingFix) -> Void)? { get set }
     var onError: ((String) -> Void)? { get set }
+    var onDenied: (() -> Void)? { get set }
     func start()
     func enableBackground()
     func stop()
 }
 
-@MainActor final class AppleNavigationLocationProvider: NSObject, NavigationLocationProvider, CLLocationManagerDelegate {
+@MainActor final class AppleNavigationLocationProvider: NSObject, NavigationLocationProvider, @preconcurrency CLLocationManagerDelegate {
     var onFix: ((WalkingFix) -> Void)?
     var onError: ((String) -> Void)?
+    var onDenied: (() -> Void)?
     private let manager = CLLocationManager()
     private var background: CLBackgroundActivitySession?
     private var active = false
@@ -76,7 +78,7 @@ extension MKPolyline {
             }
             manager.startUpdatingLocation()
         case .denied, .restricted:
-            stop(); onError?("Habilita la ubicación en Ajustes para iniciar la guía.")
+            stop(); onDenied?()
         default: break
         }
     }
@@ -129,6 +131,11 @@ extension MKPolyline {
         self.destination = destination; self.provider = provider ?? AppleWalkingRouteProvider(); self.locations = locations ?? AppleNavigationLocationProvider(); self.now = now
         lastMovement = now()
         self.locations.onFix = { [weak self] in self?.receive($0) }
+        self.locations.onDenied = { [weak self] in
+            guard let self else { return }
+            self.finish()
+            self.message = "Habilita la ubicación en Ajustes para iniciar la guía."
+        }
         self.locations.onError = { [weak self] text in
             guard let self else { return }
             self.message = text
@@ -254,6 +261,7 @@ extension MKPolyline {
 @MainActor final class FixtureNavigationLocationProvider: NavigationLocationProvider {
     var onFix: ((WalkingFix) -> Void)?
     var onError: ((String) -> Void)?
+    var onDenied: (() -> Void)?
     let destination: WalkingDestination
     init(destination: WalkingDestination) { self.destination = destination }
     func start() {
