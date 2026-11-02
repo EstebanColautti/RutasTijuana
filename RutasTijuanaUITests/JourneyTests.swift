@@ -70,9 +70,8 @@ final class JourneyTests: XCTestCase {
 
     func testWalkingWarningAndLargeText() {
         app.terminate()
-        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-gap", "--walking-long", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-gap", "--walking-long", "--walking-dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
-        app.overrideUserInterfaceStyle = .dark
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
         tap("Continuar")

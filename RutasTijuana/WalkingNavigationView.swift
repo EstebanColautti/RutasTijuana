@@ -24,65 +24,65 @@ struct WalkingNavigationView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-            VStack(spacing: 0) {
-                Map(position: $camera) {
-                    if let route = model.route {
-                        MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.blue, lineWidth: 6)
-                    }
-                    Annotation(model.destination.name, coordinate: model.destination.point.walkingCoordinate) {
-                        Image(systemName: "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
-                    }
-                    if let fix = model.fix {
-                        if model.isLocationCurrent {
-                            MapCircle(center: fix.point.walkingCoordinate, radius: max(5, fix.accuracy))
-                                .foregroundStyle(.blue.opacity(0.15))
+                VStack(spacing: 0) {
+                    Map(position: $camera) {
+                        if let route = model.route {
+                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.blue, lineWidth: 6)
                         }
-                        Annotation("Tu ubicación", coordinate: fix.point.walkingCoordinate) {
-                            Circle().fill(model.isLocationCurrent ? .blue : .gray).frame(width: 18, height: 18)
-                                .overlay(Circle().stroke(.white, lineWidth: 3))
-                                .accessibilityLabel(model.isLocationCurrent ? "Ubicación actual" : "Última ubicación · Sin actualizar")
+                        Annotation(model.destination.name, coordinate: model.destination.point.walkingCoordinate) {
+                            Image(systemName: "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
+                        }
+                        if let fix = model.fix {
+                            if model.isLocationCurrent {
+                                MapCircle(center: fix.point.walkingCoordinate, radius: max(5, fix.accuracy))
+                                    .foregroundStyle(.blue.opacity(0.15))
+                            }
+                            Annotation("Tu ubicación", coordinate: fix.point.walkingCoordinate) {
+                                Circle().fill(model.isLocationCurrent ? .blue : .gray).frame(width: 18, height: 18)
+                                    .overlay(Circle().stroke(.white, lineWidth: 3))
+                                    .accessibilityLabel(model.isLocationCurrent ? "Ubicación actual" : "Última ubicación · Sin actualizar")
+                            }
                         }
                     }
-                }
-                .onChange(of: camera.positionedByUser) { _, value in if value { follow = false } }
-                .onChange(of: model.fix?.timestamp) { _, _ in recenter() }
-                .onChange(of: model.phase) { _, phase in
-                    if phase == .preview { follow = false; camera = .automatic }
-                    if phase == .navigating { follow = true; recenter() }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    Button("Recentrar", systemImage: "location.fill") { follow = true; recenter() }
-                        .frame(minHeight: 44).padding(.horizontal).background(.regularMaterial, in: Capsule()).padding()
-                }
-                ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(model.destination.name).font(.headline)
-                    if model.phase == .navigating {
-                        Text(model.instruction).font(.title2.bold()).accessibilityIdentifier("walking-instruction")
-                        Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
-                        if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(.caption) }
+                    .onChange(of: camera.positionedByUser) { _, value in if value { follow = false } }
+                    .onChange(of: model.fix?.timestamp) { _, _ in recenter() }
+                    .onChange(of: model.phase) { _, phase in
+                        if phase == .preview { follow = false; camera = .automatic }
+                        if phase == .navigating { follow = true; recenter() }
                     }
-                    if model.route != nil {
-                        Text("\(WalkingFormat.distance(model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
-                        Button("Ver pasos") { showingSteps = true }
+                    .overlay(alignment: .bottomTrailing) {
+                        Button("Recentrar", systemImage: "location.fill") { follow = true; recenter() }
+                            .frame(minHeight: 44).padding(.horizontal).background(.regularMaterial, in: Capsule()).padding()
                     }
-                    if !model.message.isEmpty { Text(model.message).font(.subheadline).accessibilityIdentifier("walking-status") }
-                    if model.phase == .preview { Button("Iniciar guía") { model.start() }.buttonStyle(.borderedProminent).disabled(model.status.waitingToStart || model.status.calculating) }
-                    if model.phase == .paused { Button("Reanudar") { model.resume() } }
-                    if model.phase == .arrived || model.phase == .ended {
-                        Button("Volver al viaje") { dismiss() }
-                    } else {
-                        if model.offersRetry {
-                            Button("Reintentar") { model.retry() }.buttonStyle(.borderedProminent)
-                                .disabled(!model.retryAvailable || !model.status.connected)
-                            if !model.retryAvailable { Text("Espera un momento antes de reintentar.").font(.caption) }
-                        }
-                        Button("Abrir en Apple Maps") { openMaps() }.font(.footnote)
-                    }
-                }.padding().frame(maxWidth: .infinity, alignment: .leading)
-                }.frame(maxHeight: min(360, geometry.size.height * 0.5))
-                .dynamicTypeSize(...DynamicTypeSize.accessibility5)
-            }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(model.destination.name).font(.headline)
+                            if model.phase == .navigating {
+                                Text(model.instruction).font(.title2.bold()).accessibilityIdentifier("walking-instruction")
+                                Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
+                                if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(.caption) }
+                            }
+                            if model.route != nil {
+                                Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
+                                Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
+                            }
+                            if !model.message.isEmpty { Text(model.message).font(.subheadline).accessibilityIdentifier("walking-status") }
+                            if model.phase == .preview { Button("Iniciar guía") { model.start() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.status.waitingToStart || model.status.calculating) }
+                            if model.phase == .paused { Button("Reanudar") { model.resume() } }
+                            if model.phase == .arrived || model.phase == .ended {
+                                Button("Volver al viaje") { dismiss() }
+                            } else {
+                                if model.offersRetry {
+                                    Button("Reintentar") { model.retry() }.buttonStyle(.borderedProminent).controlSize(.large)
+                                        .disabled(!model.retryAvailable || !model.status.connected)
+                                    if !model.retryAvailable { Text("Espera un momento antes de reintentar.").font(.caption) }
+                                }
+                                Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
+                            }
+                        }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxHeight: min(360, geometry.size.height * 0.5))
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility5)
+                }
             }
             .navigationTitle("Ir a la parada").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Finalizar") { confirmEnd = true } } }
@@ -109,10 +109,18 @@ struct WalkingNavigationView: View {
                 }
             }
         }
+        .preferredColorScheme(testColorScheme)
         .interactiveDismissDisabled()
         .task { model.connectivityChanged(connectivity.isConnected); model.prepare() }
         .onChange(of: connectivity.isConnected) { _, value in model.connectivityChanged(value) }
         .onDisappear { model.finish() }
+    }
+    private var testColorScheme: ColorScheme? {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--walking-dark") ? .dark : nil
+        #else
+        return nil
+        #endif
     }
     private func recenter() {
         guard follow, let fix = model.fix else { return }
