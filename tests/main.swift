@@ -268,3 +268,39 @@ func testWalkingNavigation() {
     print("Pruebas de navegación correctas")
 }
 testWalkingNavigation()
+
+func testWalkingPresentation() {
+    let now = Date(timeIntervalSince1970: 1000)
+    let p = GeoPoint(latitude: 32, longitude: -117)
+    let fresh = WalkingFix(point: p, accuracy: 5, timestamp: now)
+    check(WalkingSessionStatus.startDecision(fix: nil, origin: p, now: now) == .locate, "Inicio sin ubicación")
+    check(WalkingSessionStatus.startDecision(fix: fresh, origin: p, now: now.addingTimeInterval(10)) == .locate, "Ubicación antigua")
+    check(WalkingSessionStatus.startDecision(fix: fresh, origin: p, now: now) == .start, "Inicio con ubicación fiable")
+    check(WalkingSessionStatus.startDecision(fix: fresh, origin: GeoPoint(latitude: 32.001, longitude: -117), now: now) == .recalculate, "Origen desplazado")
+    var status = WalkingSessionStatus()
+    status.connected = false; status.error = .unavailable; status.endpointGap = 60
+    check(status.messages(hasRoute: true).count == 4, "Avisos simultáneos")
+    status.location = .ready
+    check(status.messages(hasRoute: true).count == 3, "Una posición nueva conserva los otros avisos")
+    status.connected = true
+    check(status.messages(hasRoute: true).count == 2, "Recuperar conexión conserva error y separación")
+    check(status.offersRetry(phase: .preview), "Reintento ante error")
+    status.calculating = true
+    check(!status.offersRetry(phase: .preview), "Sin reintento duplicado")
+    status.calculating = false; status.error = nil
+    check(!status.offersRetry(phase: .navigating), "Sin reintento durante guía correcta")
+    status.terminal = "Llegaste"
+    check(status.messages(hasRoute: true) == ["Llegaste"], "Fin de sesión")
+    check(WalkingFormat.distance(1500) == "1,5 km", "Formato kilómetros")
+    check(WalkingFormat.distance(-3) == "0 m", "Distancia no negativa")
+    check(WalkingFormat.duration(30) == "Menos de 1 min", "Trayecto corto")
+    check(WalkingFormat.duration(0, arrived: true) == "Llegaste", "Duración al llegar")
+    let stop = CatalogFeature(id: "synthetic-stop", name: "Parada", groupID: "sample", kind: .stop, color: "#2476E8", verified: false, geometry: .point(CatalogPosition(longitude: -117, latitude: 32)))
+    let mixed = RouteCatalog(schemaVersion: 1, version: "sample", publishable: false, licenseStatus: "private", groups: sample.groups, features: sample.features + [area, stop])
+    check(mixed.matching("", filter: .stops).map(\.id) == [stop.id], "Filtro de paradas")
+    check(mixed.matching("", filter: .areas).map(\.id) == [area.id], "Filtro de áreas")
+    check(mixed.matching("", filter: .all).count == mixed.matching("", routesOnly: false).count, "Compatibilidad de filtros")
+    check(!CatalogFilter.areas.supportsProximity && CatalogFilter.stops.supportsProximity, "Cercanía solo en geometrías de transporte")
+    print("Pruebas de presentación correctas")
+}
+testWalkingPresentation()

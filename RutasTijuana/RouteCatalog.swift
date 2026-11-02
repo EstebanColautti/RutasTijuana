@@ -152,6 +152,28 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+enum CatalogFilter: String, CaseIterable, Identifiable {
+    case all, routes, stops, areas
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "Todos"
+        case .routes: return "Recorridos"
+        case .stops: return "Paradas"
+        case .areas: return "Áreas y referencias"
+        }
+    }
+    var supportsProximity: Bool { self == .routes || self == .stops }
+    func includes(_ kind: CatalogFeature.Kind) -> Bool {
+        switch self {
+        case .all: return true
+        case .routes: return kind == .route
+        case .stops: return kind == .stop
+        case .areas: return kind == .area || kind == .reference
+        }
+    }
+}
+
 struct RouteCatalog: Codable, Sendable {
     let schemaVersion: Int
     let version: String
@@ -178,11 +200,15 @@ struct RouteCatalog: Codable, Sendable {
     }
 
     func matching(_ query: String, groupID: String? = nil, routesOnly: Bool = true) -> [CatalogFeature] {
+        matching(query, groupID: groupID, filter: routesOnly ? .routes : .all)
+    }
+
+    func matching(_ query: String, groupID: String? = nil, filter: CatalogFilter) -> [CatalogFeature] {
         let terms = Self.fold(query).split(whereSeparator: \.isWhitespace)
         let names = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
         return features.filter { feature in
             let text = Self.fold(feature.name + " " + (names[feature.groupID] ?? "") + " " + (feature.information?.searchableText ?? ""))
-            return (!routesOnly || feature.kind == .route) && (groupID == nil || feature.groupID == groupID)
+            return filter.includes(feature.kind) && (groupID == nil || feature.groupID == groupID)
                 && terms.allSatisfy { text.contains($0) }
         }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

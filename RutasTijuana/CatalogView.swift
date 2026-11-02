@@ -8,7 +8,7 @@ struct CatalogView: View {
     private var catalog: RouteCatalog? { privateCatalog ?? repository.catalog }
     @State private var query = ""
     @State private var groupID: String?
-    @State private var routesOnly = true
+    @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
@@ -19,7 +19,7 @@ struct CatalogView: View {
     @State private var camera: MapCameraPosition = .automatic
 
     private var matches: [CatalogFeature] {
-        let rows = catalog?.matching(query, groupID: groupID, routesOnly: routesOnly) ?? []
+        let rows = catalog?.matching(query, groupID: groupID, filter: filter) ?? []
         guard let reference else { return rows }
         return rows.compactMap { feature -> (CatalogFeature, Double)? in
             guard let distance = feature.distance(to: reference), distance <= 1_000 else { return nil }
@@ -52,7 +52,7 @@ struct CatalogView: View {
                                 Text(feature.name).fontWeight(.medium)
                                 Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
                                 if let reference, let distance = feature.distance(to: reference) {
-                                    Text("A \(Int(distance.rounded())) m del trazado")
+                                    Text("A \(WalkingFormat.distance(distance)) \(feature.kind == .stop ? "de la parada" : "del trazado")")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
@@ -68,7 +68,7 @@ struct CatalogView: View {
                 .overlay {
                     if matches.isEmpty {
                         ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass",
-                                               description: Text("Cambia la búsqueda, el grupo o el punto de referencia."))
+                                               description: Text("No hay resultados en \(filter.title.lowercased()). Cambia la búsqueda, el grupo o el punto de referencia."))
                     }
                 }
             } else {
@@ -115,12 +115,12 @@ struct CatalogView: View {
         }
         .onChange(of: query) { _, _ in selectedID = nil }
         .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
-        .onChange(of: routesOnly) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+        .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
     }
 
     private var filters: some View {
         VStack(spacing: 10) {
-            TextField("Buscar recorrido o grupo", text: $query)
+            TextField("Buscar nombre, grupo o información", text: $query)
                 .textFieldStyle(.roundedBorder).accessibilityIdentifier("catalog-search")
             HStack {
                 Picker("Grupo", selection: $groupID) {
@@ -128,7 +128,9 @@ struct CatalogView: View {
                     ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
                 }
                 .labelsHidden()
-                Toggle("Solo recorridos", isOn: $routesOnly).font(.caption)
+                Picker("Contenido", selection: $filter) {
+                    ForEach(CatalogFilter.allCases) { Text($0.title).tag($0) }
+                }.accessibilityIdentifier("catalog-filter")
             }
             HStack {
                 Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.secondary)
@@ -157,7 +159,7 @@ struct CatalogView: View {
                     }
                     if case .point(let point) = feature.geometry {
                         Annotation(feature.name, coordinate: point.coordinate) {
-                            Image(systemName: "mappin.circle").foregroundStyle(color(feature.color))
+                            Image(systemName: feature.kind == .stop ? "bus.fill" : "mappin.circle").foregroundStyle(color(feature.color))
                         }
                     }
                 }
@@ -169,12 +171,12 @@ struct CatalogView: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .onTapGesture { position in
-                guard routesOnly, let point = proxy.convert(position, from: .local) else { return }
+                guard filter.supportsProximity, let point = proxy.convert(position, from: .local) else { return }
                 selectedID = nil
                 reference = GeoPoint(latitude: point.latitude, longitude: point.longitude)
             }
             .overlay(alignment: .topLeading) {
-                Text(routesOnly ? "Toca el mapa para consultar trazados a 1 km" : "Áreas y referencias")
+                Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
                     .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .padding(10).allowsHitTesting(false)
             }

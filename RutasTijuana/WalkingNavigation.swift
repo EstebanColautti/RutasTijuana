@@ -26,7 +26,7 @@ struct WalkingFix {
     var speed: Double = -1
     func isReliable(at now: Date) -> Bool {
         accuracy.isFinite && accuracy >= 0 && accuracy <= 50 &&
-        timestamp.timeIntervalSince(now) <= 2 && now.timeIntervalSince(timestamp) <= 10 &&
+        timestamp.timeIntervalSince(now) <= 2 && now.timeIntervalSince(timestamp) < 10 &&
         point.latitude.isFinite && point.longitude.isFinite &&
         abs(point.latitude) <= 90 && abs(point.longitude) <= 180
     }
@@ -131,4 +131,62 @@ struct WalkingProgressEngine {
 @MainActor protocol WalkingRouteProvider: AnyObject {
     func route(from: GeoPoint, to: WalkingDestination) async throws -> WalkingRoute
     func cancel()
+}
+
+
+enum WalkingPhase { case locating, calculating, preview, navigating, paused, arrived, ended }
+enum WalkingLocationState { case acquiring, imprecise, ready }
+enum WalkingCalculationError { case network, unavailable, timeout }
+enum WalkingStartDecision: Equatable { case locate, recalculate, start }
+
+struct WalkingSessionStatus {
+    var location = WalkingLocationState.acquiring
+    var connected = true
+    var calculating = false
+    var error: WalkingCalculationError?
+    var endpointGap = 0.0
+    var terminal: String?
+    var waitingToStart = false
+
+    func messages(hasRoute: Bool) -> [String] {
+        if let terminal { return [terminal] }
+        var result: [String] = []
+        if location == .acquiring { result.append("Actualizando ubicación…") }
+        if location == .imprecise { result.append("Ubicación imprecisa · Espera una señal más precisa") }
+        if !connected { result.append(hasRoute ? "Sin conexión · No se puede recalcular" : "Sin conexión · Conéctate para calcular el camino") }
+        if let error, connected || error != .network {
+            switch error {
+            case .network: result.append("No se pudo conectar. Vuelve a intentarlo.")
+            case .unavailable: result.append("No se pudo obtener un camino a pie. Vuelve a intentarlo.")
+            case .timeout: result.append("La consulta tardó demasiado. Vuelve a intentarlo.")
+            }
+        }
+        if calculating { result.append(hasRoute ? "Recalculando…" : "Calculando camino…") }
+        else if waitingToStart { result.append("Actualizando el punto de inicio…") }
+        if endpointGap > 25 { result.append("El camino termina a \(WalkingFormat.distance(endpointGap)) de la parada.") }
+        return result
+    }
+    func offersRetry(phase: WalkingPhase) -> Bool {
+        phase != .ended && phase != .arrived && phase != .paused && !waitingToStart && !calculating && error != nil
+    }
+    static func startDecision(fix: WalkingFix?, origin: GeoPoint?, now: Date) -> WalkingStartDecision {
+        guard let fix, fix.isReliable(at: now) else { return .locate }
+        guard let origin, fix.point.distance(to: origin) <= 25 else { return .recalculate }
+        return .start
+    }
+}
+
+enum WalkingFormat {
+    static func distance(_ meters: Double) -> String {
+        guard meters.isFinite else { return "—" }
+        let value = max(0, meters)
+        if value < 1000 { return "\(Int(value.rounded())) m" }
+        return String(format: "%.1f km", value / 1000).replacingOccurrences(of: ".", with: ",")
+    }
+    static func duration(_ seconds: Double, arrived: Bool = false) -> String {
+        if arrived { return "Llegaste" }
+        guard seconds.isFinite else { return "—" }
+        if seconds < 60 { return "Menos de 1 min" }
+        return "\(Int(ceil(seconds / 60))) min aprox."
+    }
 }

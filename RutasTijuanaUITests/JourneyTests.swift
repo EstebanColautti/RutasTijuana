@@ -61,8 +61,46 @@ final class JourneyTests: XCTestCase {
         tap("Ver trayecto")
         tap("walking-start")
         XCTAssertTrue(app.staticTexts["walking-status"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Reintentar"].exists)
+        let retry = app.buttons["Reintentar"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        XCTAssertFalse(retry.isEnabled)
         XCTAssertFalse(app.buttons["Iniciar guía"].exists)
+        capture("Guía sin conexión")
+    }
+
+    func testWalkingWarningAndLargeText() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-gap", "--walking-long", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        app.overrideUserInterfaceStyle = .dark
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        tap("Iniciar guía")
+        let warning = app.staticTexts["walking-status"]
+        XCTAssertTrue(warning.waitForExistence(timeout: 5))
+        XCTAssertTrue(warning.label.contains("El camino termina"))
+        let persisted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "El camino termina"), object: warning)
+        XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 5), .completed)
+        XCTAssertFalse(app.buttons["Reintentar"].exists)
+        capture("Guía con texto grande")
+    }
+
+    func testCatalogFilters() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        let filter = app.buttons["catalog-filter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        filter.tap()
+        tap("Paradas")
+        XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        capture("Filtro de paradas")
     }
 
     func testSameStopIsRejected() {

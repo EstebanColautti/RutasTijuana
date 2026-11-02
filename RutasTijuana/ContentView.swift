@@ -260,7 +260,7 @@ struct ContentView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             Text("Horario y frecuencia: dato no disponible").font(.footnote)
             if let first = trip.first, let last = trip.last {
-                Label("Acércate al origen · Camino peatonal no disponible", systemImage: "figure.walk")
+                Label("Camina hasta la parada de subida", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point) }
@@ -272,7 +272,7 @@ struct ContentView: View {
             if let stop = route.stops.first(where: { $0.id == selectedStop }) {
                 Label(stop.name, systemImage: "bus").font(.subheadline)
             }
-            Text("El mapa muestra una simulación. No indica un servicio real ni un camino peatonal.")
+            Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
                 .font(.footnote).foregroundStyle(.secondary)
             primaryButton("Nueva consulta", action: reset)
         }
