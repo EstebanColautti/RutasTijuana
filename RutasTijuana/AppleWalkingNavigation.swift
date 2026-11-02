@@ -219,7 +219,6 @@ extension MKPolyline {
         let recovered = !status.connected && connected
         status.connected = connected
         if recovered {
-            if status.error == .network { status.error = nil }
             if status.waitingToStart { continueStart() }
             else if progress.offRoute, isLocationCurrent, now() >= nextRequest, let fix { calculate(fix) }
         }

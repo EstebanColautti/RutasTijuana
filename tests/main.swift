@@ -292,6 +292,11 @@ func testWalkingPresentation() {
     check(!status.offersRetry(phase: .preview), "Sin reintento duplicado")
     status.calculating = false; status.error = nil
     check(!status.offersRetry(phase: .navigating), "Sin reintento durante guía correcta")
+    status.error = .network
+    status.connected = false
+    check(!status.messages(hasRoute: true).contains("No se pudo conectar. Vuelve a intentarlo."), "Sin duplicar el aviso de conexión")
+    status.connected = true
+    check(status.offersRetry(phase: .preview), "Recuperar conexión conserva el reintento de una consulta fallida")
     status.terminal = "Llegaste"
     check(status.messages(hasRoute: true) == ["Llegaste"], "Fin de sesión")
     check(WalkingFormat.distance(1500) == "1,5 km", "Formato kilómetros")
