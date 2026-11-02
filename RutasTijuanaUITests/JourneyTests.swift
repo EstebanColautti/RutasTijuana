@@ -85,6 +85,7 @@ final class JourneyTests: XCTestCase {
         let persisted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "El camino termina"), object: warning)
         XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 5), .completed)
         XCTAssertFalse(app.buttons["Reintentar"].exists)
+        app.scrollViews.firstMatch.swipeDown()
         capture("Guía con texto grande")
     }
 
