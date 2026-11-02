@@ -40,37 +40,7 @@ struct CatalogView: View {
                 map.frame(minHeight: 180, maxHeight: 310)
                 filters
                 if let selection { detail(selection) }
-                List(matches) { feature in
-                    Button {
-                        selectedID = feature.id
-                        fit(feature)
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
-                                .foregroundStyle(color(feature.color))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(feature.name).fontWeight(.medium)
-                                Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
-                                if let reference, let distance = feature.distance(to: reference) {
-                                    Text("A \(WalkingFormat.distance(distance)) \(feature.kind == .stop ? "de la parada" : "del trazado")")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            if selectedID == feature.id { Image(systemName: "checkmark") }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("catalog-\(feature.id)")
-                }
-                .listStyle(.plain)
-                .overlay {
-                    if matches.isEmpty {
-                        ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass",
-                                               description: Text("No hay resultados en \(filter.title.lowercased()). Cambia la búsqueda, el grupo o el punto de referencia."))
-                    }
-                }
+                featureList
             } else {
                 ContentUnavailableView {
                     Label("Recorridos", systemImage: "map")
@@ -116,6 +86,48 @@ struct CatalogView: View {
         .onChange(of: query) { _, _ in selectedID = nil }
         .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
         .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+    }
+
+    private var featureList: some View {
+        List(matches) { row($0) }
+            .listStyle(.plain)
+            .overlay {
+                if matches.isEmpty { emptySearch }
+            }
+    }
+
+    private var emptySearch: some View {
+        let description = "No hay resultados en " + filter.title.lowercased() + ". Cambia la búsqueda, el grupo o el punto de referencia."
+        return ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass", description: Text(description))
+    }
+
+    private func distanceCaption(_ feature: CatalogFeature, meters: Double) -> String {
+        "A " + WalkingFormat.distance(meters) + (feature.kind == .stop ? " de la parada" : " del trazado")
+    }
+
+    private func row(_ feature: CatalogFeature) -> some View {
+        Button {
+            selectedID = feature.id
+            fit(feature)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
+                    .foregroundStyle(color(feature.color))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(feature.name).fontWeight(.medium)
+                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
+                    if let reference, let distance = feature.distance(to: reference) {
+                        Text(distanceCaption(feature, meters: distance))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+                if selectedID == feature.id { Image(systemName: "checkmark") }
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("catalog-\(feature.id)")
     }
 
     private var filters: some View {

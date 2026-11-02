@@ -112,6 +112,12 @@ struct ContentView: View {
     private var welcome: some View {
         GeometryReader { geometry in
             ScrollView {
+                welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
+            }
+        }
+    }
+
+    private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             Spacer()
             Image(systemName: "bus.fill")
@@ -136,9 +142,6 @@ struct ContentView: View {
             primaryButton("Elegir ubicación inicial") { stage = .origin; search = "" }
         }
         .padding(24)
-        .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
-            }
-        }
     }
 
     private var routeMap: some View {
