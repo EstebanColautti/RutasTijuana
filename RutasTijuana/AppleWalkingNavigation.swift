@@ -171,6 +171,7 @@ extension MKPolyline {
     func resume() {
         guard phase == .paused else { return }
         phase = .locating; engine = nil; route = nil; fix = nil
+        started = nil; lastMovement = now(); movementPoint = nil
         prepare()
     }
     func finish(arrived: Bool = false) {
