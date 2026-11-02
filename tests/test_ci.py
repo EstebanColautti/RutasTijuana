@@ -27,6 +27,9 @@ class CISelectionTests(unittest.TestCase):
         self.assertEqual(select([], 'push')['native'], True)
         self.assertEqual(select([], 'workflow_dispatch', 'native')['web'], False)
         self.assertEqual(select([], 'workflow_dispatch')['web'], True)
+        for path in ('admin/package.json', 'admin/src/form.test.tsx', 'shared/__tests__/catalog.ts', 'RutasTijuanaUITests/JourneyTests.swift', 'RutasTijuana.xcodeproj/xcshareddata/swiftpm/Package.resolved'):
+            with self.subTest(path=path):
+                self.assertEqual((select([path])['web'], select([path])['native']), (True, True))
 
     def test_summary(self):
         def results(web='skipped', native='success', ui='success'):

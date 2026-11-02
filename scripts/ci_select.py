@@ -11,6 +11,10 @@ def select(paths, event='pull_request', mode='full'):
         return {'web': True, 'native': True, 'reason': 'Comprobación completa'}
     web = native = False
     for path in paths:
+        parts = path.split('/')
+        filename = parts[-1]
+        if any(part.lower() in ('tests', '__tests__', 'rutastijuanauitests') for part in parts) or re.search(r'\.(test|spec)\.', filename) or filename in ('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'Package.swift', 'Package.resolved'):
+            return {'web': True, 'native': True, 'reason': 'Pruebas o dependencias'}
         if path.endswith('.md'):
             continue
         if path.startswith(('admin/', 'preview/', 'shared/')):
