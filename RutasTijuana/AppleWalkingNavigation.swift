@@ -169,7 +169,7 @@ extension MKPolyline {
         }
     }
     func start() {
-        guard phase == .preview, route != nil, request == nil else { return }
+        guard status.offersStart(phase: phase), route != nil, request == nil else { return }
         status.waitingToStart = true
         continueStart()
     }

@@ -297,6 +297,13 @@ func testWalkingPresentation() {
     check(!status.messages(hasRoute: true).contains("No se pudo conectar. Vuelve a intentarlo."), "Sin duplicar el aviso de conexión")
     status.connected = true
     check(status.offersRetry(phase: .preview), "Recuperar conexión conserva el reintento de una consulta fallida")
+    for phase: WalkingPhase in [.locating, .calculating, .preview, .navigating, .paused, .arrived, .ended] {
+        for error: WalkingCalculationError? in [nil, .network, .unavailable, .timeout] {
+            var actions = WalkingSessionStatus()
+            actions.error = error
+            check(!(actions.offersStart(phase: phase) && actions.offersRetry(phase: phase)), "Una acción principal por estado")
+        }
+    }
     status.terminal = "Llegaste"
     check(status.messages(hasRoute: true) == ["Llegaste"], "Fin de sesión")
     check(WalkingFormat.distance(1500) == "1,5 km", "Formato kilómetros")

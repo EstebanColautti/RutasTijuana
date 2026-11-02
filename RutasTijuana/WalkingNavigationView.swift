@@ -67,10 +67,10 @@ struct WalkingNavigationView: View {
                                 Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
                             }
                             if !model.message.isEmpty { Text(model.message).font(.subheadline).accessibilityIdentifier("walking-status") }
-                            if model.phase == .preview { Button("Iniciar guía") { model.start() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.status.waitingToStart || model.status.calculating) }
-                            if model.phase == .paused { Button("Reanudar") { model.resume() } }
+                            if model.status.offersStart(phase: model.phase) { Button("Iniciar guía") { model.start() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.status.waitingToStart || model.status.calculating) }
+                            if model.phase == .paused { Button("Reanudar") { model.resume() }.buttonStyle(.borderedProminent).controlSize(.large) }
                             if model.phase == .arrived || model.phase == .ended {
-                                Button("Volver al viaje") { dismiss() }
+                                Button("Volver al viaje") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
                             } else {
                                 if model.offersRetry {
                                     Button("Reintentar") { model.retry() }.buttonStyle(.borderedProminent).controlSize(.large)

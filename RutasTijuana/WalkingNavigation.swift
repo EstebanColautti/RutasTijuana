@@ -171,6 +171,7 @@ struct WalkingSessionStatus {
         if endpointGap > 25 { result.append("El camino termina a \(WalkingFormat.distance(endpointGap)) de la parada.") }
         return result
     }
+    func offersStart(phase: WalkingPhase) -> Bool { phase == .preview && error == nil }
     func offersRetry(phase: WalkingPhase) -> Bool {
         phase != .ended && phase != .arrived && phase != .paused && !waitingToStart && !calculating && error != nil
     }
