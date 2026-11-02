@@ -237,6 +237,7 @@ extension MKPolyline {
             _ = engine?.update(value, now: now()); activityUpdate(); return
         }
         if let fix, value.timestamp <= fix.timestamp { return }
+        guard value.isPlausible(after: fix) else { status.location = .imprecise; activityUpdate(); return }
         fix = value; status.location = .ready
         if movementPoint == nil || movementPoint!.distance(to: value.point) >= max(10, value.accuracy) {
             movementPoint = value.point; lastMovement = now()

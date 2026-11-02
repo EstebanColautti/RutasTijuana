@@ -24,6 +24,11 @@ struct WalkingFix {
     let timestamp: Date
     var course: Double = -1
     var speed: Double = -1
+    func isPlausible(after previous: WalkingFix?) -> Bool {
+        guard let previous else { return true }
+        let interval = timestamp.timeIntervalSince(previous.timestamp)
+        return interval > 0 && point.distance(to: previous.point) <= max(25, interval * 4 + accuracy + previous.accuracy)
+    }
     func isReliable(at now: Date) -> Bool {
         accuracy.isFinite && accuracy >= 0 && accuracy <= 50 &&
         timestamp.timeIntervalSince(now) <= 2 && now.timeIntervalSince(timestamp) < 10 &&

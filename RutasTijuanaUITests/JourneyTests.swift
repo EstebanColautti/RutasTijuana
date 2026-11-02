@@ -82,8 +82,9 @@ final class JourneyTests: XCTestCase {
         let warning = app.staticTexts["walking-status"]
         XCTAssertTrue(warning.waitForExistence(timeout: 5))
         XCTAssertTrue(warning.label.contains("El camino termina"))
-        let persisted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "El camino termina"), object: warning)
-        XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 5), .completed)
+        let persisted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "NOT (label CONTAINS %@)", "El camino termina"), object: warning)
+        persisted.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [persisted], timeout: 4), .completed)
         XCTAssertFalse(app.buttons["Reintentar"].exists)
         app.scrollViews.firstMatch.swipeDown()
         capture("Guía con texto grande")
