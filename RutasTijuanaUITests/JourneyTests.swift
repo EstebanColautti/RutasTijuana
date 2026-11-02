@@ -43,7 +43,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 10))
         capture("Guía")
         tap("Ver pasos")
-        XCTAssertTrue(app.staticTexts["Continúa hasta la parada"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Indicaciones"].waitForExistence(timeout: 5))
         tap("Cerrar")
         tap("Finalizar")
         app.buttons["Finalizar"].lastMatch.tap()

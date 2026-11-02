@@ -123,6 +123,7 @@ extension MKPolyline {
     private var lastMovement: Date
     private var movementPoint: GeoPoint?
     private var nextRequest = Date.distantPast
+    private var requestStarted: Date?
     private var failures = 0
     private var connected = true
     private let activity = NavigationActivityController()
@@ -186,6 +187,7 @@ extension MKPolyline {
     func retry() {
         guard phase != .ended && phase != .arrived else { return }
         guard let fix, fix.isReliable(at: now()) else { locations.start(); message = "Obteniendo ubicación…"; return }
+        guard now() >= nextRequest else { return }
         calculate(fix)
     }
     private func receive(_ value: WalkingFix) {
@@ -211,6 +213,7 @@ extension MKPolyline {
         let navigating = phase == .navigating
         if !navigating { phase = .calculating }
         message = navigating ? "Recalculando…" : "Calculando camino…"
+        requestStarted = now()
         nextRequest = now().addingTimeInterval(30)
         request = Task { [weak self] in
             guard let self else { return }
@@ -230,10 +233,17 @@ extension MKPolyline {
                 if !navigating { phase = .locating }
                 message = "No se pudo obtener el camino. Comprueba tu conexión y vuelve a intentarlo."
             }
-            request = nil; activityUpdate()
+            request = nil; requestStarted = nil; activityUpdate()
         }
     }
     private func tick() {
+        if request != nil, let requestStarted, now().timeIntervalSince(requestStarted) >= 30 {
+            generation = UUID(); provider.cancel(); request?.cancel(); request = nil; self.requestStarted = nil
+            nextRequest = now().addingTimeInterval(WalkingPolicy.retryDelays[min(failures, 2)]); failures += 1
+            if route == nil { phase = .locating }
+            message = "No se pudo obtener el camino. Vuelve a intentarlo."
+            activityUpdate()
+        }
         if let started, now().timeIntervalSince(started) >= WalkingPolicy.sessionTimeout { finish(); return }
         if now().timeIntervalSince(lastMovement) >= WalkingPolicy.idleTimeout {
             generation = UUID(); provider.cancel(); request?.cancel(); request = nil

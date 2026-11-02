@@ -5,6 +5,7 @@ struct WalkingNavigationView: View {
     @StateObject private var model: WalkingNavigationCoordinator
     @Environment(\.dismiss) private var dismiss
     @State private var camera: MapCameraPosition = .automatic
+    @State private var lastHeading = 0.0
     @State private var follow = true
     @StateObject private var connectivity = ConnectivityMonitor()
     @State private var showingSteps = false
@@ -84,7 +85,8 @@ struct WalkingNavigationView: View {
     }
     private func recenter() {
         guard follow, let fix = model.fix else { return }
-        let heading = fix.speed >= 0.7 && fix.course >= 0 ? fix.course : 0
+        if fix.speed >= 0.7 && fix.course >= 0 { lastHeading = fix.course }
+        let heading = lastHeading
         camera = .camera(MapCamera(centerCoordinate: fix.point.walkingCoordinate, distance: 500, heading: heading, pitch: 0))
     }
     private func openMaps() {

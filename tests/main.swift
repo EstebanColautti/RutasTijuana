@@ -255,6 +255,16 @@ func testWalkingNavigation() {
     var mismatch = WalkingProgressEngine(route: route, destination: WalkingDestination(id: "different", name: "Otra", point: point(250)))
     for n in 0...45 { _ = mismatch.update(fix(min(200, Double(n * 5)), Double(n * 3)), now: start.addingTimeInterval(Double(n * 3))) }
     assert(!mismatch.progress.arrived)
+    var noisy = WalkingProgressEngine(route: route, destination: target)
+    for n in 0...2 { _ = noisy.update(fix(0, Double(n * 4), accuracy: 30, east: 45), now: start.addingTimeInterval(Double(n * 4))) }
+    assert(!noisy.progress.offRoute)
+    var imprecise = WalkingProgressEngine(route: route, destination: target)
+    for n in 0...45 { _ = imprecise.update(fix(min(200, Double(n * 5)), Double(n * 3), accuracy: 25), now: start.addingTimeInterval(Double(n * 3))) }
+    assert(!imprecise.progress.arrived)
+    let loop = WalkingRoute(points: [point(0), point(200), point(200, 10), point(0, 10)], steps: [], duration: 300)
+    var parallel = WalkingProgressEngine(route: loop, destination: target)
+    _ = parallel.update(fix(0, 0, east: 10), now: start)
+    assert(parallel.progress.traveled < 50)
     print("Pruebas de navegación correctas")
 }
 testWalkingNavigation()
