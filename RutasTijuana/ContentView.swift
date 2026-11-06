@@ -102,6 +102,8 @@ struct ContentView: View {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button(action: back) {
                                     Label(stage == .destination && !evaluation ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
                             }
                         }
@@ -348,8 +350,11 @@ struct ContentView: View {
                 Label("Camina hasta la parada de subida", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.primary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
-                Button("Ir a la parada") { walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point) }
-                    .frame(minHeight: 44)
+                Button {
+                    walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point)
+                } label: {
+                    Text("Ir a la parada").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
                     .accessibilityIdentifier("walking-start")
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
@@ -395,8 +400,7 @@ struct ContentView: View {
                 }
             }
             ForEach(stops) { stop in
-                Button(stop.name) { selectStop(stop, isOrigin: isOrigin) }
-                    .frame(minHeight: 44).accessibilityIdentifier("stop-\(stop.id)")
+                stopButton(stop, isOrigin: isOrigin)
             }
         } else if let point {
             let nearby = route.nearbyStops(to: point)
@@ -425,10 +429,18 @@ struct ContentView: View {
             }
         } else {
             ForEach(route.stops) { stop in
-                Button(stop.name) { selectStop(stop, isOrigin: isOrigin) }.frame(minHeight: 44)
-                    .accessibilityIdentifier("stop-\(stop.id)")
+                stopButton(stop, isOrigin: isOrigin)
             }
         }
+    }
+
+    private func stopButton(_ stop: TransitStop, isOrigin: Bool) -> some View {
+        Button { selectStop(stop, isOrigin: isOrigin) } label: {
+            Text(stop.name)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("stop-\(stop.id)")
     }
 
     private var demoNotice: some View {
@@ -551,8 +563,13 @@ struct ContentView: View {
     }
 
     private var searchField: some View {
-        TextField("Buscar parada o lugar", text: $search)
-            .textFieldStyle(.roundedBorder)
+        TextField("Buscar parada o lugar", text: $search,
+                  prompt: Text("Buscar parada o lugar").foregroundStyle(.primary))
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(.background, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
+            .contentShape(Rectangle())
             .autocorrectionDisabled()
             .accessibilityIdentifier("journey-search")
     }
