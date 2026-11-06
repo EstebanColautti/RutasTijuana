@@ -30,6 +30,7 @@ export type Version = {
     bytes: number;
     created_at: string;
     created_by: string;
+    withdrawn_at?: string | null;
 };
 export type Audit = {
     id: number;

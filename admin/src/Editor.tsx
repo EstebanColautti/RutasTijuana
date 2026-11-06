@@ -105,13 +105,14 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         [versions, setVersions] = useState<Version[]>([]),
         [audit, setAudit] = useState<Audit[]>([]),
         [email, setEmail] = useState('');
+    const [withdrawal, setWithdrawal] = useState({ version: "", reason: "", replacement: "" });
     const [members,setMembers]=useState<{user_id:string;role:string}[]>([]);
   const catalogInput = useRef<HTMLInputElement>(null),
         geoInput = useRef<HTMLInputElement>(null);
+    const operation = useRef(false);
     const feature = draft?.document.features.find((f) => f.id === selection);
     async function load() {
-        setBusy(true);
-        try {
+        await run(async () => {
             const r = await service.role();
             setRole(r);
             const d = await service.draft();
@@ -120,12 +121,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
             setPreview(null);
             setAudit(await service.audit());
             if (r === 'admin') { setVersions(await service.versions()); setMembers(await service.members()); }
-            setMessage('');
-        } catch (e) {
-            setMessage((e as Error).message);
-        } finally {
-            setBusy(false);
-        }
+        });
     }
     useEffect(() => {
         void load();
@@ -140,21 +136,24 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         window.addEventListener('beforeunload', leave);
         return () => window.removeEventListener('beforeunload', leave);
     }, [dirty]);
-    function updateDocument(d: Document) {
+    function updateDocument(d: Document, importing = false) {
+        if (operation.current && !importing) return;
         setDraft((v) => (v ? { ...v, document: d } : v));
         setDirty(true);
         setPreview(null);
     }
-    function patch(p: Partial<Feature>) {
+    function patch(p: Partial<Feature>, importing = false) {
         if (draft && feature)
             updateDocument({
                 ...draft.document,
                 features: draft.document.features.map((f) =>
                     f.id === feature.id ? { ...f, ...p } : f,
                 ),
-            });
+            }, importing);
     }
     async function run(action: () => Promise<void>) {
+        if (operation.current) return;
+        operation.current = true;
         setBusy(true);
         setMessage('');
         try {
@@ -162,6 +161,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         } catch (e) {
             setMessage((e as Error).message);
         } finally {
+            operation.current = false;
             setBusy(false);
         }
     }
@@ -177,27 +177,26 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
     }
     async function importFile(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (!file) return;
-        try {
+        await run(async () => {
             if (file.size > 16 * 1024 * 1024) throw Error('El archivo supera 16 MB.');
-            updateDocument(importCatalog(await file.text()));
+            updateDocument(importCatalog(await file.text()), true);
             setSelection('');
             setMessage('Archivo incorporado al borrador.');
-        } catch (e) {
-            setMessage((e as Error).message);
-        }
-        e.target.value = '';
+        });
     }
     async function importGeometry(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (!file || !draft) return;
-        try {
+        await run(async () => {
             if (file.size > 16 * 1024 * 1024) throw Error('El archivo supera 16 MB.');
             const raw = JSON.parse(await file.text());
             if (feature) {
                 const g = raw.type === 'Feature' ? raw.geometry : raw;
                 if (!validGeometry(g)) throw Error('Geometría incorrecta.');
-                patch({ geometry: g });
+                patch({ geometry: g }, true);
             } else {
                 if (raw.type !== 'FeatureCollection' || !Array.isArray(raw.features))
                     throw Error('Selecciona un elemento o importa una colección GeoJSON.');
@@ -229,14 +228,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                     }),
                 );
                 updateDocument(
-                    parseDocument({ groups, features: [...draft.document.features, ...incoming] }),
+                    parseDocument({ groups, features: [...draft.document.features, ...incoming] }), true,
                 );
             }
             setMessage('Geometría incorporada al borrador.');
-        } catch (e) {
-            setMessage((e as Error).message);
-        }
-        e.target.value = '';
+        });
     }
     const source = feature?.source as {
         description?: string;
@@ -258,6 +254,12 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
             </header>
             <main className="workspace">
                 <nav className="actions">
+                    {dirty && draft && (
+                        <button className="secondary" disabled={busy}
+                            onClick={() => download('catalog-borrador.json', draft.document)}>
+                            Descargar borrador
+                        </button>
+                    )}
                     <button disabled={busy || !dirty} onClick={() => void run(save)}>
                         Guardar cambios
                     </button>
@@ -332,7 +334,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                         : message ||
                           (dirty ? 'Cambios sin guardar' : 'Revisión ' + (draft?.revision ?? '—'))}
                 </p>
-                <section className="editor">
+                <section className="editor" inert={busy}>
                     <aside>
                         <input
                             aria-label="Buscar elemento"
@@ -618,7 +620,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                     </article>
                 </section>
                 {draft && (
-                    <section className="card">
+                    <section className="card" inert={busy}>
                         <h2>Grupos</h2>
                         {draft.document.groups.map((g) => (
                             <label key={g.id}>
@@ -690,12 +692,12 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     <span>
                                         {new Date(v.created_at).toLocaleString()}
                                         <small>
-                                            {v.version} · {v.created_by}
+                                            {v.withdrawn_at ? "Retirada · " : ""}{v.version} · {v.created_by}
                                         </small>
                                     </span>
                                     <button
                                         className="secondary"
-                                        disabled={busy}
+                                        disabled={busy || Boolean(v.withdrawn_at)}
                                         onClick={() => {
                                             if (confirm('¿Usar esta publicación en la app?'))
                                                 void run(async () => {
@@ -709,6 +711,49 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     </button>
                                 </div>
                             ))}
+                            {versions.some((version) => !version.withdrawn_at) && (
+                                <details>
+                                    <summary>Retirar publicación</summary>
+                                    <form onSubmit={(event) => {
+                                        event.preventDefault();
+                                        if (confirm('¿Retirar esta publicación del catálogo?'))
+                                            void run(async () => {
+                                                await service.withdraw(withdrawal.version, withdrawal.reason, withdrawal.replacement || null);
+                                                setVersions(await service.versions());
+                                                setAudit(await service.audit());
+                                                setWithdrawal({ version: '', reason: '', replacement: '' });
+                                                setMessage('Publicación retirada.');
+                                            });
+                                    }}>
+                                        <fieldset disabled={busy}>
+                                            <label>
+                                                Publicación
+                                                <select required value={withdrawal.version} onChange={(event) =>
+                                                    setWithdrawal({ ...withdrawal, version: event.target.value, replacement: '' })}>
+                                                    <option value="">Selecciona una publicación</option>
+                                                    {versions.filter((version) => !version.withdrawn_at).map((version) =>
+                                                        <option key={version.version} value={version.version}>{version.version}</option>)}
+                                                </select>
+                                            </label>
+                                            <label>
+                                                Motivo interno
+                                                <input required maxLength={500} value={withdrawal.reason} onChange={(event) =>
+                                                    setWithdrawal({ ...withdrawal, reason: event.target.value })} />
+                                            </label>
+                                            <label>
+                                                Reemplazo si está activa
+                                                <select value={withdrawal.replacement} onChange={(event) =>
+                                                    setWithdrawal({ ...withdrawal, replacement: event.target.value })}>
+                                                    <option value="">Sin reemplazo</option>
+                                                    {versions.filter((version) => !version.withdrawn_at && version.version !== withdrawal.version).map((version) =>
+                                                        <option key={version.version} value={version.version}>{version.version}</option>)}
+                                                </select>
+                                            </label>
+                                            <button>Confirmar retirada</button>
+                                        </fieldset>
+                                    </form>
+                                </details>
+                            )}
                         </section>
                         <section className="card">
                             <h2>Equipo</h2>{members.map(member=><div className="history" key={member.user_id}><span>{member.user_id}<small>{member.role==='admin'?'Administrador':'Editor'}</small></span>{member.role==='editor'&&<button className="secondary" disabled={busy} onClick={()=>{if(confirm('¿Quitar el acceso de este editor?'))void run(async()=>{await service.revoke(member.user_id);setMembers(await service.members());});}}>Quitar acceso</button>}</div>)}
@@ -718,6 +763,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     e.preventDefault();
                                     void run(async () => {
                                         await service.invite(email);
+                                        setMembers(await service.members());
                                         setEmail('');
                                         setMessage('Invitación preparada.');
                                     });

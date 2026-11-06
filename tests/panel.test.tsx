@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Editor } from '../admin/src/Editor';
 import type { CatalogAPI } from '../admin/src/api';
@@ -13,7 +13,7 @@ function service(role:'admin'|'editor'):CatalogAPI {
   role:async()=>role,draft:async()=>({revision,document}),
   save:vi.fn(async(d,r)=>{if(r!==revision)throw Error('Conflicto');document=d;return ++revision;}),
   preview:vi.fn(async()=>({revision,sha256:'a'.repeat(64),payload:JSON.stringify({schemaVersion:2,version:'preview',groups:document.groups,features:document.features.filter(f=>f.included).map(f=>({name:f.name,description:f.publicDescription}))})})),
-  publish:vi.fn(async()=> 'version'),versions:async()=>[],audit:async()=>[],restore:async()=>{},backup:async()=>({document}),invite:async()=>{},members:async()=>[],revoke:async()=>{}
+  publish:vi.fn(async()=> 'version'),versions:async()=>[],audit:async()=>[],restore:async()=>{},withdraw:async()=>{},backup:async()=>({document}),invite:async()=>{},members:async()=>[],revoke:async()=>{}
  };
 }
 test('editor can save changes but has no publication controls',async()=>{
@@ -34,4 +34,21 @@ test('admin previews only selected public content and confirms publication',asyn
  await screen.findByRole('heading',{name:'Contenido de la publicación'});
  const preview=screen.getByText(/"schemaVersion"/);expect(preview.textContent).not.toContain('PRIVATE_');expect(preview.textContent).toContain('Descripción pública de ejemplo');
  expect(api.publish).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:'Publicar esta versión'}));await screen.findByText('Publicación disponible.');expect(api.publish).toHaveBeenCalledOnce();
+});
+
+test('a delayed save locks edits and keeps the draft on conflict', async () => {
+ const api = service('editor'), user = userEvent.setup();
+ let fail!: (error: Error) => void;
+ api.save = vi.fn(() => new Promise<number>((_, reject) => { fail = reject; }));
+ render(<Editor service={api} onSignOut={()=>{}}/>);
+ await user.click(await screen.findByRole('button', { name: /Lugar de ejemplo/ }));
+ const description = screen.getByLabelText('Descripción pública') as HTMLTextAreaElement;
+ await user.type(description, 'Mi edición');
+ await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+ expect(description.closest('[inert]')).not.toBeNull();
+ fireEvent.change(description, { target: { value: 'Cambio tardío' } });
+ fail(Error('Conflicto'));
+ await screen.findByText('Conflicto');
+ expect(description.value).toBe('Mi edición');
+ expect(screen.getByRole('button', { name: 'Descargar borrador' })).toBeTruthy();
 });
