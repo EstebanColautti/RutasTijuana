@@ -234,7 +234,7 @@ struct RouteCatalog: Codable, Sendable {
     }
 
     func journeyScenario(for feature: CatalogFeature) -> JourneyScenario? {
-        guard feature.kind == .route, let itinerary = feature.orderedItinerary,
+        guard readyForDistribution, feature.kind == .route, let itinerary = feature.orderedItinerary,
               itinerary.stopIDs.count >= 2,
               Set(itinerary.stopIDs).count == itinerary.stopIDs.count else { return nil }
         let byID = Dictionary(features.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -248,7 +248,8 @@ struct RouteCatalog: Codable, Sendable {
         return JourneyScenario(schemaVersion: 1, name: feature.name, coverageRadius: 2_000,
                                stops: stops, places: [], updatedAt: itinerary.updatedAt,
                                circular: itinerary.circular, direction: itinerary.direction,
-                               routeID: feature.id, schedules: schedule)
+                               routeID: feature.id, schedules: schedule,
+                               routeGeometry: feature.geometry.lines.map { $0.map(\.point) })
     }
 
     var readyForDistribution: Bool { publishable && ["verified", "published"].contains(licenseStatus) }

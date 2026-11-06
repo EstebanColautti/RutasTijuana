@@ -9,6 +9,7 @@ struct CatalogManifest: Codable, Equatable {
     let bytes: Int
     let sha256: String
     let downloadURL: URL
+    var withdrawnVersions: [String]?
 }
 struct PublishedCatalog: Codable {
     struct Information: Codable {
@@ -54,10 +55,24 @@ struct PublishedCatalog: Codable {
 }
 struct CatalogSnapshot { let version: String; let sha256: String; let data: Data }
 protocol CatalogCache {
-    func current() throws -> CatalogSnapshot?
+    func snapshots() throws -> [CatalogSnapshot]
     func replace(_ snapshot: CatalogSnapshot) throws
+    func remove(versions: Set<String>) throws
     func lastAttempt() throws -> Date?
     func recordAttempt(_ date: Date) throws
+    func lastSuccess() throws -> Date?
+    func recordSuccess(_ date: Date) throws
+}
+extension CatalogCache {
+    func current() throws -> CatalogSnapshot? { try snapshots().first }
+}
+extension CatalogSnapshot {
+    func validated(digest: (Data) -> String) throws -> RouteCatalog {
+        guard digest(data) == sha256 else { throw CatalogSyncError.integrity }
+        let decoded = try JSONDecoder().decode(PublishedCatalog.self, from: data)
+        guard decoded.version == version else { throw CatalogSyncError.integrity }
+        return try decoded.catalog()
+    }
 }
 protocol CatalogTransport { func fetch(_ url: URL, limit: Int) async throws -> Data }
 enum CatalogSyncError: Error { case format, integrity, address, response, tooLarge, storage }
@@ -71,30 +86,42 @@ struct CatalogSynchronizer {
 
     func update(from endpoint: URL, force: Bool, now: Date = Date()) async throws -> RouteCatalog? {
         try Self.checkAddress(endpoint, allowLoopbackHTTP: allowLoopbackHTTP)
-        if !force, let last = try cache.lastAttempt(), now.timeIntervalSince(last) >= 0,
-           now.timeIntervalSince(last) < 86_400 { return nil }
+        if !force {
+            if let success = try cache.lastSuccess(), (0..<86_400).contains(now.timeIntervalSince(success)) { return nil }
+            if let attempt = try cache.lastAttempt(), (0..<60).contains(now.timeIntervalSince(attempt)) { return nil }
+        }
         try cache.recordAttempt(now)
-        let bytes = try await transport.fetch(endpoint, limit: 64 * 1024)
+        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: true) else { throw CatalogSyncError.address }
+        let knownVersions = try cache.snapshots().prefix(2).map(\.version).filter { UUID(uuidString: $0) != nil }
+        if !knownVersions.isEmpty {
+            components.queryItems = (components.queryItems ?? []) + knownVersions.map { URLQueryItem(name: "cached", value: $0) }
+        }
+        guard let manifestURL = components.url else { throw CatalogSyncError.address }
+        let bytes = try await transport.fetch(manifestURL, limit: 64 * 1024)
         guard bytes.count <= 64 * 1024 else { throw CatalogSyncError.tooLarge }
         let manifest = try JSONDecoder().decode(CatalogManifest.self, from: bytes)
         guard manifest.schemaVersion == 2, !manifest.version.isEmpty, manifest.bytes > 0,
               manifest.bytes <= Self.maximumBytes, manifest.sha256.count == 64,
               manifest.sha256.allSatisfy({ $0.isHexDigit && !$0.isUppercase }) else { throw CatalogSyncError.format }
+        let withdrawn = Set(manifest.withdrawnVersions ?? []).intersection(knownVersions)
+        guard !withdrawn.contains(manifest.version) else { throw CatalogSyncError.format }
+        if !withdrawn.isEmpty { try cache.remove(versions: withdrawn) }
         guard let downloadURL = URL(string: manifest.downloadURL.absoluteString, relativeTo: endpoint)?.absoluteURL else { throw CatalogSyncError.address }
         try Self.checkAddress(downloadURL, allowLoopbackHTTP: allowLoopbackHTTP)
         guard endpoint.scheme == downloadURL.scheme, endpoint.host == downloadURL.host,
               endpoint.port == downloadURL.port else { throw CatalogSyncError.address }
-        if let current = try cache.current(), current.version == manifest.version {
-            guard current.sha256 == manifest.sha256, current.data.count == manifest.bytes,
-                  digest(current.data) == manifest.sha256 else { throw CatalogSyncError.integrity }
-            return try JSONDecoder().decode(PublishedCatalog.self, from: current.data).catalog()
+        if let current = try cache.current(), current.version == manifest.version,
+           current.sha256 == manifest.sha256, current.data.count == manifest.bytes,
+           let catalog = try? current.validated(digest: digest) {
+            try cache.recordSuccess(now)
+            return catalog
         }
         let payload = try await transport.fetch(downloadURL, limit: manifest.bytes)
-        guard payload.count == manifest.bytes, digest(payload) == manifest.sha256 else { throw CatalogSyncError.integrity }
-        let decoded = try JSONDecoder().decode(PublishedCatalog.self, from: payload)
-        guard decoded.version == manifest.version else { throw CatalogSyncError.integrity }
-        let catalog = try decoded.catalog()
-        try cache.replace(CatalogSnapshot(version: manifest.version, sha256: manifest.sha256, data: payload))
+        guard payload.count == manifest.bytes else { throw CatalogSyncError.integrity }
+        let snapshot = CatalogSnapshot(version: manifest.version, sha256: manifest.sha256, data: payload)
+        let catalog = try snapshot.validated(digest: digest)
+        try cache.replace(snapshot)
+        try cache.recordSuccess(now)
         return catalog
     }
 

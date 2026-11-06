@@ -138,17 +138,39 @@ let informationRoundTrip = try RouteCatalog.decode(JSONEncoder().encode(enriched
 check(informationRoundTrip.features[0].information == enrichedFeature.information, "Información completa de ida y vuelta")
 check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descripción y campos")
 
+let geometryA = GeoPoint(latitude: 0, longitude: 0)
+let geometryB = GeoPoint(latitude: 0.001, longitude: 0.001)
+let geometryC = GeoPoint(latitude: 0.001, longitude: 0.002)
+let geometryStops = [geometryA, geometryB, geometryC].enumerated().map {
+    TransitStop(id: String($0.offset), name: String($0.offset), point: $0.element)
+}
+var geometryScenario = JourneyScenario(schemaVersion: 1, name: "Synthetic", coverageRadius: 100,
+    stops: geometryStops, places: [], circular: false, routeGeometry: [[geometryA, geometryB, geometryC]])
+check(geometryScenario.mappedSection(for: geometryStops) == [geometryA, geometryB, geometryC], "Published section preserves the bend")
+check(geometryScenario.mappedSection(for: Array(geometryStops.reversed())) == nil, "Reverse travel does not fabricate a segment")
+geometryScenario.routeGeometry = [[geometryA, geometryB], [geometryC, geometryB]]
+check(geometryScenario.mappedSection(for: geometryStops) == nil, "Disconnected parts do not create a link")
+geometryScenario.circular = true
+geometryScenario.routeGeometry = [[geometryA, geometryB, geometryC, geometryA]]
+check(geometryScenario.mappedSection(for: [geometryStops[2], geometryStops[0], geometryStops[1]]) == [geometryC, geometryA, geometryB], "Circular section crosses its origin")
+
 final class MemoryCatalogCache: CatalogCache {
     var snapshot: CatalogSnapshot?
     var attempted: Date?
+    var succeeded: Date?
     var failWrites = false
-    func current() throws -> CatalogSnapshot? { snapshot }
+    func snapshots() throws -> [CatalogSnapshot] { snapshot.map { [$0] } ?? [] }
     func replace(_ snapshot: CatalogSnapshot) throws {
         if failWrites { throw CatalogSyncError.storage }
         self.snapshot = snapshot
     }
+    func remove(versions: Set<String>) throws {
+        if let snapshot, versions.contains(snapshot.version) { self.snapshot = nil }
+    }
     func lastAttempt() throws -> Date? { attempted }
     func recordAttempt(_ date: Date) throws { attempted = date }
+    func lastSuccess() throws -> Date? { succeeded }
+    func recordSuccess(_ date: Date) throws { succeeded = date }
 }
 final class FixtureCatalogTransport: CatalogTransport {
     var values: [URL: Data] = [:]
@@ -183,6 +205,9 @@ _ = try await synchronizer.update(from:syncEndpoint,force:false,now:Date(timeInt
 check(syncTransport.calls == 2, "Intervalo de actualización")
 _ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1200))
 check(syncTransport.calls == 3, "La misma versión no se vuelve a descargar")
+syncCache.snapshot = .init(version: "one", sha256: fixtureDigest(publishedData), data: Data("broken".utf8))
+_ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1300))
+check(syncTransport.calls == 5 && syncCache.snapshot?.data == publishedData, "Same version repairs a corrupt cache")
 let hostileManifest = CatalogManifest(version:"two",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:URL(string:"https://other.test/catalog")!)
 syncTransport.values[syncEndpoint] = try JSONEncoder().encode(hostileManifest)
 do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError("Debe rechazar otro origen") } catch CatalogSyncError.address { }

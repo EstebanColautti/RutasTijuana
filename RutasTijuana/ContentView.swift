@@ -35,8 +35,17 @@ struct ContentView: View {
     private var evaluation: Bool { scenario.fixedOriginID != nil }
     private var isDemo: Bool { scenario.routeID == nil }
 
-    init(scenario: JourneyScenario = .sample) {
+    init(scenario: JourneyScenario = .sample, recent: RecentJourney? = nil) {
         _scenario = State(initialValue: scenario)
+        if let recent, let start = scenario.stops.first(where: { $0.id == recent.originID }),
+           let end = scenario.stops.first(where: { $0.id == recent.destinationID }) {
+            _origin = State(initialValue: start.point)
+            _destination = State(initialValue: end.point)
+            _originID = State(initialValue: start.id)
+            _destinationID = State(initialValue: end.id)
+            _validation = State(initialValue: .accepted)
+            _stage = State(initialValue: .journey)
+        }
     }
     @State private var camera = MapCameraPosition.region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
@@ -62,6 +71,8 @@ struct ContentView: View {
         guard let originID, let destinationID else { return [] }
         return route.journey(from: originID, to: destinationID) ?? []
     }
+
+    private var mappedTrip: [GeoPoint]? { scenario.mappedSection(for: trip) }
 
     var body: some View {
         NavigationStack {
@@ -180,10 +191,19 @@ struct ContentView: View {
     private var routeMap: some View {
         MapReader { proxy in
             Map(position: $camera, selection: $selectedStop) {
-                MapPolyline(coordinates: route.mapStops.map { $0.point.coordinate })
-                    .stroke(.gray.opacity(0.5), lineWidth: 4)
+                if let geometry = scenario.routeGeometry, !geometry.isEmpty {
+                    ForEach(Array(geometry.enumerated()), id: \.offset) { part in
+                        MapPolyline(coordinates: part.element.map { $0.coordinate })
+                            .stroke(.gray.opacity(0.6), lineWidth: 4)
+                    }
+                } else if isDemo {
+                    MapPolyline(coordinates: route.mapStops.map { $0.point.coordinate })
+                        .stroke(.gray.opacity(0.5), lineWidth: 4)
+                }
                 if stage == .journey && validation == .accepted {
-                    MapPolyline(coordinates: trip.map { $0.point.coordinate }).stroke(.blue, lineWidth: 7)
+                    if let section = isDemo ? trip.map(\.point) : mappedTrip {
+                        MapPolyline(coordinates: section.map { $0.coordinate }).stroke(.blue, lineWidth: 7)
+                    }
                     if let step = simulationStep, trip.indices.contains(step) {
                         MapPolyline(coordinates: trip.prefix(step + 1).map { $0.point.coordinate })
                             .stroke(.secondary, style: StrokeStyle(lineWidth: 7, dash: [7, 5]))
@@ -202,7 +222,7 @@ struct ContentView: View {
                 }
             }
             .mapStyle(.standard(elevation: .flat))
-            .accessibilityLabel("Mapa esquemático del recorrido")
+            .accessibilityLabel(isDemo ? "Mapa esquemático del recorrido" : "Mapa del recorrido y sus paradas")
             .accessibilityHint("Las paradas y el resumen del trayecto también están en la lista.")
             .onTapGesture { position in
                 guard !invalidDestination, stage != .journey, let point = proxy.convert(position, from: .local) else { return }
@@ -283,7 +303,7 @@ struct ContentView: View {
                     invalidDestination = true
                 } else {
                     validation = result
-                    if result == .accepted && !evaluation { saveRecent() }
+                    if result == .accepted && !isDemo { saveRecent() }
                     selectedStop = nil
                     stage = .journey
                     camera = .automatic
@@ -299,7 +319,11 @@ struct ContentView: View {
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($resultFocused)
             Text(route.name).font(.title3.bold())
-            Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.secondary)
+            if isDemo {
+                Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.secondary)
+            } else if validation == .accepted && mappedTrip == nil {
+                Text("El mapa muestra el recorrido completo y sus paradas.").font(.footnote).foregroundStyle(.secondary)
+            }
             if let start = route.stops.first(where: { $0.id == originID }) { Text("Origen: \(start.name)") }
             if let end = route.stops.first(where: { $0.id == destinationID }) { Text("Destino: \(end.name)") }
             Text("Sentido: \(scenario.direction ?? "No disponible")")
@@ -472,37 +496,49 @@ struct ContentView: View {
     }
 
     private var recents: [RecentJourney] {
-        (try? JSONDecoder().decode([RecentJourney].self, from: recentData)) ?? []
+        ((try? JSONDecoder().decode([RecentJourney].self, from: recentData)) ?? []).filter { $0.routeID != nil }
     }
 
     private func saveRecent() {
-        guard let originID, let destinationID else { return }
-        let entry = RecentJourney(routeID: scenario.routeID, originID: originID, destinationID: destinationID)
-        recentData = (try? JSONEncoder().encode(Array(([entry] + recents.filter { $0 != entry }).prefix(12)))) ?? Data()
+        guard let routeID = scenario.routeID, let originID, let destinationID else { return }
+        let entry = RecentJourney(routeID: routeID, originID: originID, destinationID: destinationID)
+        storeRecents(Array(([entry] + recents.filter { $0 != entry }).prefix(12)))
+    }
+
+    private func storeRecents(_ entries: [RecentJourney]) {
+        recentData = (try? JSONEncoder().encode(entries)) ?? Data()
     }
 
     private var recentView: some View {
         List {
-            let rows = recents.compactMap { entry -> String? in
-                let stops: [TransitStop]
-                if let routeID = entry.routeID, routeID != scenario.routeID {
-                    guard let catalog = catalogRepository.catalog,
-                          let feature = catalog.features.first(where: { $0.id == routeID }),
-                          let match = catalog.journeyScenario(for: feature) else { return nil }
-                    stops = match.stops
+            if recents.isEmpty { Text("No hay consultas recientes") }
+            ForEach(Array(recents.enumerated()), id: \.offset) { row in
+                if let catalog = catalogRepository.catalog,
+                   let feature = catalog.features.first(where: { $0.id == row.element.routeID }),
+                   let match = catalog.journeyScenario(for: feature),
+                   let trip = match.route.journey(from: row.element.originID, to: row.element.destinationID),
+                   let start = trip.first, let end = trip.last {
+                    NavigationLink {
+                        ContentView(scenario: match, recent: row.element)
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(match.name)
+                            Text("\(start.name) → \(end.name)").foregroundStyle(.secondary)
+                        }
+                    }
                 } else {
-                    stops = entry.routeID == scenario.routeID ? route.stops : JourneyScenario.sample.stops
+                    VStack(alignment: .leading) {
+                        Text("Consulta no disponible")
+                        Button("Quitar consulta", role: .destructive) {
+                            storeRecents(recents.filter { $0 != row.element })
+                        }
+                    }
                 }
-                guard let start = stops.first(where: { $0.id == entry.originID }),
-                      let end = stops.first(where: { $0.id == entry.destinationID }) else { return nil }
-                return "\(start.name) → \(end.name)"
             }
-            if rows.isEmpty { Text("No hay consultas recientes") }
-            ForEach(Array(rows.enumerated()), id: \.offset) { row in Text(row.element) }
             if !recents.isEmpty {
-                Button("Borrar recientes", role: .destructive) { recentData = Data() }
+                Button("Borrar recientes", role: .destructive) { storeRecents([]) }
             }
-        }.navigationTitle("Consultas recientes")
+        }.navigationTitle("Consultas recientes").onAppear { storeRecents(recents) }
     }
 
     private var searchField: some View {

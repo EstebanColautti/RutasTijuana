@@ -43,17 +43,25 @@ final class CatalogRepository: ObservableObject {
                 try cache?.replace(.init(version: sample.version, sha256: Self.digest(data), data: data))
             }
             #endif
-            if let saved = try cache?.current() {
-                guard Self.digest(saved.data) == saved.sha256 else { throw CatalogSyncError.integrity }
-                catalog = try JSONDecoder().decode(PublishedCatalog.self, from: saved.data).catalog()
+            let snapshots = try cache?.snapshots() ?? []
+            for snapshot in snapshots {
+                if let saved = try? snapshot.validated(digest: Self.digest) {
+                    catalog = saved
+                    break
+                }
             }
-        } catch { message = "No se pudo abrir el catálogo guardado." }
+            if catalog == nil && !snapshots.isEmpty { message = "No se pudo abrir el catálogo guardado." }
+            if !fixture, let newest = snapshots.first, catalog?.version != newest.version {
+                await update(force: true)
+                return
+            }
+        } catch { message = "No se pudo abrir el catÃ¡logo guardado." }
         if !fixture { await update(force: false) }
     }
     func update(force: Bool) async {
         guard !isUpdating, !fixture else { return }
         guard let endpoint, let cache else {
-            if force { message = "El servicio de catálogo no está configurado." }
+            if force { message = "El servicio de catÃ¡logo no estÃ¡ configurado." }
             return
         }
         isUpdating = true; defer { isUpdating = false }
@@ -66,7 +74,11 @@ final class CatalogRepository: ObservableObject {
             let sync = CatalogSynchronizer(transport: NetworkCatalogTransport(), cache: cache,
                 digest: Self.digest, allowLoopbackHTTP: localHTTP)
             if let updated = try await sync.update(from: endpoint, force: force) { catalog = updated; message = nil }
-        } catch { message = catalog == nil ? "No se pudo descargar el catálogo. Puedes volver a intentarlo." : "No se pudo actualizar. Se conserva el catálogo guardado." }
+        } catch {
+            if let snapshots = try? cache.snapshots(), !snapshots.contains(where: { $0.version == catalog?.version }) {
+                catalog = snapshots.lazy.compactMap { try? $0.validated(digest: Self.digest) }.first
+            }
+            message = catalog == nil ? "No se pudo descargar el catÃ¡logo. Puedes volver a intentarlo." : "No se pudo actualizar. Se conserva el catÃ¡logo guardado." }
     }
     nonisolated private static func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 }
