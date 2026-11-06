@@ -12,6 +12,7 @@ struct ContentView: View {
     private enum Stage { case home, origin, destination, journey }
     @State private var scenario: JourneyScenario
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var catalogRepository = CatalogRepository.shared
     private var route: TransitRoute { scenario.route }
     @State private var search = ""
@@ -72,6 +73,10 @@ struct ContentView: View {
         return route.journey(from: originID, to: destinationID) ?? []
     }
 
+    private var actionTint: Color {
+        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57)
+    }
+
     private var mappedTrip: [GeoPoint]? { scenario.mappedSection(for: trip) }
 
     var body: some View {
@@ -102,6 +107,7 @@ struct ContentView: View {
                         }
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
+                .tint(actionTint)
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -118,6 +124,7 @@ struct ContentView: View {
             .alert("No se pudo abrir", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
                 Button("Aceptar", role: .cancel) { importError = nil }
             } message: { Text(importError ?? "") }
+            .tint(actionTint)
             .navigationTitle(stage == .home ? "" : title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -156,8 +163,10 @@ struct ContentView: View {
             demoNotice
             #if DEBUG
             if isDemo {
-                Button("Abrir datos de evaluación") { importing = true }
-                    .buttonStyle(.bordered)
+                Button { importing = true } label: {
+                    Text("Abrir datos de evaluación").frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
                 Button("Evaluar consulta") {
                     scenario = .evaluation
                     if ProcessInfo.processInfo.arguments.contains("--evaluation-no-date") {
@@ -578,7 +587,9 @@ struct ContentView: View {
 
     private func primaryButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) { Text(title).frame(maxWidth: .infinity, minHeight: 44) }
-            .buttonStyle(.borderedProminent).controlSize(.large).disabled(disabled)
+            .buttonStyle(.borderedProminent)
+            .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+            .controlSize(.large).disabled(disabled)
             .accessibilityIdentifier(title)
     }
 

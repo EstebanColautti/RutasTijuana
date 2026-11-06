@@ -54,10 +54,21 @@ struct WalkingNavigationView: View {
                         if phase == .preview { follow = false; camera = .automatic }
                         if phase == .navigating { follow = true; recenter() }
                     }
-                    .overlay(alignment: .bottomTrailing) {
-                        Button("Recentrar", systemImage: "location.fill") { follow = true; recenter() }
-                            .frame(minHeight: 44).padding(.horizontal).background(.regularMaterial, in: Capsule()).padding()
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            follow = true
+                            recenter()
+                        } label: {
+                            Label("Recentrar", systemImage: "location.fill")
+                                .labelStyle(.iconOnly)
+                                .font(.body)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .background(.regularMaterial, in: Circle())
+                        }
+                        .accessibilityLabel("Recentrar")
+                        .padding()
                     }
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : 0.5))
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(model.destination.name).font(.headline)
@@ -84,7 +95,8 @@ struct WalkingNavigationView: View {
                                 Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
                             }
                         }.padding().frame(maxWidth: .infinity, alignment: .leading)
-                    }.frame(maxHeight: textSize.isAccessibilitySize ? geometry.size.height * 0.68 : min(360, geometry.size.height * 0.5))
+                    }
+                    .frame(maxHeight: .infinity)
                 }
             }
             .navigationTitle("Ir a la parada").navigationBarTitleDisplayMode(.inline)

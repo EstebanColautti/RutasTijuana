@@ -31,9 +31,11 @@ final class JourneyTests: XCTestCase {
 
     func testEvaluationFlowAndSimulation() {
         tap("Evaluar consulta")
+        capture("Inicio de evaluación")
         tap("Planear mi ruta")
         XCTAssertTrue(app.navigationBars["¿Dónde bajas?"].waitForExistence(timeout: 5))
         tap("stop-demo-4")
+        capture("Selección de evaluación")
         tap("Elegir destino")
         XCTAssertTrue(app.staticTexts["Ruta aceptada"].waitForExistence(timeout: 5))
         capture("Resultado de evaluación")
@@ -44,6 +46,7 @@ final class JourneyTests: XCTestCase {
         tap("Avanzar una parada")
         tap("Finalizar trayecto")
         XCTAssertTrue(app.staticTexts["Viaje finalizado"].exists)
+        capture("Viaje finalizado")
         tap("Nueva consulta")
         tap("Planear mi ruta")
         XCTAssertFalse(app.buttons["Elegir destino"].isEnabled)
