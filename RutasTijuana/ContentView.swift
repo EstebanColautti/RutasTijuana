@@ -152,7 +152,7 @@ struct ContentView: View {
                 .accessibilityHidden(true)
             Text("Rutas Tijuana").font(.largeTitle.bold())
             Text("Consulta cómo llegar de un punto A a un punto B en transporte público.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             demoNotice
             #if DEBUG
             if isDemo {
@@ -182,7 +182,7 @@ struct ContentView: View {
                 Text("Consultas recientes").frame(minHeight: 44)
             }
             Text("Puedes elegir tu ubicación manualmente. No se guarda.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(.primary)
             primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
         }
         .padding(24)
@@ -243,7 +243,7 @@ struct ContentView: View {
                 demoNotice
                 if !connectivity.isConnected {
                     Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.primary)
                 }
                 if let step = simulationStep { simulationPanel(step) }
                 else if stage == .origin { originPanel }
@@ -259,7 +259,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(origin == nil ? "Tu ubicación" : "Paradas cercanas").font(.title3.bold())
             Text("Toca el mapa o elige una parada. Las distancias son en línea recta.")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.primary)
             #if os(iOS)
             Button { location.request() } label: {
                 Label(location.isRequesting ? "Obteniendo ubicación…" : "Usar mi ubicación", systemImage: "location")
@@ -267,7 +267,7 @@ struct ContentView: View {
             }
             .disabled(location.isRequesting)
             if let message = location.message {
-                Text(message).font(.footnote).foregroundStyle(.secondary)
+                Text(message).font(.footnote).foregroundStyle(.primary)
             }
             #endif
             searchField
@@ -290,7 +290,7 @@ struct ContentView: View {
             }
             Text("Dónde te bajas").font(.title3.bold())
             Text("Toca el mapa o elige una parada para marcar el destino.")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.primary)
             searchField
             categoryFilters
             choices(point: destination, selectedID: destinationID, isOrigin: false)
@@ -320,14 +320,14 @@ struct ContentView: View {
                 .accessibilityFocused($resultFocused)
             Text(route.name).font(.title3.bold())
             if isDemo {
-                Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.secondary)
+                Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.primary)
             } else if validation == .accepted && mappedTrip == nil {
-                Text("El mapa muestra el recorrido completo y sus paradas.").font(.footnote).foregroundStyle(.secondary)
+                Text("El mapa muestra el recorrido completo y sus paradas.").font(.footnote).foregroundStyle(.primary)
             }
             if let start = route.stops.first(where: { $0.id == originID }) { Text("Origen: \(start.name)") }
             if let end = route.stops.first(where: { $0.id == destinationID }) { Text("Destino: \(end.name)") }
             Text("Sentido: \(scenario.direction ?? "No disponible")")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline).foregroundStyle(.primary)
             if let date = scenario.updateDate { Text("Actualización: \(date)") }
             else { Text("Fecha no disponible") }
             if let schedules = scenario.schedules, !schedules.isEmpty {
@@ -337,14 +337,14 @@ struct ContentView: View {
             }
             if validation == .accepted, let first = trip.first, let last = trip.last {
                 Label("Camina hasta la parada de subida", systemImage: "figure.walk")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.primary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point) }
                     .frame(minHeight: 44)
                     .accessibilityIdentifier("walking-start")
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.primary)
                 DisclosureGroup("Paradas principales (\(trip.count))") {
                     ForEach(trip) { stop in Text(stop.name) }
                 }
@@ -362,7 +362,7 @@ struct ContentView: View {
             }
             if isDemo {
                 Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.primary)
             }
             primaryButton("Nueva consulta", action: reset)
         }
@@ -374,13 +374,13 @@ struct ContentView: View {
         if categoryFilter != nil || !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let stops = categoryFilter == nil ? scenario.matchingStops(search) : []
             let places = scenario.matchingPlaces(search).filter { categoryFilter == nil || $0.category == categoryFilter }
-            if stops.isEmpty && places.isEmpty { Text("Sin coincidencias").foregroundStyle(.secondary) }
+            if stops.isEmpty && places.isEmpty { Text("Sin coincidencias").foregroundStyle(.primary) }
             ForEach(places) { place in
                 if let stop = route.stops.first(where: { $0.id == place.stopID }) {
                     Button { selectStop(stop, isOrigin: isOrigin) } label: {
                         VStack(alignment: .leading) {
                             Label(place.name, systemImage: place.symbol)
-                            Text("Referencia de evaluación · \(stop.name)").font(.caption).foregroundStyle(.secondary)
+                            Text("Referencia de evaluación · \(stop.name)").font(.caption).foregroundStyle(.primary)
                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.horizontal, 10)
                     }.buttonStyle(.plain).accessibilityIdentifier("place-\(place.id)")
                 }
@@ -393,7 +393,7 @@ struct ContentView: View {
             let nearby = route.nearbyStops(to: point)
             if nearby.isEmpty {
                 Text("No hay paradas de evaluación dentro del área de consulta. Elige otra en la lista.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.primary)
             }
             ForEach(nearby) { option in
                 Button {
@@ -402,7 +402,7 @@ struct ContentView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(option.stop.name).fontWeight(.medium)
-                            Text(distanceText(option.distance)).font(.caption).foregroundStyle(.secondary)
+                            Text(distanceText(option.distance)).font(.caption).foregroundStyle(.primary)
                         }
                         Spacer()
                         if selectedID == option.id { Image(systemName: "checkmark").foregroundStyle(.blue) }
@@ -426,7 +426,7 @@ struct ContentView: View {
         Group {
             if isDemo {
                 Label("Datos de evaluación", systemImage: "info.circle")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.primary)
             }
         }
     }
@@ -523,7 +523,7 @@ struct ContentView: View {
                     } label: {
                         VStack(alignment: .leading) {
                             Text(match.name)
-                            Text("\(start.name) → \(end.name)").foregroundStyle(.secondary)
+                            Text("\(start.name) → \(end.name)").foregroundStyle(.primary)
                         }
                     }
                 } else {
@@ -591,7 +591,7 @@ struct ContentView: View {
         Label {
             VStack(alignment: .leading) {
                 Text(title).fontWeight(.medium)
-                if let point { Text(distanceText(point.distance(to: stop.point))).font(.caption).foregroundStyle(.secondary) }
+                if let point { Text(distanceText(point.distance(to: stop.point))).font(.caption).foregroundStyle(.primary) }
             }
         } icon: { Image(systemName: symbol).foregroundStyle(.blue) }
     }
