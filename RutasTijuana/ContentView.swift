@@ -10,7 +10,9 @@ private extension GeoPoint {
 
 struct ContentView: View {
     private enum Stage { case home, origin, destination, journey }
-    @State private var scenario = JourneyScenario.sample
+    @State private var scenario: JourneyScenario
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var catalogRepository = CatalogRepository.shared
     private var route: TransitRoute { scenario.route }
     @State private var search = ""
     @State private var walkingDestination: WalkingDestination?
@@ -25,6 +27,17 @@ struct ContentView: View {
     @State private var destinationID: String?
     @State private var selectedStop: String?
     @State private var invalidDestination = false
+    @State private var validation: RouteValidation = .invalid
+    @State private var simulationStep: Int?
+    @State private var categoryFilter: String?
+    @AppStorage("journey-recent") private var recentData = Data()
+    @AccessibilityFocusState private var resultFocused: Bool
+    private var evaluation: Bool { scenario.fixedOriginID != nil }
+    private var isDemo: Bool { scenario.routeID == nil }
+
+    init(scenario: JourneyScenario = .sample) {
+        _scenario = State(initialValue: scenario)
+    }
     @State private var camera = MapCameraPosition.region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
         span: MKCoordinateSpan(latitudeDelta: 0.024, longitudeDelta: 0.024)
@@ -34,10 +47,13 @@ struct ContentView: View {
     #endif
 
     private var title: String {
+        if let step = simulationStep {
+            return step >= trip.count ? "Viaje finalizado" : "Trayecto en curso"
+        }
         switch stage {
         case .home: return ""
         case .origin: return "Desde dónde sales"
-        case .destination: return "A dónde vas"
+        case .destination: return evaluation ? "¿Dónde bajas?" : "A dónde vas"
         case .journey: return "Tu trayecto"
         }
     }
@@ -69,7 +85,7 @@ struct ContentView: View {
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button(action: back) {
-                                    Label(stage == .destination ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
+                                    Label(stage == .destination && !evaluation ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
                                 }
                             }
                         }
@@ -79,7 +95,7 @@ struct ContentView: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
                 .presentationDragIndicator(.visible)
-                .alert("Destino no válido", isPresented: $invalidDestination) {
+                .alert(evaluation ? "Dato inválido" : "Destino no válido", isPresented: $invalidDestination) {
                     Button("Cambiar destino", role: .cancel) { }
                 } message: {
                     Text("Elige una parada de bajada distinta de la parada de origen.")
@@ -106,7 +122,6 @@ struct ContentView: View {
             }
             #endif
         }
-        .frame(minWidth: 320, minHeight: 560)
     }
 
     private var welcome: some View {
@@ -123,23 +138,41 @@ struct ContentView: View {
             Image(systemName: "bus.fill")
                 .font(.system(size: 44)).foregroundStyle(.blue).padding(20)
                 .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+                .accessibilityHidden(true)
             Text("Rutas Tijuana").font(.largeTitle.bold())
             Text("Consulta cómo llegar de un punto A a un punto B en transporte público.")
                 .foregroundStyle(.secondary)
             demoNotice
             #if DEBUG
-            Button("Abrir datos de evaluación") { importing = true }
-                .buttonStyle(.bordered)
+            if isDemo {
+                Button("Abrir datos de evaluación") { importing = true }
+                    .buttonStyle(.bordered)
+                Button("Evaluar consulta") {
+                    scenario = .evaluation
+                    if ProcessInfo.processInfo.arguments.contains("--evaluation-no-date") {
+                        scenario.updatedAt = nil
+                    }
+                    reset()
+                }.buttonStyle(.bordered).frame(minHeight: 44)
+            }
             #endif
             Spacer()
-            NavigationLink { CatalogView() } label: {
-                Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 32)
+            if let id = scenario.routeID {
+                Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
+                Text(scenario.name).font(.headline).accessibilityIdentifier(id)
+            } else {
+                NavigationLink { CatalogView() } label: {
+                    Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered).controlSize(.large)
+                .accessibilityIdentifier("Explorar recorridos")
             }
-            .buttonStyle(.bordered).controlSize(.large)
-            .accessibilityIdentifier("Explorar recorridos")
+            NavigationLink { recentView } label: {
+                Text("Consultas recientes").frame(minHeight: 44)
+            }
             Text("Puedes elegir tu ubicación manualmente. No se guarda.")
                 .font(.footnote).foregroundStyle(.secondary)
-            primaryButton("Elegir ubicación inicial") { stage = .origin; search = "" }
+            primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
         }
         .padding(24)
     }
@@ -147,10 +180,15 @@ struct ContentView: View {
     private var routeMap: some View {
         MapReader { proxy in
             Map(position: $camera, selection: $selectedStop) {
-                MapPolyline(coordinates: (route.stops + [route.stops[0]]).map { $0.point.coordinate })
+                MapPolyline(coordinates: route.mapStops.map { $0.point.coordinate })
                     .stroke(.gray.opacity(0.5), lineWidth: 4)
-                if stage == .journey {
+                if stage == .journey && validation == .accepted {
                     MapPolyline(coordinates: trip.map { $0.point.coordinate }).stroke(.blue, lineWidth: 7)
+                    if let step = simulationStep, trip.indices.contains(step) {
+                        MapPolyline(coordinates: trip.prefix(step + 1).map { $0.point.coordinate })
+                            .stroke(.secondary, style: StrokeStyle(lineWidth: 7, dash: [7, 5]))
+                        Marker("Parada actual simulada", systemImage: "bus.fill", coordinate: trip[step].point.coordinate)
+                    }
                 }
                 ForEach(route.stops) { stop in
                     Marker(stop.name, systemImage: "bus", coordinate: stop.point.coordinate)
@@ -164,13 +202,17 @@ struct ContentView: View {
                 }
             }
             .mapStyle(.standard(elevation: .flat))
+            .accessibilityLabel("Mapa esquemático del recorrido")
+            .accessibilityHint("Las paradas y el resumen del trayecto también están en la lista.")
             .onTapGesture { position in
                 guard !invalidDestination, stage != .journey, let point = proxy.convert(position, from: .local) else { return }
                 select(GeoPoint(latitude: point.latitude, longitude: point.longitude))
             }
             .overlay(alignment: .topLeading) {
-                Text("Recorrido de evaluación").font(.caption.weight(.medium)).padding(8)
-                    .background(.regularMaterial, in: Capsule()).padding(12).allowsHitTesting(false)
+                if isDemo {
+                    Text("Recorrido de evaluación").font(.caption.weight(.medium)).padding(8)
+                        .background(.regularMaterial, in: Capsule()).padding(12).allowsHitTesting(false)
+                }
             }
         }
     }
@@ -183,7 +225,8 @@ struct ContentView: View {
                     Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if stage == .origin { originPanel }
+                if let step = simulationStep { simulationPanel(step) }
+                else if stage == .origin { originPanel }
                 else if stage == .destination { destinationPanel }
                 else { journeyPanel }
             }
@@ -200,6 +243,7 @@ struct ContentView: View {
             #if os(iOS)
             Button { location.request() } label: {
                 Label(location.isRequesting ? "Obteniendo ubicación…" : "Usar mi ubicación", systemImage: "location")
+                    .frame(minHeight: 44)
             }
             .disabled(location.isRequesting)
             if let message = location.message {
@@ -207,19 +251,12 @@ struct ContentView: View {
             }
             #endif
             searchField
-            if search.isEmpty && !scenario.places.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(Array(Set(scenario.places.map(\.category))).sorted(), id: \.self) { category in
-                            Button(categoryTitle(category)) { search = category }.buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
+            categoryFilters
             choices(point: origin, selectedID: originID, isOrigin: true)
             primaryButton("Continuar", disabled: originID == nil) {
                 cancelLocation()
                 search = ""
+                categoryFilter = nil
                 stage = .destination
                 selectedStop = nil
             }
@@ -235,24 +272,18 @@ struct ContentView: View {
             Text("Toca el mapa o elige una parada para marcar el destino.")
                 .font(.subheadline).foregroundStyle(.secondary)
             searchField
-            if search.isEmpty && !scenario.places.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(Array(Set(scenario.places.map(\.category))).sorted(), id: \.self) { category in
-                            Button(categoryTitle(category)) { search = category }.buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
+            categoryFilters
             choices(point: destination, selectedID: destinationID, isOrigin: false)
-            primaryButton("Ver trayecto", disabled: destinationID == nil) {
-                if originID == destinationID {
+            primaryButton(evaluation ? "Elegir destino" : "Ver trayecto", disabled: destinationID == nil) {
+                let result = evaluarConsulta()
+                if result == .invalid {
                     destination = nil
                     destinationID = nil
                     selectedStop = nil
                     invalidDestination = true
-                }
-                else {
+                } else {
+                    validation = result
+                    if result == .accepted && !evaluation { saveRecent() }
                     selectedStop = nil
                     stage = .journey
                     camera = .automatic
@@ -263,34 +294,62 @@ struct ContentView: View {
 
     private var journeyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Label(validation.title, systemImage: validation == .accepted ? "checkmark.circle" : "exclamationmark.circle")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($resultFocused)
             Text(route.name).font(.title3.bold())
-            Text("Simulación en sentido único · \(max(0, trip.count - 1)) tramos")
+            Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.secondary)
+            if let start = route.stops.first(where: { $0.id == originID }) { Text("Origen: \(start.name)") }
+            if let end = route.stops.first(where: { $0.id == destinationID }) { Text("Destino: \(end.name)") }
+            Text("Sentido: \(scenario.direction ?? "No disponible")")
                 .font(.subheadline).foregroundStyle(.secondary)
-            Text("Horario y frecuencia: dato no disponible").font(.footnote)
-            if let first = trip.first, let last = trip.last {
+            if let date = scenario.updateDate { Text("Actualización: \(date)") }
+            else { Text("Fecha no disponible") }
+            if let schedules = scenario.schedules, !schedules.isEmpty {
+                ForEach(Array(schedules.enumerated()), id: \.offset) { item in Text(item.element).font(.footnote) }
+            } else {
+                Text("Horario no disponible").font(.footnote)
+            }
+            if validation == .accepted, let first = trip.first, let last = trip.last {
                 Label("Camina hasta la parada de subida", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point) }
+                    .frame(minHeight: 44)
                     .accessibilityIdentifier("walking-start")
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.secondary)
+                DisclosureGroup("Paradas principales (\(trip.count))") {
+                    ForEach(trip) { stop in Text(stop.name) }
+                }
+                #if DEBUG
+                if evaluation {
+                    primaryButton("Trayecto simulado") { simulationStep = 0 }
+                }
+                #endif
+            } else {
+                Text(trip.isEmpty ? "No hay un recorrido en ese sentido. Elige otra parada." : "La ruta de evaluación requiere dos paradas y una fecha de actualización.")
+                primaryButton("Cambiar destino", action: back)
             }
             if let stop = route.stops.first(where: { $0.id == selectedStop }) {
                 Label(stop.name, systemImage: "bus").font(.subheadline)
             }
-            Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
-                .font(.footnote).foregroundStyle(.secondary)
+            if isDemo {
+                Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             primaryButton("Nueva consulta", action: reset)
         }
+        .onAppear { resultFocused = true }
     }
 
     @ViewBuilder
     private func choices(point: GeoPoint?, selectedID: String?, isOrigin: Bool) -> some View {
-        if !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let stops = scenario.matchingStops(search)
-            let places = scenario.matchingPlaces(search)
+        if categoryFilter != nil || !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let stops = categoryFilter == nil ? scenario.matchingStops(search) : []
+            let places = scenario.matchingPlaces(search).filter { categoryFilter == nil || $0.category == categoryFilter }
             if stops.isEmpty && places.isEmpty { Text("Sin coincidencias").foregroundStyle(.secondary) }
             ForEach(places) { place in
                 if let stop = route.stops.first(where: { $0.id == place.stopID }) {
@@ -298,7 +357,7 @@ struct ContentView: View {
                         VStack(alignment: .leading) {
                             Label(place.name, systemImage: place.symbol)
                             Text("Referencia de evaluación · \(stop.name)").font(.caption).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.horizontal, 10)
                     }.buttonStyle(.plain).accessibilityIdentifier("place-\(place.id)")
                 }
             }
@@ -333,15 +392,19 @@ struct ContentView: View {
             }
         } else {
             ForEach(route.stops) { stop in
-                Button(stop.name) { select(stop.point) }.frame(minHeight: 44)
+                Button(stop.name) { selectStop(stop, isOrigin: isOrigin) }.frame(minHeight: 44)
                     .accessibilityIdentifier("stop-\(stop.id)")
             }
         }
     }
 
     private var demoNotice: some View {
-        Label("Datos de evaluación", systemImage: "info.circle")
-            .font(.caption).foregroundStyle(.secondary)
+        Group {
+            if isDemo {
+                Label("Datos de evaluación", systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func categoryTitle(_ category: String) -> String {
@@ -353,6 +416,93 @@ struct ContentView: View {
         case "sport": return "Deportes"
         default: return "Transporte"
         }
+    }
+
+    @ViewBuilder private var categoryFilters: some View {
+        let categories = Array(Set(scenario.places.map(\.category))).sorted()
+        if !categories.isEmpty {
+            Picker("Categoría", selection: $categoryFilter) {
+                Text("Todas").tag(nil as String?)
+                ForEach(categories, id: \.self) { category in
+                    Text(categoryTitle(category)).tag(Optional(category))
+                }
+            }.frame(minHeight: 44)
+        }
+    }
+
+    private func begin() {
+        search = ""
+        categoryFilter = nil
+        if let stop = route.stops.first(where: { $0.id == scenario.fixedOriginID }) {
+            selectStop(stop, isOrigin: true)
+            stage = .destination
+        } else {
+            stage = .origin
+        }
+    }
+
+    private func evaluarConsulta() -> RouteValidation {
+        guard let originID, let destinationID, originID != destinationID else { return .invalid }
+        if evaluation {
+            return validarRuta(origen: originID, destino: destinationID, paradasPrincipales: trip.count,
+                              fechaActualizacion: scenario.updateDate)
+        }
+        return trip.isEmpty ? .rejected : .accepted
+    }
+
+    private func simulationPanel(_ step: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            let finished = step >= trip.count
+            Label(finished ? "Viaje finalizado" : "Trayecto en curso", systemImage: finished ? "checkmark.circle" : "bus")
+                .font(.title3.bold())
+            Text("Progreso simulado · Tiempo de llegada no disponible")
+            if !finished {
+                Text(trip[step].name)
+                ProgressView(value: Double(step + 1), total: Double(trip.count))
+                    .accessibilityLabel("Progreso del trayecto simulado")
+                Text("Faltan \(trip.count - step - 1) paradas")
+                if step + 1 < trip.count {
+                    primaryButton("Avanzar una parada") { simulationStep = step + 1 }
+                }
+                primaryButton("Finalizar trayecto") { simulationStep = trip.count }
+            }
+            primaryButton("Volver al resultado") { simulationStep = nil }
+            if finished { primaryButton("Nueva consulta", action: reset) }
+        }
+    }
+
+    private var recents: [RecentJourney] {
+        (try? JSONDecoder().decode([RecentJourney].self, from: recentData)) ?? []
+    }
+
+    private func saveRecent() {
+        guard let originID, let destinationID else { return }
+        let entry = RecentJourney(routeID: scenario.routeID, originID: originID, destinationID: destinationID)
+        recentData = (try? JSONEncoder().encode(Array(([entry] + recents.filter { $0 != entry }).prefix(12)))) ?? Data()
+    }
+
+    private var recentView: some View {
+        List {
+            let rows = recents.compactMap { entry -> String? in
+                let stops: [TransitStop]
+                if let routeID = entry.routeID, routeID != scenario.routeID {
+                    guard let catalog = catalogRepository.catalog,
+                          let feature = catalog.features.first(where: { $0.id == routeID }),
+                          let match = catalog.journeyScenario(for: feature) else { return nil }
+                    stops = match.stops
+                } else {
+                    stops = entry.routeID == scenario.routeID ? route.stops : JourneyScenario.sample.stops
+                }
+                guard let start = stops.first(where: { $0.id == entry.originID }),
+                      let end = stops.first(where: { $0.id == entry.destinationID }) else { return nil }
+                return "\(start.name) → \(end.name)"
+            }
+            if rows.isEmpty { Text("No hay consultas recientes") }
+            ForEach(Array(rows.enumerated()), id: \.offset) { row in Text(row.element) }
+            if !recents.isEmpty {
+                Button("Borrar recientes", role: .destructive) { recentData = Data() }
+            }
+        }.navigationTitle("Consultas recientes")
     }
 
     private var searchField: some View {
@@ -367,6 +517,7 @@ struct ContentView: View {
         if isOrigin { origin = stop.point; originID = stop.id; destination = nil; destinationID = nil }
         else { destination = stop.point; destinationID = stop.id }
         search = ""
+        categoryFilter = nil
         camera = .region(MKCoordinateRegion(center: stop.point.coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.024, longitudeDelta: 0.024)))
     }
@@ -390,7 +541,7 @@ struct ContentView: View {
     }
 
     private func primaryButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text(title).frame(maxWidth: .infinity, minHeight: 32) }
+        Button(action: action) { Text(title).frame(maxWidth: .infinity, minHeight: 44) }
             .buttonStyle(.borderedProminent).controlSize(.large).disabled(disabled)
             .accessibilityIdentifier(title)
     }
@@ -420,12 +571,14 @@ struct ContentView: View {
 
     private func back() {
         cancelLocation()
+        if simulationStep != nil { simulationStep = nil; return }
         search = ""
+        categoryFilter = nil
         selectedStop = nil
         switch stage {
         case .home: break
         case .origin: stage = .home
-        case .destination: stage = .origin
+        case .destination: if evaluation { reset() } else { stage = .origin }
         case .journey: stage = .destination
         }
     }
@@ -433,6 +586,9 @@ struct ContentView: View {
     private func reset() {
         cancelLocation()
         search = ""
+        categoryFilter = nil
+        simulationStep = nil
+        validation = .invalid
         origin = nil
         destination = nil
         originID = nil

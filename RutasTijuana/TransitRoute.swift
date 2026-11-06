@@ -29,6 +29,12 @@ struct TransitRoute {
     let name: String
     let stops: [TransitStop]
     let coverageRadius: Double
+    var isCircular = true
+
+    var mapStops: [TransitStop] {
+        guard isCircular, let first = stops.first else { return stops }
+        return stops + [first]
+    }
 
     func nearbyStops(to point: GeoPoint) -> [NearbyStop] {
         let distances: [NearbyStop] = stops.map { stop in
@@ -46,6 +52,10 @@ struct TransitRoute {
         guard origin != destination,
               let start = stops.firstIndex(where: { $0.id == origin }),
               let end = stops.firstIndex(where: { $0.id == destination }) else { return nil }
+        if !isCircular {
+            guard start < end else { return nil }
+            return Array(stops[start...end])
+        }
         let count = (end - start + stops.count) % stops.count
         return (0...count).map { stops[(start + $0) % stops.count] }
     }

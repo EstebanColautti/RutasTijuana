@@ -29,6 +29,51 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["Continuar"].isEnabled)
     }
 
+    func testEvaluationFlowAndSimulation() {
+        tap("Evaluar consulta")
+        tap("Planear mi ruta")
+        XCTAssertTrue(app.navigationBars["¿Dónde bajas?"].waitForExistence(timeout: 5))
+        tap("stop-demo-4")
+        tap("Elegir destino")
+        XCTAssertTrue(app.staticTexts["Ruta aceptada"].waitForExistence(timeout: 5))
+        capture("Resultado de evaluación")
+        tap("Regresar")
+        XCTAssertTrue(app.buttons["Elegir destino"].isEnabled)
+        tap("Elegir destino")
+        tap("Trayecto simulado")
+        tap("Avanzar una parada")
+        tap("Finalizar trayecto")
+        XCTAssertTrue(app.staticTexts["Viaje finalizado"].exists)
+        tap("Nueva consulta")
+        tap("Planear mi ruta")
+        XCTAssertFalse(app.buttons["Elegir destino"].isEnabled)
+    }
+
+    func testConsultationAccessibilityAudit() throws {
+        try app.performAccessibilityAudit()
+        tap("Elegir ubicación inicial")
+        try app.performAccessibilityAudit()
+        tap("stop-demo-1")
+        tap("Continuar")
+        try app.performAccessibilityAudit()
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        try app.performAccessibilityAudit()
+    }
+
+    func testEvaluationRejectsMissingDate() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--evaluation-no-date"]
+        app.launch()
+        tap("Evaluar consulta")
+        tap("Planear mi ruta")
+        tap("stop-demo-4")
+        tap("Elegir destino")
+        XCTAssertTrue(app.staticTexts["Ruta rechazada"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Fecha no disponible"].exists)
+        XCTAssertFalse(app.buttons["walking-start"].exists)
+    }
+
     func testWalkingGuide() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--walking-fixture"]

@@ -94,6 +94,14 @@ if let path = ProcessInfo.processInfo.environment["CATALOG_TEST_FILE"] {
 print("Pruebas de catálogo correctas")
 
 let scenario = JourneyScenario.sample
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: 2, fechaActualizacion: "21/10/2026") == .accepted, "Evaluación P1")
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: 2, fechaActualizacion: " ") == .rejected, "Evaluación P2")
+check(validarRuta(origen: "A", destino: " A ", paradasPrincipales: 2, fechaActualizacion: nil) == .invalid, "Evaluación P3")
+check(validarRuta(origen: "", destino: "B", paradasPrincipales: 2, fechaActualizacion: nil) == .invalid, "Origen vacío")
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: -1, fechaActualizacion: nil) == .invalid, "Cantidad negativa")
+let linear = TransitRoute(name: route.name, stops: route.stops, coverageRadius: route.coverageRadius, isCircular: false)
+check(linear.journey(from: "demo-1", to: "demo-3")?.map(\.id) == ["demo-1", "demo-2", "demo-3"], "Trayecto lineal")
+check(linear.journey(from: "demo-3", to: "demo-1") == nil, "Trayecto lineal no cierra el circuito")
 let scenarioData = try JSONEncoder().encode(scenario)
 let decodedScenario = try JourneyScenario.decode(scenarioData, allowEvaluation: true)
 check(decodedScenario.stops.count == 6, "Escenario de evaluación")

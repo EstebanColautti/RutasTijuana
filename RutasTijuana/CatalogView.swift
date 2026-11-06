@@ -15,6 +15,12 @@ struct CatalogView: View {
     @State private var importing = false
     @State private var loading = false
     @State private var showingInformation = false
+    @State private var showingServices = false
+    private struct PlannedRoute: Identifiable {
+        let id: String
+        let scenario: JourneyScenario
+    }
+    @State private var plannedRoute: PlannedRoute?
     @State private var errorMessage: String?
     @State private var camera: MapCameraPosition = .automatic
 
@@ -56,9 +62,18 @@ struct CatalogView: View {
         .sheet(isPresented: $showingInformation) {
             if let selection { informationSheet(selection) }
         }
+        .sheet(isPresented: $showingServices) {
+            NavigationStack { services }
+        }
+        .fullScreenCover(item: $plannedRoute) { route in
+            ContentView(scenario: route.scenario)
+        }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle("Recorridos")
         .toolbar {
+            ToolbarItem {
+                Button("Servicios", systemImage: "info.circle") { showingServices = true }
+            }
             ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
                 privateCatalog = nil
                 Task { await repository.update(force: true) }
@@ -81,11 +96,36 @@ struct CatalogView: View {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { privateCatalog = .sample }
             if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { privateCatalog = .informationSample }
+            if ProcessInfo.processInfo.arguments.contains("--catalog-services-sample") {
+                let sample = RouteCatalog.informationSample
+                privateCatalog = RouteCatalog(schemaVersion: sample.schemaVersion, version: sample.version,
+                    publishable: true, licenseStatus: "published", groups: sample.groups, features: sample.features,
+                    serviceInformation: .init(notices: ["Aviso de ejemplo · Cambio de horario"], contact: nil))
+            }
             #endif
         }
         .onChange(of: query) { _, _ in selectedID = nil }
         .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
         .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+    }
+
+    private var services: some View {
+        List {
+            Section("Avisos") {
+                let notices = catalog?.serviceNotices.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? []
+                if notices.isEmpty { Text("No hay avisos disponibles") }
+                ForEach(Array(notices.enumerated()), id: \.offset) { item in Text(item.element) }
+            }
+            Section("Atención") {
+                if let contact = catalog?.serviceContact {
+                    Link("Abrir contacto oficial", destination: contact).frame(minHeight: 44)
+                } else {
+                    Text("Contacto no disponible")
+                }
+            }
+        }
+        .navigationTitle("Servicios")
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
     }
 
     private var featureList: some View {
@@ -208,7 +248,12 @@ struct CatalogView: View {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                if feature.information == nil {
+                if let catalog, catalog.readyForDistribution, let scenario = catalog.journeyScenario(for: feature) {
+                    Button("Planear este recorrido") {
+                        plannedRoute = PlannedRoute(id: feature.id, scenario: scenario)
+                    }.frame(minHeight: 44)
+                }
+                if feature.information?.fields.contains(where: { $0.category == "schedule" && !$0.inferred && !$0.value.isEmpty }) != true {
                     Text("Horario y frecuencia: dato no disponible").font(.caption)
                 }
                 Text("Distancia al trazado en línea recta.")

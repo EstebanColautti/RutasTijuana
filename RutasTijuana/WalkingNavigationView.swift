@@ -4,6 +4,8 @@ import MapKit
 struct WalkingNavigationView: View {
     @StateObject private var model: WalkingNavigationCoordinator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var camera: MapCameraPosition = .automatic
     @State private var lastHeading = 0.0
     @State private var follow = true
@@ -44,6 +46,8 @@ struct WalkingNavigationView: View {
                             }
                         }
                     }
+                    .accessibilityLabel("Mapa de la guía a pie")
+                    .accessibilityHint("Consulta la indicación actual y la lista de pasos debajo del mapa.")
                     .onChange(of: camera.positionedByUser) { _, value in if value { follow = false } }
                     .onChange(of: model.fix?.timestamp) { _, _ in recenter() }
                     .onChange(of: model.phase) { _, phase in
@@ -80,8 +84,7 @@ struct WalkingNavigationView: View {
                                 Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
                             }
                         }.padding().frame(maxWidth: .infinity, alignment: .leading)
-                    }.frame(maxHeight: min(360, geometry.size.height * 0.5))
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility5)
+                    }.frame(maxHeight: textSize.isAccessibilitySize ? geometry.size.height * 0.68 : min(360, geometry.size.height * 0.5))
                 }
             }
             .navigationTitle("Ir a la parada").navigationBarTitleDisplayMode(.inline)
@@ -125,7 +128,7 @@ struct WalkingNavigationView: View {
     private func recenter() {
         guard follow, let fix = model.fix else { return }
         if fix.speed >= 0.7 && fix.course >= 0 { lastHeading = fix.course }
-        let heading = lastHeading
+        let heading = reduceMotion ? 0 : lastHeading
         camera = .camera(MapCamera(centerCoordinate: fix.point.walkingCoordinate, distance: 500, heading: heading, pitch: 0))
     }
     private func openMaps() {

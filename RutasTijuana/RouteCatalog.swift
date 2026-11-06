@@ -115,6 +115,12 @@ struct CatalogInformation: Codable, Equatable, Sendable {
 }
 
 struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
+    struct Itinerary: Codable, Equatable, Sendable {
+        let stopIDs: [String]
+        let circular: Bool
+        let direction: String?
+        let updatedAt: String?
+    }
     enum Kind: String, Codable, Sendable { case route, area, reference, stop }
     let id: String
     let name: String
@@ -124,6 +130,26 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     let verified: Bool
     let geometry: CatalogGeometry
     var information: CatalogInformation? = nil
+    var itinerary: Itinerary?
+
+    func publishedValues(for category: String) -> [String] {
+        information?.fields.compactMap { field in
+            guard field.category == category, !field.inferred else { return nil }
+            let value = field.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        } ?? []
+    }
+
+    var orderedItinerary: Itinerary? {
+        if let itinerary { return itinerary }
+        let order = publishedValues(for: "stop-order")
+        let shape = publishedValues(for: "route-shape")
+        guard order.count == 1, shape.count == 1, ["linear", "circular"].contains(shape[0]),
+              let ids = try? JSONDecoder().decode([String].self, from: Data(order[0].utf8)) else { return nil }
+        return Itinerary(stopIDs: ids, circular: shape[0] == "circular",
+                         direction: publishedValues(for: "direction").first,
+                         updatedAt: publishedValues(for: "updated-at").first)
+    }
 
     func distance(to point: GeoPoint) -> Double? {
         guard point.latitude.isFinite, point.longitude.isFinite,
@@ -179,12 +205,51 @@ enum CatalogFilter: String, CaseIterable, Identifiable {
 }
 
 struct RouteCatalog: Codable, Sendable {
+    struct ServiceInformation: Codable, Sendable {
+        let notices: [String]?
+        let contact: URL?
+    }
     let schemaVersion: Int
     let version: String
     let publishable: Bool
     let licenseStatus: String
     let groups: [CatalogGroup]
     let features: [CatalogFeature]
+    var serviceInformation: ServiceInformation?
+
+    var serviceNotices: [String] {
+        guard readyForDistribution else { return [] }
+        return serviceInformation?.notices
+            ?? features.filter { $0.kind == .reference }.flatMap { $0.publishedValues(for: "notice") }
+    }
+
+    var serviceContact: URL? {
+        guard readyForDistribution else { return nil }
+        let links = features.filter { $0.kind == .reference }.flatMap { $0.publishedValues(for: "contact") }
+            .compactMap { URL(string: $0) }
+        let configured = serviceInformation?.contact.map { [$0] } ?? []
+        return (configured + links).first {
+            $0.scheme?.lowercased() == "https" && $0.host != nil && $0.user == nil && $0.password == nil
+        }
+    }
+
+    func journeyScenario(for feature: CatalogFeature) -> JourneyScenario? {
+        guard feature.kind == .route, let itinerary = feature.orderedItinerary,
+              itinerary.stopIDs.count >= 2,
+              Set(itinerary.stopIDs).count == itinerary.stopIDs.count else { return nil }
+        let byID = Dictionary(features.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let stops = itinerary.stopIDs.compactMap { id -> TransitStop? in
+            guard let stop = byID[id], stop.kind == .stop,
+                  case .point(let location) = stop.geometry else { return nil }
+            return TransitStop(id: id, name: stop.name, point: location.point)
+        }
+        guard stops.count == itinerary.stopIDs.count else { return nil }
+        let schedule = feature.publishedValues(for: "schedule")
+        return JourneyScenario(schemaVersion: 1, name: feature.name, coverageRadius: 2_000,
+                               stops: stops, places: [], updatedAt: itinerary.updatedAt,
+                               circular: itinerary.circular, direction: itinerary.direction,
+                               routeID: feature.id, schedules: schedule)
+    }
 
     var readyForDistribution: Bool { publishable && ["verified", "published"].contains(licenseStatus) }
 

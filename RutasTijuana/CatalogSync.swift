@@ -24,11 +24,13 @@ struct PublishedCatalog: Codable {
         let color: String
         let geometry: CatalogGeometry
         let information: Information
+        var itinerary: CatalogFeature.Itinerary?
     }
     let schemaVersion: Int
     let version: String
     let groups: [CatalogGroup]
     let features: [Feature]
+    var serviceInformation: RouteCatalog.ServiceInformation?
 
     func catalog() throws -> RouteCatalog {
         guard schemaVersion == 2, !version.isEmpty else { throw CatalogSyncError.format }
@@ -37,9 +39,10 @@ struct PublishedCatalog: Codable {
                 color: feature.color, verified: false, geometry: feature.geometry,
                 information: CatalogInformation(description: feature.information.description,
                     fields: feature.information.fields.map { .init(category: $0.category, label: $0.label,
-                        value: $0.value, evidence: "", inferred: false) }))
+                        value: $0.value, evidence: "", inferred: false) }), itinerary: feature.itinerary)
         }
-        let catalog = RouteCatalog(schemaVersion: 1, version: version, publishable: true, licenseStatus: "published", groups: groups, features: converted)
+        let catalog = RouteCatalog(schemaVersion: 1, version: version, publishable: true, licenseStatus: "published",
+                                   groups: groups, features: converted, serviceInformation: serviceInformation)
         _ = try RouteCatalog.decode(JSONEncoder().encode(catalog), allowPrivate: true)
         guard converted.allSatisfy({ feature in
             if feature.kind != .stop { return true }
