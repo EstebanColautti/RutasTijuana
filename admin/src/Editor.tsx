@@ -83,6 +83,69 @@ export function GeometryPreview({ feature }: { feature?: Feature }) {
         </figure>
     );
 }
+function ItineraryEditor({ feature, stops, onChange }: {
+    feature: Feature;
+    stops: Feature[];
+    onChange: (fields: Feature['publicFields']) => void;
+}) {
+    const fields = feature.publicFields;
+    const shape = fields.find((field) => field.category === 'route-shape')?.value ?? '';
+    let order: string[] = [];
+    try {
+        const value: unknown = JSON.parse(fields.find((field) => field.category === 'stop-order')?.value ?? '[]');
+        if (Array.isArray(value)) order = value.filter((id): id is string => typeof id === 'string');
+    } catch {
+        order = [];
+    }
+    const available = stops.filter((stop) => stop.included && stop.kind === 'stop' && stop.geometry.type === 'Point');
+    function update(nextShape: string, nextOrder: string[]) {
+        const next = fields.filter((field) => !['route-shape', 'stop-order'].includes(field.category));
+        if (nextShape) {
+            next.push({ category: 'route-shape', label: 'Tipo de recorrido', value: nextShape });
+            next.push({ category: 'stop-order', label: 'Orden de paradas', value: JSON.stringify(nextOrder) });
+        }
+        onChange(next);
+    }
+    return (
+        <fieldset>
+            <legend>Itinerario</legend>
+            <label>Tipo de recorrido
+                <select value={shape} onChange={(event) => update(event.target.value, order)}>
+                    <option value="">Solo consulta</option>
+                    <option value="linear">Lineal</option>
+                    <option value="circular">Circular</option>
+                </select>
+            </label>
+            {shape && (
+                <>
+                    {(order.length < 2 || new Set(order).size !== order.length || order.some((id) => !available.some((stop) => stop.id === id))) &&
+                        <p role="status">Elige al menos dos paradas distintas incluidas en el catálogo.</p>}
+                    <ol>
+                        {order.map((id, index) => (
+                            <li key={index}>
+                                <label>Parada {index + 1}
+                                    <select value={id} onChange={(event) => update(shape, order.map((value, position) => position === index ? event.target.value : value))}>
+                                        {!available.some((stop) => stop.id === id) && <option value={id}>Parada no disponible</option>}
+                                        {available.filter((stop) => stop.id === id || !order.includes(stop.id)).map((stop) =>
+                                            <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+                                    </select>
+                                </label>
+                                <button type="button" className="secondary" onClick={() => update(shape, order.filter((_, position) => position !== index))}>Quitar parada {index + 1}</button>
+                            </li>
+                        ))}
+                    </ol>
+                    <label>Añadir parada
+                        <select value="" onChange={(event) => update(shape, [...order, event.target.value])}>
+                            <option value="" disabled>Selecciona una parada</option>
+                            {available.filter((stop) => !order.includes(stop.id)).map((stop) =>
+                                <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+                        </select>
+                    </label>
+                </>
+            )}
+        </fieldset>
+    );
+}
 function download(name: string, data: unknown) {
     const url = URL.createObjectURL(
         new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
@@ -456,7 +519,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     />
                                 </label>
                                 <h3>Información pública</h3>
-                                {feature.publicFields.map((v, i) => (
+                                {feature.kind === 'route' && draft && (
+                                    <ItineraryEditor feature={feature} stops={draft.document.features}
+                                        onChange={(publicFields) => patch({ publicFields })} />
+                                )}
+                                {feature.publicFields.map((v, i) => ['stop-order', 'route-shape'].includes(v.category) ? null : (
                                     <div className="field-row" key={i}>
                                         <select
                                             aria-label="Categoría"
@@ -477,8 +544,6 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                                 fare: 'Tarifa',
                                                 places: 'Lugares',
                                                 direction: 'Sentido',
-                                                'stop-order': 'Orden de paradas (JSON)',
-                                                'route-shape': 'Tipo de recorrido (linear o circular)',
                                                 'updated-at': 'Fecha de actualización',
                                                 notice: 'Aviso',
                                                 note: 'Nota',
