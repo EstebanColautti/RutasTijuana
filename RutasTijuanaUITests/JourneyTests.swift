@@ -53,15 +53,27 @@ final class JourneyTests: XCTestCase {
     }
 
     func testConsultationAccessibilityAudit() throws {
-        try app.performAccessibilityAudit()
+        continueAfterFailure = true
+        try audit("Inicio")
         tap("Elegir ubicación inicial")
-        try app.performAccessibilityAudit()
+        try audit("Origen")
         tap("stop-demo-1")
         tap("Continuar")
-        try app.performAccessibilityAudit()
+        try audit("Destino")
         tap("stop-demo-4")
         tap("Ver trayecto")
-        try app.performAccessibilityAudit()
+        try audit("Resultado")
+    }
+
+    private func audit(_ screen: String) throws {
+        try app.performAccessibilityAudit { issue in
+            if let element = issue.element {
+                print("[\(screen)] \(issue.auditType): \(element.label), \(element.identifier), \(element.frame)")
+            } else {
+                print("[\(screen)] \(issue.auditType): \(issue.compactDescription)")
+            }
+            return false
+        }
     }
 
     func testEvaluationRejectsMissingDate() {
