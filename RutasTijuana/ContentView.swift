@@ -110,6 +110,7 @@ struct ContentView: View {
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .tint(actionTint)
+                .presentationBackground(.background)
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -359,8 +360,12 @@ struct ContentView: View {
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.primary)
-                DisclosureGroup("Paradas principales (\(trip.count))") {
+                DisclosureGroup {
                     ForEach(trip) { stop in Text(stop.name) }
+                } label: {
+                    Text("Paradas principales (\(trip.count))")
+                        .foregroundStyle(.primary)
+                        .frame(minHeight: 44)
                 }
                 #if DEBUG
                 if evaluation {
@@ -437,7 +442,9 @@ struct ContentView: View {
     private func stopButton(_ stop: TransitStop, isOrigin: Bool) -> some View {
         Button { selectStop(stop, isOrigin: isOrigin) } label: {
             Text(stop.name)
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(.background)
                 .contentShape(Rectangle())
         }
         .accessibilityIdentifier("stop-\(stop.id)")
@@ -563,8 +570,10 @@ struct ContentView: View {
     }
 
     private var searchField: some View {
-        TextField("Buscar parada o lugar", text: $search,
-                  prompt: Text("Buscar parada o lugar").foregroundStyle(.primary))
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Buscar parada o lugar").font(.subheadline)
+            TextField("Buscar parada o lugar", text: $search, prompt: Text(""))
+            .accessibilityLabel("Buscar parada o lugar")
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
             .background(.background, in: RoundedRectangle(cornerRadius: 8))
@@ -572,6 +581,7 @@ struct ContentView: View {
             .contentShape(Rectangle())
             .autocorrectionDisabled()
             .accessibilityIdentifier("journey-search")
+        }
     }
 
     private func selectStop(_ stop: TransitStop, isOrigin: Bool) {
