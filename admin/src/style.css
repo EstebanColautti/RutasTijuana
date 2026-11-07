@@ -315,3 +315,8 @@ summary {
         padding: 18px;
     }
 }
+
+:where(button, input, select, textarea, a, summary):focus-visible {
+    outline: 3px solid #164b85;
+    outline-offset: 3px;
+}

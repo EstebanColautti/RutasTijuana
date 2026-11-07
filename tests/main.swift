@@ -298,6 +298,11 @@ func testWalkingNavigation() {
     var parallel = WalkingProgressEngine(route: loop, destination: target)
     _ = parallel.update(fix(0, 0, east: 10), now: start)
     assert(parallel.progress.traveled < 50)
+    var resumed = WalkingProgressEngine(route: route, destination: target)
+    _ = resumed.update(fix(0, 0), now: start)
+    _ = resumed.update(fix(160, 80), now: start.addingTimeInterval(80))
+    check(resumed.progress.traveled > 150, "Recovery after a long GPS pause advances along the path")
+    check(!resumed.progress.offRoute, "A pause on the path does not create a deviation")
     print("Pruebas de navegación correctas")
 }
 testWalkingNavigation()

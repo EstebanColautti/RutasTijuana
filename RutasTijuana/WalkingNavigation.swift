@@ -83,14 +83,14 @@ struct WalkingProgressEngine {
             guard dt > 0 else { return nil }
             guard fix.point.distance(to: previous.point) <= max(25, dt * 4 + fix.accuracy + previous.accuracy) else { return nil }
         }
-        let projection = project(fix.point)
+        let maxAdvance = previous.map { max(15, fix.timestamp.timeIntervalSince($0.timestamp) * 4 + fix.accuracy) } ?? 50
+        let projection = project(fix.point, advance: maxAdvance)
         let corridor = max(35, 2 * fix.accuracy)
         if projection.distance > corridor {
             if offSince == nil { offSince = now }
             offCount += 1
         } else {
             offSince = nil; offCount = 0
-            let maxAdvance = previous.map { max(15, fix.timestamp.timeIntervalSince($0.timestamp) * 4 + fix.accuracy) } ?? 50
             if projection.along <= progress.traveled + maxAdvance {
                 progress.traveled = max(progress.traveled, projection.along)
             }
@@ -113,7 +113,7 @@ struct WalkingProgressEngine {
         return progress
     }
 
-    private func project(_ point: GeoPoint) -> (distance: Double, along: Double) {
+    private func project(_ point: GeoPoint, advance: Double) -> (distance: Double, along: Double) {
         let scale = cos(point.latitude * .pi / 180)
         var cumulative = 0.0
         var candidates: [(distance: Double, along: Double)] = []
@@ -128,8 +128,13 @@ struct WalkingProgressEngine {
             candidates.append((hypot(px-t*x, py-t*y), cumulative + t*length))
             cumulative += length
         }
-        let local = candidates.filter { $0.along >= progress.traveled - 30 && $0.along <= progress.traveled + 80 }
-        return (local.min(by: { $0.distance < $1.distance }) ?? candidates.min(by: { $0.distance < $1.distance })) ?? (.infinity, 0)
+        let local = candidates.filter { $0.along >= progress.traveled - 30 && $0.along <= progress.traveled + max(80, advance) }
+        guard let nearest = candidates.min(by: { $0.distance < $1.distance }) else { return (.infinity, progress.traveled) }
+        guard let continuous = local.min(by: { $0.distance < $1.distance }),
+              continuous.distance <= max(35, nearest.distance + 10) else {
+            return (nearest.distance, progress.traveled)
+        }
+        return (nearest.distance, continuous.along)
     }
 }
 
