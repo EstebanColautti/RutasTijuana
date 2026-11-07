@@ -133,7 +133,11 @@ struct WalkingNavigationView: View {
                         }
                         .padding(.vertical, 8)
                         .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
-                        .accessibilityElement(children: .combine)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(step.instruction)
+                        .accessibilityValue(model.phase == .navigating
+                            ? (index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
+                            : "")
                     }
                         .navigationTitle("Indicaciones")
                         .toolbar { Button("Cerrar") { showingSteps = false } }
