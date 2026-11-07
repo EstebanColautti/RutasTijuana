@@ -5,7 +5,7 @@
 	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
 	<dict>
 		<key>WalkingNavigation</key>
-		<string>La ubicación precisa permite guiarte a pie hasta la parada.</string>
+		<string>La ubicación precisa permite guiarte a pie y seguir tu avance hasta la parada de bajada.</string>
 	</dict>
 	<key>NSSupportsLiveActivities</key>
 	<true/>

@@ -64,6 +64,10 @@ extension MKPolyline {
         manager.distanceFilter = 5
         manager.activityType = .fitness
     }
+    func transportMode() {
+        manager.activityType = .otherNavigation
+        manager.distanceFilter = 10
+    }
     func start() {
         active = true
         if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }

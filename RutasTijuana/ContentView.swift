@@ -190,6 +190,13 @@ struct ContentView: View {
                 .buttonStyle(.bordered).controlSize(.large)
                 .accessibilityIdentifier("Explorar recorridos")
             }
+            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                NavigationLink {
+                    TripPlannerView(catalog: catalog)
+                } label: {
+                    Text("Planear viaje").frame(minHeight: 44)
+                }
+            }
             NavigationLink { recentView } label: {
                 Text("Consultas recientes").frame(minHeight: 44)
             }

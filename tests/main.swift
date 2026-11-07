@@ -392,3 +392,49 @@ check(civilScenario.updateDate == "06/11/2026", "Published date is localized")
 civilScenario.routeID = nil
 civilScenario.updatedAt = "example"
 check(civilScenario.updateDate == "example", "Evaluation preserves its presence rule")
+
+
+@MainActor
+final class SyntheticTripWalkingProvider: TripWalkingProvider {
+    var calls = 0
+    func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
+        calls += 1
+        guard from.distance(to: to) < 30 else { return nil }
+        return WalkingRoute(points: [from, to], steps: [], duration: 0)
+    }
+}
+
+@MainActor
+func testTripPlanning() async throws {
+    let stops = (0..<3).map { TransitStop(id: "trip-\($0)", name: "Stop \($0)",
+        point: GeoPoint(latitude: 32 + Double($0) * 0.01, longitude: -117)) }
+    let network = TripNetwork(version: "synthetic", services: [
+        TripService(id: "one", name: "One", direction: nil, stops: Array(stops[0...1]), circular: false),
+        TripService(id: "two", name: "Two", direction: nil, stops: Array(stops[1...2]), circular: false),
+    ])
+    let provider = SyntheticTripWalkingProvider()
+    let planner = TripPlanner(network: network, provider: provider,
+                              preferences: .init(walkingMeters: 800, transfers: 0, requestsPerBatch: 1))
+    var result = try await planner.search(from: stops[0].point, to: stops[2].point)
+    var batches = 1
+    while case .paused = result {
+        batches += 1
+        check(batches < 30, "Walking cache makes each resumed batch advance")
+        result = try await planner.search(from: stops[0].point, to: stops[2].point)
+    }
+    guard case .found(let trip) = result else { fatalError("A transfer must connect the two services") }
+    check(trip.transfers == 1 && trip.exceedsPreferences, "Transfer preferences are soft")
+    check(trip.catalogVersion == "synthetic", "Trip captures its catalog version")
+    result = try await planner.search(from: stops[2].point, to: stops[0].point)
+    batches = 0
+    while case .paused = result {
+        batches += 1
+        check(batches < 30, "Reverse search completes its batches")
+        result = try await planner.search(from: stops[2].point, to: stops[0].point)
+    }
+    guard case .unavailable = result else {
+        fatalError("A linear service must not run in reverse")
+    }
+    print("Pruebas de planificación correctas")
+}
+try await testTripPlanning()
