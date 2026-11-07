@@ -130,7 +130,10 @@ struct WalkingNavigationView: View {
                             }
                         } icon: {
                             Image(systemName: index < model.progress.stepIndex ? "checkmark.circle" : index == model.progress.stepIndex ? "location.circle.fill" : "circle")
-                        }.fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
+                        }
+                        .padding(.vertical, 8)
+                        .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
+                        .accessibilityElement(children: .combine)
                     }
                         .navigationTitle("Indicaciones")
                         .toolbar { Button("Cerrar") { showingSteps = false } }
