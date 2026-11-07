@@ -77,8 +77,8 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           pnpm test
-          npx --yes --package=deno@2.9.8 deno check --no-config --node-modules-dir=none --lock=supabase/functions/deno.lock --frozen supabase/functions/catalog/index.ts supabase/functions/team/index.ts
-          npx --yes --package=deno@2.9.8 deno test --no-config --node-modules-dir=none --lock=supabase/functions/deno.lock --frozen --allow-env tests/functions_test.ts
+          npx --yes --package=deno@2.9.6 deno check --no-config --node-modules-dir=none --lock=supabase/functions/deno.lock --frozen supabase/functions/catalog/index.ts supabase/functions/team/index.ts
+          npx --yes --package=deno@2.9.6 deno test --no-config --node-modules-dir=none --lock=supabase/functions/deno.lock --frozen --allow-env tests/functions_test.ts
       - id: elapsed
         if: always()
         env:
