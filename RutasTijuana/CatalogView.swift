@@ -36,6 +36,14 @@ struct CatalogView: View {
 
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
 
+    private var mapFeatures: [CatalogFeature] {
+        var features = matches
+        if let index = features.firstIndex(where: { $0.id == selectedID }) {
+            features.append(features.remove(at: index))
+        }
+        return features
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let catalog {
@@ -71,6 +79,7 @@ struct CatalogView: View {
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle("Recorridos")
+        .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             ToolbarItem {
                 Button("Servicios", systemImage: "info.circle") { showingServices = true }
@@ -96,6 +105,14 @@ struct CatalogView: View {
             await repository.open()
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { privateCatalog = .sample }
+            if ProcessInfo.processInfo.arguments.contains("--catalog-pale-sample") {
+                let sample = RouteCatalog.sample
+                let feature = sample.features[0]
+                privateCatalog = RouteCatalog(schemaVersion: sample.schemaVersion, version: sample.version,
+                    publishable: sample.publishable, licenseStatus: sample.licenseStatus, groups: sample.groups,
+                    features: [CatalogFeature(id: feature.id, name: feature.name, groupID: feature.groupID,
+                        kind: feature.kind, color: "#FFFF99", verified: false, geometry: feature.geometry)])
+            }
             if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { privateCatalog = .informationSample }
             if ProcessInfo.processInfo.arguments.contains("--catalog-services-sample") {
                 let sample = RouteCatalog.informationSample
@@ -210,8 +227,12 @@ struct CatalogView: View {
     private var map: some View {
         MapReader { proxy in
             Map(position: $camera) {
-                ForEach(matches) { feature in
+                ForEach(mapFeatures) { feature in
                     ForEach(Array(feature.geometry.lines.enumerated()), id: \.offset) { part in
+                        MapPolyline(coordinates: part.element.map(\.coordinate))
+                            .stroke(.white, lineWidth: selectedID == feature.id ? 11 : 7)
+                        MapPolyline(coordinates: part.element.map(\.coordinate))
+                            .stroke(.black, lineWidth: selectedID == feature.id ? 9 : 5)
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(selectedID == feature.id ? .pink : color(feature.color),
                                     lineWidth: selectedID == feature.id ? 7 : 3)
@@ -344,6 +365,14 @@ struct CatalogView: View {
     }
 
     private func groupName(_ id: String) -> String { catalog?.groups.first { $0.id == id }?.name ?? "" }
+
+    private var catalogTestColorScheme: ColorScheme? {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--catalog-dark") ? .dark : nil
+        #else
+        return nil
+        #endif
+    }
 
     private func fit(_ feature: CatalogFeature) {
         let points = feature.geometry.positions
