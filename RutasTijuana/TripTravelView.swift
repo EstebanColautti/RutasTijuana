@@ -61,8 +61,8 @@ import Accessibility
     var ridePath: [GeoPoint] { path }
     var locationIsCurrent: Bool { locationCurrent && previous?.isReliable(at: Date()) == true }
 
-    func previousLeg() {
-        guard index > 0 else { return }
+    func previousLeg(from expected: Int) {
+        guard active, expected == index, index > 0 else { return }
         stopTracking()
         index -= 1
         engine = nil
@@ -72,7 +72,8 @@ import Accessibility
         message = ""
     }
 
-    func advance() {
+    func advance(from expected: Int) {
+        guard active, expected == index, index < trip.legs.count else { return }
         stopTracking()
         index += 1
         message = ""
@@ -81,8 +82,8 @@ import Accessibility
         engine = nil
         missedStop = false
     }
-    func board() {
-        guard active, case .ride(let service, let stops)? = leg else { return }
+    func board(from expected: Int) {
+        guard active, expected == index, (!aboard || paused), case .ride(let service, let stops)? = leg else { return }
         let resuming = aboard
         aboard = true
         paused = false
@@ -142,7 +143,10 @@ import Accessibility
             }
         }
     }
-    func resume() { board() }
+    func resume() {
+        guard aboard && paused else { return }
+        board(from: index)
+    }
     func finish() {
         active = false
         stopTracking()
@@ -244,7 +248,8 @@ struct TripTravelView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        let stage = model.index
+        return NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     #if DEBUG
@@ -270,7 +275,7 @@ struct TripTravelView: View {
                             TripActionButton("Iniciar caminata") {
                                 walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target)
                             }.buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).accessibilityIdentifier("trip-walk")
-                            TripActionButton("Ya llegué") { model.advance() }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
+                            TripActionButton("Ya llegué") { model.advance(from: stage) }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                         case .ride(let service, let stops):
                             Label(service.name, systemImage: "bus").font(.title2)
                                 .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
@@ -293,19 +298,19 @@ struct TripTravelView: View {
                             if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
                             if model.aboard {
                                 if model.paused { TripActionButton("Continuar seguimiento") { model.resume() } }
-                                TripActionButton("Ya bajé") { model.advance() }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                                TripActionButton("Ya bajé") { model.advance(from: stage) }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                             } else {
-                                TripActionButton("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                                TripActionButton("Ya subí") { model.board(from: stage) }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                             }
                         }
                     }
                     if !model.finished, model.index > 0 {
-                        TripActionButton("Volver a la etapa anterior") { model.previousLeg() }.frame(minHeight: 44)
+                        TripActionButton("Volver a la etapa anterior") { model.previousLeg(from: stage) }.frame(minHeight: 44)
                     }
                     if !model.message.isEmpty { Text(model.message).accessibilityIdentifier("trip-travel-status") }
-                    if model.missedStop, let point = model.point, let onReplan {
+                    if model.missedStop, model.point != nil, let onReplan {
                         TripActionButton("Recalcular desde aquí") {
-                            guard model.locationIsCurrent else { return }
+                            guard model.missedStop, model.locationIsCurrent, let point = model.point else { return }
                             model.finish()
                             onReplan(point)
                             dismiss()
@@ -319,7 +324,7 @@ struct TripTravelView: View {
             .fullScreenCover(item: $walking) { destination in
                 WalkingNavigationView(destination: destination, preparedRoute: walkingRoute, onArrival: {
                     walking = nil
-                    model.advance()
+                    model.advance(from: stage)
                 })
             }
         }

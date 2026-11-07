@@ -408,6 +408,7 @@ struct TripPlannerView: View {
     }
 
     private func calculate() {
+        guard !working else { return }
         guard let origin, let destination, origin != destination else {
             message = "Elige un destino distinto del origen."
             return
