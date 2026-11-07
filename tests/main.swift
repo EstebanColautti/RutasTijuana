@@ -479,3 +479,56 @@ func testTransitProgress() {
     print("Pruebas de seguimiento de transporte correctas")
 }
 testTransitProgress()
+
+
+@MainActor final class DeferredTripWalkingProvider: TripWalkingProvider {
+    private var pending: CheckedContinuation<WalkingRoute?, Error>?
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var endpoints: (GeoPoint, GeoPoint)?
+
+    func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
+        endpoints = (from, to)
+        return try await withCheckedThrowingContinuation { continuation in
+            pending = continuation
+            waiter?.resume()
+            waiter = nil
+        }
+    }
+    func waitForRequest() async {
+        if pending != nil { return }
+        await withCheckedContinuation { waiter = $0 }
+    }
+    func complete() {
+        guard let endpoints else { return }
+        pending?.resume(returning: .init(points: [endpoints.0, endpoints.1], steps: [], duration: 60))
+        pending = nil
+    }
+}
+
+@MainActor func testTripCancellationAndExpansion() async throws {
+    let stops = (0..<5).map { TransitStop(id: "chain-\($0)", name: "Stop \($0)",
+        point: GeoPoint(latitude: 32 + Double($0) * 0.01, longitude: -117)) }
+    let services = (0..<4).map { TripService(id: "service-\($0)", name: "Service \($0)", direction: nil,
+        stops: [stops[$0], stops[$0 + 1]], circular: false) }
+    let network = TripNetwork(version: "chain", services: services)
+    let planner = TripPlanner(network: network, provider: SyntheticTripWalkingProvider())
+    guard case .found(let trip) = try await planner.search(from: stops[0].point, to: stops[4].point) else {
+        fatalError("Three transfers must remain possible")
+    }
+    check(trip.transfers == 3 && trip.exceedsPreferences, "Two transfers is a preference, not a hard cap")
+    let provider = DeferredTripWalkingProvider()
+    let cancellable = TripPlanner(network: network, provider: provider)
+    let request = Task {
+        try await cancellable.search(from: GeoPoint(latitude: 31.999, longitude: -117), to: stops[4].point)
+    }
+    await provider.waitForRequest()
+    await cancellable.cancel()
+    provider.complete()
+    do {
+        _ = try await request.value
+        fatalError("A cancelled search must ignore its late route")
+    } catch is CancellationError { }
+    check(TripNetwork(catalog: .sample).services.isEmpty, "Unordered catalog lines cannot become transport connections")
+    print("Pruebas de cancelación y ampliación correctas")
+}
+try await testTripCancellationAndExpansion()

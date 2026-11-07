@@ -1,13 +1,63 @@
 import SwiftUI
 import MapKit
+import Accessibility
+
+struct TripActionButton: View {
+    let title: String
+    let action: () -> Void
+
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+        }
+    }
+}
 
 @MainActor final class AppleTripWalkingProvider: TripWalkingProvider {
     private let provider = AppleWalkingRouteProvider()
+    private var generation = UUID()
+    private var nextRequest = Date.distantPast
+    private var failures = 0
+
+    func cancel() async {
+        generation = UUID()
+        provider.cancel()
+    }
+
     func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
-        do {
-            return try await provider.route(from: from, to: .init(id: "walk", name: "Destino", point: to))
-        } catch let error as MKError where error.code == .directionsNotFound {
-            return nil
+        guard Date() >= nextRequest else { throw TripPlanningError.tryAgainLater }
+        let token = UUID()
+        generation = token
+        let deadline = Task {
+            do { try await Task.sleep(nanoseconds: 30_000_000_000) }
+            catch { return }
+            if generation == token { provider.cancel() }
+        }
+        defer { deadline.cancel() }
+        return try await withTaskCancellationHandler {
+            do {
+                let route = try await provider.route(from: from, to: .init(id: "walk", name: "Destino", point: to))
+                failures = 0
+                return route
+            } catch let error as MKError where error.code == .directionsNotFound {
+                failures = 0
+                return nil
+            } catch {
+                if Task.isCancelled || generation != token { throw CancellationError() }
+                nextRequest = Date().addingTimeInterval(WalkingPolicy.retryDelays[min(failures, 2)])
+                failures += 1
+                throw error
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self, generation == token else { return }
+                provider.cancel()
+            }
         }
     }
 }
@@ -61,6 +111,10 @@ struct TripPlannerView: View {
     @State private var search: MKLocalSearch?
     @State private var searchGeneration = UUID()
     @State private var travelling = false
+    @FocusState private var searchFocused: Bool
+    @AccessibilityFocusState private var resultFocused: Bool
+    @State private var selectingOnMap = false
+    @State private var mapPoint: GeoPoint?
     @State private var camera: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 32.53, longitude: -117),
         span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
@@ -86,19 +140,27 @@ struct TripPlannerView: View {
                     Text("Datos de evaluación").font(.footnote)
                 }
                 #endif
-                Text("Origen").font(.headline)
+                Text("Origen").font(.headline).accessibilityAddTraits(.isHeader)
                 Text(originName.isEmpty ? "Elige desde dónde sales" : originName)
-                Button("Usar mi ubicación") { invalidate(); location.request() }
+                TripActionButton("Usar mi ubicación") { invalidate(); location.request() }
                     .frame(minHeight: 44).disabled(location.isRequesting || working)
-                Toggle("Buscar un origen", isOn: $selectingOrigin).disabled(working)
+                Toggle(isOn: $selectingOrigin) {
+                    Text("Buscar un origen").frame(minHeight: 44)
+                }.disabled(working)
                 selectionMap
-                Text("Destino").font(.headline)
+                Text("Destino").font(.headline).accessibilityAddTraits(.isHeader)
                 Text(destinationName.isEmpty ? "Elige a dónde quieres llegar" : destinationName)
-                TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
-                    .textFieldStyle(.roundedBorder)
+                Text(selectingOrigin ? "Buscar origen" : "Buscar destino").font(.subheadline)
+                TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query, prompt: Text(""))
+                    .focused($searchFocused)
+                    .padding(.horizontal, 12).frame(minHeight: 44)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
+                    .contentShape(Rectangle())
+                    .onTapGesture { searchFocused = true }
                     .submitLabel(.search).onSubmit { findPlaces() }
                     .disabled(working)
-                Button("Buscar lugar") { findPlaces() }.frame(minHeight: 44).disabled(working)
+                TripActionButton("Buscar lugar") { findPlaces() }.frame(minHeight: 44).disabled(working)
                 ForEach(Array(places.enumerated()), id: \.offset) { row in
                     Button {
                         guard let coordinate = row.element.placemark.location?.coordinate else { return }
@@ -113,23 +175,27 @@ struct TripPlannerView: View {
                         VStack(alignment: .leading) {
                             Text(row.element.name ?? "Lugar")
                             Text(row.element.placemark.title ?? "").font(.caption)
-                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
                     }
                 }
                 if let error = location.message { Text(error) }
                 if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
                 if working {
                     ProgressView("Calculando itinerario")
-                    Button("Cancelar") { invalidate() }.frame(minHeight: 44)
+                    TripActionButton("Cancelar") { invalidate() }.frame(minHeight: 44)
                 } else {
-                    Button(paused ? "Continuar búsqueda" : "Calcular viaje") { calculate() }
+                    TripActionButton(paused ? "Continuar búsqueda" : "Calcular viaje") { calculate() }
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("trip-calculate")
                         .disabled(origin == nil || destination == nil)
                         .frame(minHeight: 44)
                 }
                 if let trip {
-                    Text("Ruta recomendada").font(.title2.bold()).accessibilityIdentifier("trip-result")
+                    Text("Ruta recomendada").font(.title2.bold())
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($resultFocused)
+                        .accessibilityIdentifier("trip-result")
+                        .onAppear { resultFocused = true }
                     Text("\(trip.transfers) transbordos · \(WalkingFormat.distance(trip.walkingMeters)) a pie")
                     if trip.exceedsPreferences {
                         Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
@@ -139,13 +205,14 @@ struct TripPlannerView: View {
                     }
                     Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                         .font(.footnote)
-                    Button("Iniciar viaje") { travelling = true }
+                    TripActionButton("Iniciar viaje") { travelling = true }
                         .accessibilityIdentifier("trip-begin")
                         .buttonStyle(.borderedProminent).frame(minHeight: 44)
                 }
             }.padding()
         }
         .navigationTitle("Planear viaje")
+        .sheet(isPresented: $selectingOnMap) { mapSelection }
         .fullScreenCover(isPresented: $travelling) {
             if let trip {
                 TripTravelView(trip: trip, destinationName: destinationName, onReplan: { point in
@@ -160,12 +227,16 @@ struct TripPlannerView: View {
         .onChange(of: location.point) { _, point in
             if let point { invalidate(); origin = point; originName = "Tu ubicación" }
         }
+        .onChange(of: message) { _, text in
+            if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
+        }
         .onChange(of: selectingOrigin) { _, _ in
             search?.cancel()
             searchGeneration = UUID()
             places = []
         }
         .onDisappear {
+            searchGeneration = UUID()
             task?.cancel()
             let cancelledPlanner = planner
             Task { await cancelledPlanner?.cancel() }
@@ -174,53 +245,89 @@ struct TripPlannerView: View {
         }
     }
 
-    @ViewBuilder private var selectionMap: some View {
-                MapReader { proxy in
-                    Map(position: $camera) {
-                        if let origin {
-                            Marker("Origen", coordinate: .init(latitude: origin.latitude, longitude: origin.longitude))
-                        }
-                        if let destination {
-                            Marker("Destino", coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
-                        }
-                        if let trip {
-                            ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
-                                switch row.element {
-                                case .walk(_, _, let route):
-                                    MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                                        .stroke(.blue, style: StrokeStyle(lineWidth: 4, dash: [6, 4]))
-                                case .ride(let service, let stops):
-                                    if let path = service.section(through: stops) {
-                                        MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                                            .stroke(.indigo, lineWidth: 5)
-                                    } else {
-                                        ForEach(Array(service.geometry.enumerated()), id: \.offset) { part in
-                                            MapPolyline(coordinates: part.element.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                                                .stroke(.gray, lineWidth: 3)
-                                        }
-                                    }
-                                    if let stop = stops.first {
-                                        Marker("Sube en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
-                                    }
-                                    if let stop = stops.last {
-                                        Marker("Baja en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
-                                    }
-                                }
-                            }
+    @MapContentBuilder private var mapContents: some MapContent {
+
+        if let origin {
+            Marker("Origen", coordinate: .init(latitude: origin.latitude, longitude: origin.longitude))
+        }
+        if let destination {
+            Marker("Destino", coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
+        }
+        if let trip {
+            ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
+                switch row.element {
+                case .walk(_, _, let route):
+                    MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                        .stroke(.blue, style: StrokeStyle(lineWidth: 4, dash: [6, 4]))
+                case .ride(let service, let stops):
+                    if let path = service.section(through: stops) {
+                        MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                            .stroke(.indigo, lineWidth: 5)
+                    } else {
+                        ForEach(Array(service.geometry.enumerated()), id: \.offset) { part in
+                            MapPolyline(coordinates: part.element.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                                .stroke(.gray, lineWidth: 3)
                         }
                     }
-                    .onTapGesture { position in
-                        guard !working, let coordinate = proxy.convert(position, from: .local) else { return }
+                    if let stop = stops.first {
+                        Marker("Sube en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                    }
+                    if let stop = stops.last {
+                        Marker("Baja en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                    }
+                }
+            }
+        }
+    }
+
+    private var selectionMap: some View {
+        VStack(alignment: .leading) {
+            Map(position: $camera, interactionModes: []) { mapContents }
+                .frame(height: 240)
+                .accessibilityLabel("Mapa de origen, destino e itinerario")
+            TripActionButton(selectingOrigin ? "Elegir origen en el mapa" : "Elegir destino en el mapa") {
+                location.cancel()
+                mapPoint = selectingOrigin ? origin : destination
+                selectingOnMap = true
+            }.disabled(working)
+        }
+    }
+
+    private var mapSelection: some View {
+        NavigationStack {
+            MapReader { proxy in
+                Map(position: $camera) {
+                    mapContents
+                    if let mapPoint {
+                        Marker("Punto seleccionado", coordinate: .init(latitude: mapPoint.latitude, longitude: mapPoint.longitude))
+                    }
+                }
+                .onTapGesture { position in
+                    guard let coordinate = proxy.convert(position, from: .local) else { return }
+                    mapPoint = .init(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                }
+            }
+            .navigationTitle(selectingOrigin ? "Elegir origen" : "Elegir destino")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    TripActionButton("Cancelar") { selectingOnMap = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    TripActionButton("Usar punto") {
+                        guard let mapPoint else { return }
                         invalidate()
-                        let point = GeoPoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                        if selectingOrigin { origin = point; originName = "Origen en el mapa"; selectingOrigin = false }
-                        else { destination = point; destinationName = "Destino en el mapa" }
-                    }
-                }.frame(height: 240)
-                .accessibilityLabel("Mapa de origen y destino")
-                .accessibilityHint("También puedes buscar ambos lugares usando el buscador.")
-                Text(selectingOrigin ? "Toca el mapa para elegir el origen." : "Toca el mapa para elegir el destino.")
-                    .font(.footnote)
+                        search?.cancel()
+                        searchGeneration = UUID()
+                        places = []
+                        query = ""
+                        if selectingOrigin { origin = mapPoint; originName = "Origen en el mapa"; selectingOrigin = false }
+                        else { destination = mapPoint; destinationName = "Destino en el mapa" }
+                        camera = .automatic
+                        selectingOnMap = false
+                    }.disabled(mapPoint == nil)
+                }
+            }
+        }
     }
 
     @ViewBuilder private func legSummary(_ leg: TripLeg) -> some View {
@@ -253,7 +360,10 @@ struct TripPlannerView: View {
         let token = UUID()
         searchGeneration = token
         let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { places = []; message = "Escribe el nombre de un lugar."; return }
+        searchFocused = false
+        request.naturalLanguageQuery = text
         request.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 32.53, longitude: -117),
                                             span: MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3))
         let operation = MKLocalSearch(request: request)
@@ -271,17 +381,22 @@ struct TripPlannerView: View {
             return
         }
         if planner == nil { planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider()) }
+        guard let activePlanner = planner else { return }
         working = true
         message = ""
         task = Task {
             do {
-                let result = try await planner!.search(from: origin, to: destination)
+                try Task.checkCancellation()
+                let result = try await activePlanner.search(from: origin, to: destination)
                 guard !Task.isCancelled else { return }
                 switch result {
                 case .found(let result): trip = result; paused = false; camera = .automatic
                 case .paused: paused = true; message = "La búsqueda necesita continuar."
                 case .unavailable: message = "No se encontró una conexión con los recorridos disponibles."
                 }
+            } catch TripPlanningError.tryAgainLater {
+                guard !Task.isCancelled else { return }
+                message = "Espera un momento antes de volver a calcular."
             } catch {
                 guard !Task.isCancelled else { return }
                 message = "No se pudo calcular el viaje. Comprueba la conexión y vuelve a intentar."

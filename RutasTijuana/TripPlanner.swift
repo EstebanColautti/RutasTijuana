@@ -52,7 +52,7 @@ struct PlannedTrip: Sendable {
     let exceedsPreferences: Bool
 }
 
-enum TripPlanningError: Error, Sendable { case invalidInput }
+enum TripPlanningError: Error, Sendable { case invalidInput, tryAgainLater }
 
 enum TripSearchResult: Sendable {
     case found(PlannedTrip)
@@ -62,6 +62,11 @@ enum TripSearchResult: Sendable {
 
 protocol TripWalkingProvider: AnyObject, Sendable {
     func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute?
+    func cancel() async
+}
+
+extension TripWalkingProvider {
+    func cancel() async {}
 }
 
 actor TripPlanner {
@@ -103,12 +108,15 @@ actor TripPlanner {
         self.preferences = preferences
     }
 
-    func cancel() { generation = UUID() }
+    func cancel() async {
+        generation = UUID()
+        await provider.cancel()
+    }
 
     func search(from origin: GeoPoint, to destination: GeoPoint) async throws -> TripSearchResult {
         guard origin.latitude.isFinite, origin.longitude.isFinite, destination.latitude.isFinite, destination.longitude.isFinite,
               abs(origin.latitude) <= 90, abs(destination.latitude) <= 90, abs(origin.longitude) <= 180,
-              abs(destination.longitude) <= 180, preferences.walkingMeters.isFinite, preferences.walkingMeters >= 0,
+              abs(destination.longitude) <= 180, origin != destination, preferences.walkingMeters.isFinite, preferences.walkingMeters >= 0,
               preferences.transfers >= 0, preferences.requestsPerBatch > 0 else { throw TripPlanningError.invalidInput }
         if queryOrigin != origin || queryDestination != destination {
             walking.removeAll()

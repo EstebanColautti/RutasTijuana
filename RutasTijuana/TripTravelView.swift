@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import UserNotifications
 import Combine
+import Accessibility
 
 @MainActor final class TripTravelController: ObservableObject {
     let trip: PlannedTrip
@@ -137,6 +138,9 @@ import Combine
         timer?.cancel()
         timer = nil
         aboard = false
+        let identifier = session + "-\(index)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
         activity.end(message: "Etapa finalizada")
     }
     private func receive(_ fix: WalkingFix) {
@@ -164,11 +168,11 @@ import Combine
         }
         message = (progress.remaining <= 350 ? "Se acerca tu parada. Baja en " : "Baja en ") + stop.name
         if progress.notifyAlighting {
-                let content = UNMutableNotificationContent()
-                content.title = "Se acerca tu parada"
-                content.body = "Prepárate para bajar. Abre la app para ver el viaje."
-                content.sound = .default
-                UNUserNotificationCenter.current().add(.init(identifier: session + "-\(index)", content: content, trigger: nil)) { _ in }
+            let content = UNMutableNotificationContent()
+            content.title = "Se acerca tu parada"
+            content.body = "Prepárate para bajar. Abre la app para ver el viaje."
+            content.sound = .default
+            UNUserNotificationCenter.current().add(.init(identifier: session + "-\(index)", content: content, trigger: nil)) { _ in }
         }
         activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
                         status: "En transporte", locationCurrent: true)
@@ -181,6 +185,7 @@ struct TripTravelView: View {
     @StateObject private var model: TripTravelController
     @Environment(\.dismiss) private var dismiss
     @State private var walking: WalkingDestination?
+    @AccessibilityFocusState private var stageFocused: Bool
     init(trip: PlannedTrip, destinationName: String = "Destino", onReplan: ((GeoPoint) -> Void)? = nil) {
         self.onReplan = onReplan
         self.destinationName = destinationName
@@ -204,28 +209,39 @@ struct TripTravelView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+                        Text("Datos de evaluación").font(.footnote)
+                    }
+                    #endif
                     if model.finished {
                         Label("Llegaste al destino", systemImage: "checkmark.circle")
-                        Button("Terminar") { model.finish(); dismiss() }
+                            .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+                            .onAppear { stageFocused = true }
+                        TripActionButton("Terminar") { model.finish(); dismiss() }
                     } else if let leg = model.leg {
                         switch leg {
                         case .walk(_, let target, let route):
                             Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(.title2)
+                                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+                                .onAppear { stageFocused = true }
                             Text(WalkingFormat.distance(route.length))
-                            Map {
+                            Map(interactionModes: []) {
                                 MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) }).stroke(.blue, lineWidth: 5)
                             }.frame(height: 220)
-                            Button("Iniciar caminata") {
+                            TripActionButton("Iniciar caminata") {
                                 walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target)
                             }.buttonStyle(.borderedProminent).accessibilityIdentifier("trip-walk")
-                            Button("Ya llegué") { model.advance() }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
+                            TripActionButton("Ya llegué") { model.advance() }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                         case .ride(let service, let stops):
                             Label(service.name, systemImage: "bus").font(.title2)
+                                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+                                .onAppear { stageFocused = true }
                             Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
                             Text("Sube en \(stops.first?.name ?? "")")
                             Text("Baja en \(stops.last?.name ?? "")")
                             if model.ridePath.count > 1 {
-                                Map {
+                                Map(interactionModes: []) {
                                     MapPolyline(coordinates: model.ridePath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                                         .stroke(.indigo, lineWidth: 5)
                                     if let point = model.point {
@@ -236,19 +252,19 @@ struct TripTravelView: View {
                             }
                             if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
                             if model.aboard {
-                                if model.paused { Button("Continuar seguimiento") { model.resume() } }
-                                Button("Ya bajé") { model.advance() }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent)
+                                if model.paused { TripActionButton("Continuar seguimiento") { model.resume() } }
+                                TripActionButton("Ya bajé") { model.advance() }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent)
                             } else {
-                                Button("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent)
+                                TripActionButton("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent)
                             }
                         }
                     }
                     if !model.finished, model.index > 0 {
-                        Button("Volver a la etapa anterior") { model.previousLeg() }.frame(minHeight: 44)
+                        TripActionButton("Volver a la etapa anterior") { model.previousLeg() }.frame(minHeight: 44)
                     }
                     if !model.message.isEmpty { Text(model.message) }
                     if model.missedStop, let point = model.point, let onReplan {
-                        Button("Recalcular desde aquí") {
+                        TripActionButton("Recalcular desde aquí") {
                             model.finish()
                             onReplan(point)
                             dismiss()
@@ -257,7 +273,7 @@ struct TripTravelView: View {
                 }.padding()
             }
             .navigationTitle("Tu viaje")
-            .toolbar { Button("Finalizar") { model.finish(); dismiss() } }
+            .toolbar { TripActionButton("Finalizar") { model.finish(); dismiss() } }
             .fullScreenCover(item: $walking) { destination in
                 WalkingNavigationView(destination: destination, preparedRoute: walkingRoute, onArrival: {
                     walking = nil
@@ -265,6 +281,10 @@ struct TripTravelView: View {
                 })
             }
         }
+        .onChange(of: model.message) { _, text in
+            if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
+        }
+        .onChange(of: model.index) { _, _ in stageFocused = true }
         .interactiveDismissDisabled()
     }
 }
