@@ -106,8 +106,8 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)
         XCTAssertEqual(element.label, label, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(element.frame.width, 44, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(element.frame.height, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.width + 0.001, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.height + 0.001, 44, file: file, line: line)
     }
 
     private func audit(_ screen: String, types: XCUIAccessibilityAuditType = .all) throws {

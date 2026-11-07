@@ -299,7 +299,10 @@ struct CatalogView: View {
                                 Text("Texto disponible").font(.caption).foregroundStyle(.primary)
                             }
                             if !item.element.evidence.isEmpty && item.element.evidence != item.element.value {
-                                Text("Texto: \(item.element.evidence)").font(.caption).textSelection(.enabled)
+                                Text("Texto: \(item.element.evidence)")
+                                    .font(.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
                             }
                         }
                     }
