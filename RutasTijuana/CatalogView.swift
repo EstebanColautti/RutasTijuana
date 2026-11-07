@@ -3,6 +3,7 @@ import MapKit
 import UniformTypeIdentifiers
 
 struct CatalogView: View {
+    @FocusState private var searchFocused: Bool
     @ObservedObject private var repository = CatalogRepository.shared
     @State private var privateCatalog: RouteCatalog?
     private var catalog: RouteCatalog? { privateCatalog ?? repository.catalog }
@@ -15,6 +16,12 @@ struct CatalogView: View {
     @State private var importing = false
     @State private var loading = false
     @State private var showingInformation = false
+    @State private var showingServices = false
+    private struct PlannedRoute: Identifiable {
+        let id: String
+        let scenario: JourneyScenario
+    }
+    @State private var plannedRoute: PlannedRoute?
     @State private var errorMessage: String?
     @State private var camera: MapCameraPosition = .automatic
 
@@ -51,14 +58,23 @@ struct CatalogView: View {
                 }
             }
             if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
-            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.secondary).padding(10) }
+            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
         }
         .sheet(isPresented: $showingInformation) {
             if let selection { informationSheet(selection) }
         }
+        .sheet(isPresented: $showingServices) {
+            NavigationStack { services }
+        }
+        .fullScreenCover(item: $plannedRoute) { route in
+            ContentView(scenario: route.scenario)
+        }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle("Recorridos")
         .toolbar {
+            ToolbarItem {
+                Button("Servicios", systemImage: "info.circle") { showingServices = true }
+            }
             ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
                 privateCatalog = nil
                 Task { await repository.update(force: true) }
@@ -81,11 +97,36 @@ struct CatalogView: View {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { privateCatalog = .sample }
             if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { privateCatalog = .informationSample }
+            if ProcessInfo.processInfo.arguments.contains("--catalog-services-sample") {
+                let sample = RouteCatalog.informationSample
+                privateCatalog = RouteCatalog(schemaVersion: sample.schemaVersion, version: sample.version,
+                    publishable: true, licenseStatus: "published", groups: sample.groups, features: sample.features,
+                    serviceInformation: .init(notices: ["Aviso de ejemplo · Cambio de horario"], contact: nil))
+            }
             #endif
         }
         .onChange(of: query) { _, _ in selectedID = nil }
         .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
         .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+    }
+
+    private var services: some View {
+        List {
+            Section("Avisos") {
+                let notices = catalog?.serviceNotices.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? []
+                if notices.isEmpty { Text("No hay avisos disponibles") }
+                ForEach(Array(notices.enumerated()), id: \.offset) { item in Text(item.element) }
+            }
+            Section("Atención") {
+                if let contact = catalog?.serviceContact {
+                    Link("Abrir contacto oficial", destination: contact).frame(minHeight: 44)
+                } else {
+                    Text("Contacto no disponible")
+                }
+            }
+        }
+        .navigationTitle("Servicios")
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
     }
 
     private var featureList: some View {
@@ -115,10 +156,10 @@ struct CatalogView: View {
                     .foregroundStyle(color(feature.color))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
-                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
+                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
                     if let reference, let distance = feature.distance(to: reference) {
                         Text(distanceCaption(feature, meters: distance))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.primary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -132,8 +173,19 @@ struct CatalogView: View {
 
     private var filters: some View {
         VStack(spacing: 10) {
-            TextField("Buscar nombre, grupo o información", text: $query)
-                .textFieldStyle(.roundedBorder).accessibilityIdentifier("catalog-search")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Buscar nombre, grupo o información").font(.subheadline)
+                TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
+                    .focused($searchFocused)
+                    .accessibilityLabel("Buscar nombre, grupo o información")
+                    .accessibilityIdentifier("catalog-search")
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
+                    .contentShape(Rectangle())
+                    .onTapGesture { searchFocused = true }
+            }
             HStack {
                 Picker("Grupo", selection: $groupID) {
                     Text("Todos los grupos").tag(String?.none)
@@ -145,7 +197,7 @@ struct CatalogView: View {
                 }.accessibilityIdentifier("catalog-filter")
             }
             HStack {
-                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.secondary)
+                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.primary)
                 Spacer()
                 if reference != nil {
                     Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
@@ -203,16 +255,21 @@ struct CatalogView: View {
                 Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.primary)
             if feature.kind == .stop, case .point(let point) = feature.geometry {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                if feature.information == nil {
+                if let catalog, catalog.readyForDistribution, let scenario = catalog.journeyScenario(for: feature) {
+                    Button("Planear este recorrido") {
+                        plannedRoute = PlannedRoute(id: feature.id, scenario: scenario)
+                    }.frame(minHeight: 44)
+                }
+                if feature.information?.fields.contains(where: { $0.category == "schedule" && !$0.inferred && !$0.value.isEmpty }) != true {
                     Text("Horario y frecuencia: dato no disponible").font(.caption)
                 }
                 Text("Distancia al trazado en línea recta.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.primary)
             }
             if feature.information != nil {
                 Button("Ver información disponible") { showingInformation = true }
@@ -227,23 +284,31 @@ struct CatalogView: View {
             List {
                 Section {
                     Text("Información del catálogo y detalles geométricos.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(.primary)
                 }
                 if let information = feature.information {
                     if !information.description.isEmpty {
                         Section("Descripción disponible") { Text(information.description).textSelection(.enabled) }
                     }
                     ForEach(Array(information.fields.enumerated()), id: \.offset) { item in
-                        Section(item.element.label) {
+                        Section {
                             Text(item.element.value).textSelection(.enabled)
                             if item.element.inferred {
-                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.secondary)
+                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.primary)
                             } else {
-                                Text("Texto disponible").font(.caption).foregroundStyle(.secondary)
+                                Text("Texto disponible").font(.caption).foregroundStyle(.primary)
                             }
                             if !item.element.evidence.isEmpty && item.element.evidence != item.element.value {
-                                Text("Texto: \(item.element.evidence)").font(.caption).textSelection(.enabled)
+                                Text("Texto: \(item.element.evidence)")
+                                    .font(.caption)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
                             }
+                        } header: {
+                            Text(item.element.label)
+                                .textCase(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, 4)
                         }
                     }
                 }

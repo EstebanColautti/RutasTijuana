@@ -61,6 +61,7 @@ async function call(
 }
 beforeAll(async () => {
     await db.exec(`create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create schema extensions;
+ create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb);
  create function auth.uid() returns uuid language sql stable as $$select (nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid$$;
  create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;
  grant usage on schema auth,public to anon,authenticated,service_role; grant execute on all functions in schema auth to anon,authenticated,service_role;`);
@@ -71,6 +72,10 @@ beforeAll(async () => {
         ),
     );
     await db.exec((await readFile('supabase/migrations/20261026000001_team.sql','utf8')).replace(/^\uFEFF/,''));
+    await db.exec(await readFile('supabase/migrations/20261106000000_publication.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261106000001_invites.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261106000002_withdrawal.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261106000003_services.sql', 'utf8'));
     await db.query("insert into catalog_members(user_id,role) values ($1,'admin'),($2,'editor')", [
         admin,
         editor,
@@ -182,4 +187,69 @@ test('only the administrator can revoke editors', async () => {
   await expect(call('select revoke_catalog_editor($1)', [admin])).rejects.toThrow();
   await call('select revoke_catalog_editor($1)', [editor]);
   expect(await call('select * from catalog_drafts', [], editor)).toHaveLength(0);
+});
+
+test('invitation repair is idempotent and revoked membership stays revoked', async () => {
+    const address = 'editor@example.test';
+    const pending = await call('select request_catalog_invitation($1) as invite', [address.toUpperCase()]);
+    const proof = pending[0].invite.token;
+    await expect(call('select request_catalog_invitation($1)', [address], editor)).rejects.toThrow();
+    await expect(call('select complete_catalog_invitation($1,$2,$3)', [address, proof, admin])).rejects.toThrow();
+    const finish = () => call('select complete_catalog_invitation($1,$2,$3) as done',
+        [address, proof, admin], admin, 'aal2', 'service_role');
+    expect((await finish())[0].done).toBe(false);
+    await db.query('insert into auth.users values($1,$2,$3)', [outsider, address, { catalog_invitation: proof }]);
+    expect((await finish())[0].done).toBe(true);
+    expect((await finish())[0].done).toBe(true);
+    expect((await call('select catalog_role() as role', [], outsider))[0].role).toBe('editor');
+    await call('select revoke_catalog_editor($1)', [outsider]);
+    await expect(finish()).rejects.toThrow();
+    expect((await call('select catalog_role() as role', [], outsider))[0].role).toBeNull();
+});
+
+test('publication rejects missing confirmation and inaccessible itinerary stops', async () => {
+    const old = (await call('select public_catalog_manifest() as m'))[0].m;
+    const baseline = (await call('select preview_catalog() as p'))[0].p;
+    await expect(call('select publish_catalog($1,$2)', [null, baseline.sha256])).rejects.toThrow();
+    await expect(call('select publish_catalog($1,$2)', [baseline.revision, null])).rejects.toThrow();
+    await expect(call('select publish_catalog_snapshot($1,$2)', [baseline.revision, baseline.sha256])).rejects.toThrow();
+    const invalid = structuredClone(document);
+    invalid.features[0].publicFields.push(
+        { category: 'stop-order', label: 'Orden', value: '["missing","missing"]', evidence: '', secret: '' },
+        { category: 'route-shape', label: 'Tipo', value: 'linear', evidence: '', secret: '' },
+    );
+    await call('select save_catalog($1,$2)', [invalid, baseline.revision]);
+    const next = (await call('select preview_catalog() as p'))[0].p;
+    await expect(call('select publish_catalog($1,$2)', [next.revision, next.sha256])).rejects.toThrow();
+    expect((await call('select public_catalog_manifest() as m'))[0].m).toEqual(old);
+    await call('select save_catalog($1,$2)', [document, next.revision]);
+});
+
+test('withdrawal requires a safe replacement and invalidates old public content', async () => {
+    const backup = (await call('select public_catalog_manifest() as m'))[0].m.version;
+    const preview = (await call('select preview_catalog() as p'))[0].p;
+    const active = (await call('select publish_catalog($1,$2) as version', [preview.revision, preview.sha256]))[0].version;
+    const withdraw = (replacement: string | null, user = admin) =>
+        call('select withdraw_catalog($1,$2,$3)', [active, 'Internal detail', replacement], user);
+    await expect(withdraw(backup, editor)).rejects.toThrow();
+    await expect(withdraw(null)).rejects.toThrow();
+    await withdraw(backup);
+    const manifest = (await call('select public_catalog_status($1::uuid[]) as m', [[active]], outsider, 'aal1', 'anon'))[0].m;
+    expect(manifest.version).toBe(backup);
+    expect(manifest.withdrawnVersions).toEqual([active]);
+    expect(JSON.stringify(manifest)).not.toContain('Internal detail');
+    expect((await call('select public_catalog_content($1) as content', [active], outsider, 'aal1', 'anon'))[0].content).toBeNull();
+    await expect(call('select restore_catalog($1)', [active])).rejects.toThrow();
+});
+
+test('publication rejects invalid civil dates', async () => {
+    const baseline = (await call('select preview_catalog() as p'))[0].p;
+    const invalid = structuredClone(document);
+    invalid.features[0].publicFields.push(
+        { category: 'updated-at', label: 'Fecha', value: '2026-02-30', evidence: '', secret: '' },
+    );
+    await call('select save_catalog($1,$2)', [invalid, baseline.revision]);
+    const next = (await call('select preview_catalog() as p'))[0].p;
+    await expect(call('select publish_catalog($1,$2)', [next.revision, next.sha256])).rejects.toThrow();
+    await call('select save_catalog($1,$2)', [document, next.revision]);
 });

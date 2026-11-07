@@ -220,6 +220,10 @@ extension MKPolyline {
         status.connected = connected
         if recovered {
             if status.waitingToStart { continueStart() }
+            else if route == nil, phase == .locating, request == nil, now() >= nextRequest {
+                if isLocationCurrent, let fix { calculate(fix) }
+                else { locations.start() }
+            }
             else if progress.offRoute, isLocationCurrent, now() >= nextRequest, let fix { calculate(fix) }
         }
         activityUpdate()
@@ -309,12 +313,15 @@ extension MKPolyline {
         }
         if fix == nil || !fix!.isReliable(at: now()) { status.location = .acquiring }
         if status.waitingToStart, status.location == .ready, retryAvailable { continueStart() }
+        else if route == nil, phase == .locating, status.connected, retryAvailable,
+                status.error == .network, request == nil, isLocationCurrent, let fix { calculate(fix) }
         else if phase == .navigating, progress.offRoute, isLocationCurrent, retryAvailable, let fix { calculate(fix) }
         activityUpdate()
     }
     private func activityUpdate() {
         guard phase == .navigating else { return }
-        activity.update(destination: destination.name, instruction: instruction, meters: Int(progress.stepRemaining), status: message)
+        activity.update(destination: destination.name, instruction: instruction, meters: Int(progress.stepRemaining),
+                        status: message, locationCurrent: isLocationCurrent)
     }
 }
 

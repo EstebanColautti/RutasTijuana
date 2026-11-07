@@ -30,6 +30,7 @@ export type Version = {
     bytes: number;
     created_at: string;
     created_by: string;
+    withdrawn_at?: string | null;
 };
 export type Audit = {
     id: number;
@@ -158,4 +159,47 @@ export function geometryPoints(g: Geometry): number[][] {
         case 'MultiPolygon':
             return (g.coordinates as number[][][][]).flat(2);
     }
+}
+
+export function publicationIssues(document: Document): string[] {
+    const included = document.features.filter((feature) => feature.included);
+    const issues: string[] = [];
+    let contacts = 0;
+    for (const feature of included) {
+        const values = (category: string) => feature.publicFields.filter((field) => field.category === category).map((field) => field.value);
+        const fail = (reason: string) => issues.push(feature.name + ' · ' + reason);
+        const dates = values('updated-at');
+        if (dates.length) {
+            const text = dates[0];
+            const iso = /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : /^\d{2}\/\d{2}\/\d{4}$/.test(text) ? text.slice(6) + '-' + text.slice(3,5) + '-' + text.slice(0,2) : '';
+            const parsed = new Date(iso + 'T00:00:00Z');
+            if (dates.length !== 1 || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== iso) fail('Revisa la fecha.');
+        }
+        const role = values('service-role');
+        if (role.length) {
+            if (role.length !== 1 || feature.kind !== 'reference' || !['contact','notices'].includes(role[0])) fail('Revisa el servicio.');
+            if (role[0] === 'contact') {
+                contacts++;
+                const links = values('contact');
+                try {
+                    const url = new URL(links[0]);
+                    if (links.length !== 1 || url.protocol !== 'https:' || !url.hostname || url.username || url.password) fail('Revisa el enlace de contacto.');
+                } catch { fail('Revisa el enlace de contacto.'); }
+            }
+        }
+        if (feature.kind === 'route') {
+            const order = values('stop-order'), shape = values('route-shape');
+            if (!order.length && !shape.length) continue;
+            try {
+                const ids: unknown = JSON.parse(order[0]);
+                if (order.length !== 1 || shape.length !== 1 || !['linear','circular'].includes(shape[0]) ||
+                    !Array.isArray(ids) || ids.length < 2 || new Set(ids).size !== ids.length ||
+                    ids.some((id) => typeof id !== 'string' || !included.some((stop) => stop.id === id && stop.kind === 'stop' && stop.geometry.type === 'Point'))) {
+                    fail('Revisa el orden, el tipo y las paradas incluidas.');
+                }
+            } catch { fail('Revisa el orden de paradas.'); }
+        }
+    }
+    if (contacts > 1) issues.push('Conserva un único contacto oficial.');
+    return issues;
 }

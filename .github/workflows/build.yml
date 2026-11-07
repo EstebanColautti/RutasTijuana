@@ -77,6 +77,8 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           pnpm test
+          npx --yes --package=deno@2.9.6 deno check --no-config --node-modules-dir=none --lock=supabase/functions/deno.lock --frozen supabase/functions/catalog/index.ts supabase/functions/team/index.ts
+          npx --yes --package=deno@2.9.6 deno test --no-config --node-modules-dir=none --lock=supabase/functions/deno.lock --frozen --allow-env tests/functions_test.ts
       - id: elapsed
         if: always()
         env:
@@ -123,7 +125,11 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [standard, compact]
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     outputs:
@@ -135,8 +141,18 @@ jobs:
         with:
           persist-credentials: false
       - name: Preparar simulador
+        env:
+          PROFILE: ${{ matrix.device }}
         run: |
-          simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+          if [ "$PROFILE" = compact ]; then
+            runtime=com.apple.CoreSimulator.SimRuntime.iOS-17-5
+            if ! xcrun simctl list runtimes available | grep -Fq "$runtime"; then
+              xcodebuild -downloadPlatform iOS -buildVersion 17.5
+            fi
+            simulator=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
+          else
+            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+          fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
       - name: Compilar pruebas
@@ -165,7 +181,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: iPhone-tests-${{ github.run_attempt }}
+          name: iPhone-tests-${{ matrix.device }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/UITests.xcresult
             ${{ runner.temp }}/ui-*.log
@@ -176,7 +192,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: iPhone-captures-${{ github.run_attempt }}
+          name: iPhone-captures-${{ matrix.device }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/ui-captures
             ${{ runner.temp }}/ui-summary.json

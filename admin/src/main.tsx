@@ -127,6 +127,12 @@ function SecondFactor({ onReady, invited }: { onReady: () => void; invited: bool
                     {secret && (
                         <label>
                             Clave de configuración<code>{secret}</code>
+                            <button type="button" className="secondary" onClick={() => {
+                                void navigator.clipboard.writeText(secret).then(
+                                    () => setMessage('Clave copiada.'),
+                                    () => setMessage('Selecciona la clave para copiarla.'),
+                                );
+                            }}>Copiar clave</button>
                         </label>
                     )}
                     {invited && (

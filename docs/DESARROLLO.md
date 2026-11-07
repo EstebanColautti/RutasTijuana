@@ -147,3 +147,9 @@ El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pru
 La ejecución manual ofrece `full` y `native`. Desde una ejecución de Actions se pueden repetir únicamente los trabajos fallidos. Una actualización de la rama cancela su ejecución anterior. Las pruebas de iPhone conservan resultados, capturas y diagnósticos durante siete días.
 
 La caché contiene solo el almacén de dependencias de pnpm. Las pruebas nativas compilan app y extensión, comprueban sus versiones y permisos, y ejecutan la suite completa del simulador sobre los mismos productos compilados.
+
+## Datos de consulta
+
+En el panel, un recorrido puede publicar un campo `stop-order` con un arreglo JSON de identificadores de paradas incluidas y un campo `route-shape` con `linear` o `circular`. Los campos `direction`, `updated-at` y `schedule` aportan sentido, fecha y horarios. Las referencias de servicio usan `service-role` con `notices` para avisos o `contact` para atención. Publican `notice` o un único enlace HTTPS `contact`, respectivamente. El catálogo admite un solo contacto oficial. Incluye únicamente información apta para publicación.
+
+En Debug, «Evaluar consulta» abre un escenario con origen fijado. También se pueden abrir escenarios JSON de evaluación con los campos opcionales `fixedOriginID`, `updatedAt`, `circular` y `direction`.

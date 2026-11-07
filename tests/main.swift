@@ -94,6 +94,14 @@ if let path = ProcessInfo.processInfo.environment["CATALOG_TEST_FILE"] {
 print("Pruebas de catálogo correctas")
 
 let scenario = JourneyScenario.sample
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: 2, fechaActualizacion: "21/10/2026") == .accepted, "Evaluación P1")
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: 2, fechaActualizacion: " ") == .rejected, "Evaluación P2")
+check(validarRuta(origen: "A", destino: " A ", paradasPrincipales: 2, fechaActualizacion: nil) == .invalid, "Evaluación P3")
+check(validarRuta(origen: "", destino: "B", paradasPrincipales: 2, fechaActualizacion: nil) == .invalid, "Origen vacío")
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: -1, fechaActualizacion: nil) == .invalid, "Cantidad negativa")
+let linear = TransitRoute(name: route.name, stops: route.stops, coverageRadius: route.coverageRadius, isCircular: false)
+check(linear.journey(from: "demo-1", to: "demo-3")?.map(\.id) == ["demo-1", "demo-2", "demo-3"], "Trayecto lineal")
+check(linear.journey(from: "demo-3", to: "demo-1") == nil, "Trayecto lineal no cierra el circuito")
 let scenarioData = try JSONEncoder().encode(scenario)
 let decodedScenario = try JourneyScenario.decode(scenarioData, allowEvaluation: true)
 check(decodedScenario.stops.count == 6, "Escenario de evaluación")
@@ -130,17 +138,39 @@ let informationRoundTrip = try RouteCatalog.decode(JSONEncoder().encode(enriched
 check(informationRoundTrip.features[0].information == enrichedFeature.information, "Información completa de ida y vuelta")
 check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descripción y campos")
 
+let geometryA = GeoPoint(latitude: 0, longitude: 0)
+let geometryB = GeoPoint(latitude: 0.001, longitude: 0.001)
+let geometryC = GeoPoint(latitude: 0.001, longitude: 0.002)
+let geometryStops = [geometryA, geometryB, geometryC].enumerated().map {
+    TransitStop(id: String($0.offset), name: String($0.offset), point: $0.element)
+}
+var geometryScenario = JourneyScenario(schemaVersion: 1, name: "Synthetic", coverageRadius: 100,
+    stops: geometryStops, places: [], circular: false, routeGeometry: [[geometryA, geometryB, geometryC]])
+check(geometryScenario.mappedSection(for: geometryStops) == [geometryA, geometryB, geometryC], "Published section preserves the bend")
+check(geometryScenario.mappedSection(for: Array(geometryStops.reversed())) == nil, "Reverse travel does not fabricate a segment")
+geometryScenario.routeGeometry = [[geometryA, geometryB], [geometryC, geometryB]]
+check(geometryScenario.mappedSection(for: geometryStops) == nil, "Disconnected parts do not create a link")
+geometryScenario.circular = true
+geometryScenario.routeGeometry = [[geometryA, geometryB, geometryC, geometryA]]
+check(geometryScenario.mappedSection(for: [geometryStops[2], geometryStops[0], geometryStops[1]]) == [geometryC, geometryA, geometryB], "Circular section crosses its origin")
+
 final class MemoryCatalogCache: CatalogCache {
     var snapshot: CatalogSnapshot?
     var attempted: Date?
+    var succeeded: Date?
     var failWrites = false
-    func current() throws -> CatalogSnapshot? { snapshot }
+    func snapshots() throws -> [CatalogSnapshot] { snapshot.map { [$0] } ?? [] }
     func replace(_ snapshot: CatalogSnapshot) throws {
         if failWrites { throw CatalogSyncError.storage }
         self.snapshot = snapshot
     }
+    func remove(versions: Set<String>) throws {
+        if let snapshot, versions.contains(snapshot.version) { self.snapshot = nil }
+    }
     func lastAttempt() throws -> Date? { attempted }
     func recordAttempt(_ date: Date) throws { attempted = date }
+    func lastSuccess() throws -> Date? { succeeded }
+    func recordSuccess(_ date: Date) throws { succeeded = date }
 }
 final class FixtureCatalogTransport: CatalogTransport {
     var values: [URL: Data] = [:]
@@ -175,6 +205,9 @@ _ = try await synchronizer.update(from:syncEndpoint,force:false,now:Date(timeInt
 check(syncTransport.calls == 2, "Intervalo de actualización")
 _ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1200))
 check(syncTransport.calls == 3, "La misma versión no se vuelve a descargar")
+syncCache.snapshot = .init(version: "one", sha256: fixtureDigest(publishedData), data: Data("broken".utf8))
+_ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1300))
+check(syncTransport.calls == 5 && syncCache.snapshot?.data == publishedData, "Same version repairs a corrupt cache")
 let hostileManifest = CatalogManifest(version:"two",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:URL(string:"https://other.test/catalog")!)
 syncTransport.values[syncEndpoint] = try JSONEncoder().encode(hostileManifest)
 do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError("Debe rechazar otro origen") } catch CatalogSyncError.address { }
@@ -265,6 +298,11 @@ func testWalkingNavigation() {
     var parallel = WalkingProgressEngine(route: loop, destination: target)
     _ = parallel.update(fix(0, 0, east: 10), now: start)
     assert(parallel.progress.traveled < 50)
+    var resumed = WalkingProgressEngine(route: route, destination: target)
+    _ = resumed.update(fix(0, 0), now: start)
+    _ = resumed.update(fix(160, 80), now: start.addingTimeInterval(80))
+    check(resumed.progress.traveled > 150, "Recovery after a long GPS pause advances along the path")
+    check(!resumed.progress.offRoute, "A pause on the path does not create a deviation")
     print("Pruebas de navegación correctas")
 }
 testWalkingNavigation()
@@ -343,3 +381,14 @@ func testWalkingTurns() {
     print("Pruebas de giros correctas")
 }
 testWalkingTurns()
+
+
+var civilScenario = JourneyScenario.sample
+civilScenario.routeID = "published"
+civilScenario.updatedAt = "2026-02-30"
+check(civilScenario.updateDate == nil, "Invalid published date is unavailable")
+civilScenario.updatedAt = "2026-11-06"
+check(civilScenario.updateDate == "06/11/2026", "Published date is localized")
+civilScenario.routeID = nil
+civilScenario.updatedAt = "example"
+check(civilScenario.updateDate == "example", "Evaluation preserves its presence rule")
