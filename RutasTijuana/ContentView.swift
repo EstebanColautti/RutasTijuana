@@ -264,7 +264,7 @@ struct ContentView: View {
             }
             .padding(16)
         }
-        .frame(maxWidth: .infinity).background(.regularMaterial)
+        .frame(maxWidth: .infinity).background(.background)
     }
 
     private var originPanel: some View {
