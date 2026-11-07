@@ -305,7 +305,7 @@ struct TripTravelView: View {
             }
             .id(model.index)
             .navigationTitle("Tu viaje")
-            .toolbar { TripActionButton("Finalizar") { model.finish(); dismiss() } }
+            .toolbar { TripActionButton("Finalizar") { model.finish(); dismiss() }.accessibilityIdentifier("trip-finish") }
             .fullScreenCover(item: $walking) { destination in
                 WalkingNavigationView(destination: destination, preparedRoute: walkingRoute, onArrival: {
                     walking = nil

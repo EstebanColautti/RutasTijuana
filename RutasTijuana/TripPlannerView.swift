@@ -105,6 +105,7 @@ struct TripPlannerView: View {
     @State private var places: [MKMapItem] = []
     @State private var message = ""
     @State private var planner: TripPlanner?
+    @State private var plannedVersion: String?
     @State private var trip: PlannedTrip?
     @State private var working = false
     @State private var paused = false
@@ -129,6 +130,7 @@ struct TripPlannerView: View {
             _originName = State(initialValue: "Origen de ejemplo")
             _destinationName = State(initialValue: "Destino de ejemplo")
             _planner = State(initialValue: TripPlanner(network: .init(catalog: catalog), provider: FixtureTripWalkingProvider()))
+            _plannedVersion = State(initialValue: catalog.version)
         }
         #endif
     }
@@ -154,6 +156,7 @@ struct TripPlannerView: View {
                 Text(selectingOrigin ? "Buscar origen" : "Buscar destino").font(.subheadline)
                 TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query, prompt: Text(""))
                     .focused($searchFocused)
+                    .accessibilityIdentifier("trip-place-search")
                     .padding(.horizontal, 12).frame(minHeight: 44)
                     .background(.background, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
@@ -177,7 +180,7 @@ struct TripPlannerView: View {
                             Text(row.element.name ?? "Lugar")
                             Text(row.element.placemark.title ?? "").font(.caption)
                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                    }
+                    }.accessibilityIdentifier("trip-place-\(row.offset)")
                 }
                 if let error = location.message { Text(error) }
                 if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
@@ -208,6 +211,7 @@ struct TripPlannerView: View {
                         .font(.footnote)
                     TripActionButton("Iniciar viaje") { travelling = true }
                         .accessibilityIdentifier("trip-begin")
+                        .disabled(working)
                         .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).frame(minHeight: 44)
                 }
             }.padding()
@@ -360,6 +364,7 @@ struct TripPlannerView: View {
         let cancelledPlanner = planner
         Task { await cancelledPlanner?.cancel() }
         planner = nil
+        plannedVersion = nil
         trip = nil
         paused = false
         working = false
@@ -374,6 +379,19 @@ struct TripPlannerView: View {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { places = []; message = "Escribe el nombre de un lugar."; return }
         searchFocused = false
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+            places = catalog.features.compactMap { feature in
+                guard feature.kind == .stop, feature.name.localizedStandardContains(text),
+                      case .point(let coordinate) = feature.geometry else { return nil }
+                let item = MKMapItem(placemark: .init(coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude)))
+                item.name = feature.name
+                return item
+            }
+            message = places.isEmpty ? "No se encontraron lugares." : ""
+            return
+        }
+        #endif
         request.naturalLanguageQuery = text
         request.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 32.53, longitude: -117),
                                             span: MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3))
@@ -391,7 +409,18 @@ struct TripPlannerView: View {
             message = "Elige un destino distinto del origen."
             return
         }
-        if planner == nil { planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider()) }
+        if planner == nil || (!paused && plannedVersion != catalog.version) {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+                planner = TripPlanner(network: .init(catalog: catalog), provider: FixtureTripWalkingProvider())
+            } else {
+                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider())
+            }
+            #else
+            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider())
+            #endif
+            plannedVersion = catalog.version
+        }
         guard let activePlanner = planner else { return }
         working = true
         message = ""

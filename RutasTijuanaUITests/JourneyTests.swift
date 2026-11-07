@@ -141,7 +141,7 @@ final class JourneyTests: XCTestCase {
         tap("trip-walk")
         tap("Iniciar guía")
         XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 5))
-        tap("Finalizar")
+        tap("walking-finish")
         app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
         tap("trip-walk-arrived")
         tap("trip-board")
@@ -173,8 +173,29 @@ final class JourneyTests: XCTestCase {
         tap("trip-walk-arrived")
         tap("trip-board")
         capture("Transporte con texto grande")
-        tap("Finalizar")
+        tap("trip-finish")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+    }
+
+    func testTripManualSearch() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture"]
+        app.launch()
+        let originToggle = app.switches["Buscar un origen"]
+        XCTAssertTrue(originToggle.waitForExistence(timeout: 5))
+        originToggle.tap()
+        let search = app.textFields["trip-place-search"]
+        for _ in 0..<8 {
+            if search.isHittable { break }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        search.tap()
+        search.typeText("Parada 1")
+        tap("Buscar lugar")
+        tap("trip-place-0")
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        capture("Consulta con origen manual")
     }
 
     private func checkAccessibleControl(_ element: XCUIElement, label: String, file: StaticString = #filePath, line: UInt = #line) {

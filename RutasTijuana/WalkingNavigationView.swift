@@ -112,7 +112,7 @@ struct WalkingNavigationView: View {
                             .foregroundStyle(colorScheme == .dark ? .white : .primary)
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
-                    }
+                    }.accessibilityIdentifier("walking-finish")
                 }
             }
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
