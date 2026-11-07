@@ -75,6 +75,7 @@ beforeAll(async () => {
     await db.exec(await readFile('supabase/migrations/20261106000000_publication.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261106000001_invites.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261106000002_withdrawal.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261106000003_services.sql', 'utf8'));
     await db.query("insert into catalog_members(user_id,role) values ($1,'admin'),($2,'editor')", [
         admin,
         editor,
@@ -239,4 +240,16 @@ test('withdrawal requires a safe replacement and invalidates old public content'
     expect(JSON.stringify(manifest)).not.toContain('Internal detail');
     expect((await call('select public_catalog_content($1) as content', [active], outsider, 'aal1', 'anon'))[0].content).toBeNull();
     await expect(call('select restore_catalog($1)', [active])).rejects.toThrow();
+});
+
+test('publication rejects ambiguous services and invalid civil dates', async () => {
+    const baseline = (await call('select preview_catalog() as p'))[0].p;
+    const invalid = structuredClone(document);
+    invalid.features[0].publicFields.push(
+        { category: 'updated-at', label: 'Fecha', value: '2026-02-30', evidence: '', secret: '' },
+    );
+    await call('select save_catalog($1,$2)', [invalid, baseline.revision]);
+    const next = (await call('select preview_catalog() as p'))[0].p;
+    await expect(call('select publish_catalog($1,$2)', [next.revision, next.sha256])).rejects.toThrow();
+    await call('select save_catalog($1,$2)', [document, next.revision]);
 });

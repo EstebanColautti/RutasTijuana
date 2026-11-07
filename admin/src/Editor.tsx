@@ -560,6 +560,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                                 notice: 'Aviso',
                                                 note: 'Nota',
                                                 contact: 'Contacto',
+                                                'service-role': 'Servicio (notices o contact)',
                                                 media: 'Enlace',
                                             }).map(([c, label]) => (
                                                 <option key={c} value={c}>

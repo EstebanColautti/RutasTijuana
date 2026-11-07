@@ -376,3 +376,14 @@ func testWalkingTurns() {
     print("Pruebas de giros correctas")
 }
 testWalkingTurns()
+
+
+var civilScenario = JourneyScenario.sample
+civilScenario.routeID = "published"
+civilScenario.updatedAt = "2026-02-30"
+check(civilScenario.updateDate == nil, "Invalid published date is unavailable")
+civilScenario.updatedAt = "2026-11-06"
+check(civilScenario.updateDate == "06/11/2026", "Published date is localized")
+civilScenario.routeID = nil
+civilScenario.updatedAt = "example"
+check(civilScenario.updateDate == "example", "Evaluation preserves its presence rule")

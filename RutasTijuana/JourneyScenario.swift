@@ -38,7 +38,20 @@ struct JourneyScenario: Codable {
 
     var updateDate: String? {
         guard let date = updatedAt?.trimmingCharacters(in: .whitespacesAndNewlines), !date.isEmpty else { return nil }
-        return date
+        guard routeID != nil else { return date }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.isLenient = false
+        for format in ["yyyy-MM-dd", "dd/MM/yyyy"] {
+            formatter.dateFormat = format
+            if let parsed = formatter.date(from: date), formatter.string(from: parsed) == date {
+                formatter.locale = Locale(identifier: "es_MX")
+                formatter.dateFormat = "dd/MM/yyyy"
+                return formatter.string(from: parsed)
+            }
+        }
+        return nil
     }
 
     var route: TransitRoute {

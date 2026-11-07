@@ -220,17 +220,19 @@ struct RouteCatalog: Codable, Sendable {
     var serviceNotices: [String] {
         guard readyForDistribution else { return [] }
         return serviceInformation?.notices
-            ?? features.filter { $0.kind == .reference }.flatMap { $0.publishedValues(for: "notice") }
+            ?? features.filter { $0.kind == .reference && $0.publishedValues(for: "service-role") == ["notices"] }.flatMap { $0.publishedValues(for: "notice") }
     }
 
     var serviceContact: URL? {
         guard readyForDistribution else { return nil }
-        let links = features.filter { $0.kind == .reference }.flatMap { $0.publishedValues(for: "contact") }
+        let links = features.filter { $0.kind == .reference && $0.publishedValues(for: "service-role") == ["contact"] }.flatMap { $0.publishedValues(for: "contact") }
             .compactMap { URL(string: $0) }
         let configured = serviceInformation?.contact.map { [$0] } ?? []
-        return (configured + links).first {
-            $0.scheme?.lowercased() == "https" && $0.host != nil && $0.user == nil && $0.password == nil
-        }
+        let candidates = configured + links
+        guard candidates.count == 1, let contact = candidates.first,
+              contact.scheme?.lowercased() == "https", contact.host?.isEmpty == false,
+              contact.user == nil, contact.password == nil else { return nil }
+        return contact
     }
 
     func journeyScenario(for feature: CatalogFeature) -> JourneyScenario? {
