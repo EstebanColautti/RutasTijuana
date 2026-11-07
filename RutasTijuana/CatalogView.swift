@@ -291,7 +291,7 @@ struct CatalogView: View {
                         Section("Descripción disponible") { Text(information.description).textSelection(.enabled) }
                     }
                     ForEach(Array(information.fields.enumerated()), id: \.offset) { item in
-                        Section(item.element.label) {
+                        Section {
                             Text(item.element.value).textSelection(.enabled)
                             if item.element.inferred {
                                 Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.primary)
@@ -304,6 +304,11 @@ struct CatalogView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .textSelection(.enabled)
                             }
+                        } header: {
+                            Text(item.element.label)
+                                .textCase(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, 4)
                         }
                     }
                 }

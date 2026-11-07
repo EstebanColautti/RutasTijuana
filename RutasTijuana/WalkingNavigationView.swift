@@ -125,6 +125,7 @@ struct WalkingNavigationView: View {
                                     Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
                                         .font(.caption).foregroundStyle(.primary)
                                         .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.vertical, 4)
                                 }
                             }
                         } icon: {
