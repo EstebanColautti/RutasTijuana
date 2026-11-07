@@ -397,9 +397,11 @@ check(civilScenario.updateDate == "example", "Evaluation preserves its presence 
 @MainActor
 final class SyntheticTripWalkingProvider: TripWalkingProvider {
     var calls = 0
+    let maximumDistance: Double
+    init(maximumDistance: Double = 30) { self.maximumDistance = maximumDistance }
     func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
         calls += 1
-        guard from.distance(to: to) < 30 else { return nil }
+        guard from.distance(to: to) < maximumDistance else { return nil }
         return WalkingRoute(points: [from, to], steps: [], duration: 0)
     }
 }
@@ -435,6 +437,45 @@ func testTripPlanning() async throws {
     guard case .unavailable = result else {
         fatalError("A linear service must not run in reverse")
     }
+    let direct = TripService(id: "direct", name: "Direct", direction: nil, stops: [stops[0], stops[2]], circular: false)
+    let directPlanner = TripPlanner(network: .init(version: "synthetic", services: network.services + [direct]),
+                                    provider: SyntheticTripWalkingProvider())
+    guard case .found(let directTrip) = try await directPlanner.search(from: stops[0].point, to: stops[2].point) else {
+        fatalError("Direct service must be available")
+    }
+    check(directTrip.transfers == 0, "A direct service wins over a transfer")
+    let farOrigin = GeoPoint(latitude: stops[0].point.latitude - 0.009, longitude: -117)
+    let expanded = TripPlanner(network: .init(version: "synthetic", services: [direct]),
+                               provider: SyntheticTripWalkingProvider(maximumDistance: 1500))
+    guard case .found(let expandedTrip) = try await expanded.search(from: farOrigin, to: stops[2].point) else {
+        fatalError("Walking preferences must not block the only connection")
+    }
+    check(expandedTrip.walkingMeters > 800 && expandedTrip.exceedsPreferences, "Walking preference expands automatically")
+    do {
+        _ = try await directPlanner.search(from: .init(latitude: .nan, longitude: 0), to: stops[2].point)
+        fatalError("Invalid coordinates must be rejected")
+    } catch TripPlanningError.invalidInput { }
     print("Pruebas de planificación correctas")
 }
 try await testTripPlanning()
+
+
+func testTransitProgress() {
+    let base = Date(timeIntervalSince1970: 5000)
+    func point(_ meters: Double) -> GeoPoint { .init(latitude: 32 + meters / 111195, longitude: -117) }
+    var engine = TransitProgressEngine(path: [point(0), point(1000)], destination: point(1000))
+    var notifications = 0
+    for index in 0...20 {
+        let time = base.addingTimeInterval(Double(index * 3))
+        let value = engine.update(.init(point: point(Double(index * 50)), accuracy: 5, timestamp: time), now: time)
+        if value?.notifyAlighting == true { notifications += 1 }
+    }
+    check(notifications == 1, "Alighting notification is emitted once")
+    let later = base.addingTimeInterval(70)
+    let passed = engine.update(.init(point: point(1200), accuracy: 5, timestamp: later), now: later)
+    check(passed?.passedStop == true, "Passing the end of the path offers replanning")
+    let stale = engine.update(.init(point: point(1000), accuracy: 100, timestamp: later), now: later)
+    check(stale == nil, "Imprecise GPS cannot advance a ride")
+    print("Pruebas de seguimiento de transporte correctas")
+}
+testTransitProgress()

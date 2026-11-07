@@ -124,6 +124,26 @@ final class JourneyTests: XCTestCase {
         }
     }
 
+    func testCombinedTrip() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture"]
+        app.launch()
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts.matching(identifier: "trip-result").count, 1)
+        tap("trip-begin")
+        tap("trip-walk-arrived")
+        tap("trip-board")
+        tap("trip-alight")
+        tap("trip-board")
+        tap("trip-alight")
+        tap("trip-walk-arrived")
+        XCTAssertTrue(app.staticTexts["Llegaste al destino"].waitForExistence(timeout: 5))
+        capture("Viaje combinado")
+        tap("Terminar")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+    }
+
     private func checkAccessibleControl(_ element: XCUIElement, label: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)

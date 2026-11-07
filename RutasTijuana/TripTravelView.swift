@@ -11,15 +11,14 @@ import Combine
     @Published private(set) var remaining: Double?
     @Published private(set) var paused = false
     @Published private(set) var point: GeoPoint?
-    private let locations = AppleNavigationLocationProvider()
+    @Published private(set) var missedStop = false
+    private let locations: any NavigationLocationProvider
+    private let fixture: Bool
     private let activity = NavigationActivityController()
     private var timer: Task<Void, Never>?
     private var path: [GeoPoint] = []
-    private var traveled = 0.0
+    private var engine: TransitProgressEngine?
     private var previous: WalkingFix?
-    private var nearSince: Date?
-    private var nearCount = 0
-    private var alerted = false
     private var started = Date()
     private var movement = Date()
     private var movementPoint: GeoPoint?
@@ -28,7 +27,22 @@ import Combine
 
     init(trip: PlannedTrip) {
         self.trip = trip
-        locations.transportMode()
+        #if DEBUG
+        fixture = ProcessInfo.processInfo.arguments.contains("--trip-fixture")
+        if fixture {
+            locations = FixtureNavigationLocationProvider(destination: .init(id: "fixture", name: "Parada de ejemplo",
+                point: .init(latitude: 32.51, longitude: -117)))
+        } else {
+            let native = AppleNavigationLocationProvider()
+            native.transportMode()
+            locations = native
+        }
+        #else
+        fixture = false
+        let native = AppleNavigationLocationProvider()
+        native.transportMode()
+        locations = native
+        #endif
         locations.onFix = { [weak self] fix in self?.receive(fix) }
         locations.onDenied = { [weak self] in
             self?.pause("La ubicación está desactivada. Puedes confirmar la bajada manualmente.")
@@ -44,9 +58,8 @@ import Combine
         message = ""
         remaining = nil
         paused = false
-        alerted = false
-        nearCount = 0
-        nearSince = nil
+        engine = nil
+        missedStop = false
     }
     func board() {
         guard active, case .ride(let service, let stops)? = leg else { return }
@@ -57,14 +70,15 @@ import Combine
         movement = Date()
         if !resuming {
             previous = nil
-            traveled = 0
+            engine = nil
         }
-        let scenario = JourneyScenario(schemaVersion: 1, name: service.name, coverageRadius: 1000,
-            stops: service.stops, places: [], circular: service.circular, routeGeometry: service.geometry)
-        path = scenario.mappedSection(for: stops) ?? []
+        path = service.section(through: stops) ?? []
         guard path.count > 1 else {
             message = "Confirma tu bajada en la parada indicada. No hay un trazado continuo para seguir este tramo."
             return
+        }
+        if engine == nil, let destination = stops.last?.point {
+            engine = TransitProgressEngine(path: path, destination: destination)
         }
         locations.start()
         locations.enableBackground()
@@ -82,13 +96,13 @@ import Combine
                 }
             }
         }
-        Task {
+        if !fixture { Task {
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
             if settings.authorizationStatus == .notDetermined {
                 _ = try? await center.requestAuthorization(options: [.alert, .sound])
             }
-        }
+        } }
     }
     func resume() { board() }
     func finish() {
@@ -114,32 +128,11 @@ import Combine
         activity.end(message: "Etapa finalizada")
     }
     private func receive(_ fix: WalkingFix) {
-        guard active, aboard, !paused, fix.isReliable(at: Date()),
+        guard active, aboard, !paused,
               case .ride(_, let stops)? = leg, let stop = stops.last else { return }
-        if let previous {
-            let interval = fix.timestamp.timeIntervalSince(previous.timestamp)
-            guard interval > 0, fix.point.distance(to: previous.point) <= interval * 55 + fix.accuracy + previous.accuracy else { return }
-        }
-        let advance = previous.map { max(100, fix.timestamp.timeIntervalSince($0.timestamp) * 55 + fix.accuracy) } ?? 500
-        let scale = cos(fix.point.latitude * .pi / 180)
-        var cumulative = 0.0
-        var nearest = Double.infinity
-        var chosen: (distance: Double, along: Double)?
-        for (a, b) in zip(path, path.dropFirst()) {
-            let x = (b.longitude - a.longitude) * scale * 111195
-            let y = (b.latitude - a.latitude) * 111195
-            let px = (fix.point.longitude - a.longitude) * scale * 111195
-            let py = (fix.point.latitude - a.latitude) * 111195
-            let squared = x*x + y*y
-            let t = squared > 0 ? min(1, max(0, (px*x + py*y) / squared)) : 0
-            let length = a.distance(to: b)
-            let distance = hypot(px - t*x, py - t*y)
-            let along = cumulative + t*length
-            nearest = min(nearest, distance)
-            if along >= traveled - 30 && along <= traveled + advance && distance < (chosen?.distance ?? .infinity) {
-                chosen = (distance, along)
-            }
-            cumulative += length
+        guard let progress = engine?.update(fix, now: Date()) else {
+            message = "Ubicación sin actualizar. Puedes confirmar tu bajada manualmente."
+            return
         }
         previous = fix
         point = fix.point
@@ -147,28 +140,23 @@ import Combine
             movementPoint = fix.point
             movement = Date()
         }
-        guard nearest <= max(60, fix.accuracy * 2), let chosen,
-              chosen.distance <= max(60, nearest + 10) else {
+        remaining = progress.remaining
+        if progress.passedStop {
+            missedStop = true
+            message = "Parece que pasaste tu parada. Puedes volver a planear desde tu ubicación."
+            return
+        }
+        guard !progress.offRoute else {
             message = "Tu ubicación no coincide con el recorrido. Revisa la parada de bajada."
             return
         }
-        traveled = max(traveled, chosen.along)
-        remaining = max(0, cumulative - traveled)
-        message = "Baja en " + stop.name
-        if (remaining ?? .infinity) <= 350 {
-            nearCount += 1
-            if nearSince == nil { nearSince = fix.timestamp }
-            if nearCount >= 3, fix.timestamp.timeIntervalSince(nearSince!) >= 5, !alerted {
-                alerted = true
+        message = (progress.remaining <= 350 ? "Se acerca tu parada. Baja en " : "Baja en ") + stop.name
+        if progress.notifyAlighting {
                 let content = UNMutableNotificationContent()
                 content.title = "Se acerca tu parada"
                 content.body = "Prepárate para bajar. Abre la app para ver el viaje."
                 content.sound = .default
                 UNUserNotificationCenter.current().add(.init(identifier: session + "-\(index)", content: content, trigger: nil)) { _ in }
-            }
-        } else { nearSince = nil; nearCount = 0 }
-        if traveled >= cumulative - 40 && fix.point.distance(to: stop.point) > 150 {
-            message = "Parece que pasaste tu parada. Confirma dónde bajaste para volver a planear."
         }
         activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
                         status: "En transporte", locationCurrent: true)
@@ -176,10 +164,14 @@ import Combine
 }
 
 struct TripTravelView: View {
+    private let onReplan: ((GeoPoint) -> Void)?
     @StateObject private var model: TripTravelController
     @Environment(\.dismiss) private var dismiss
     @State private var walking: WalkingDestination?
-    init(trip: PlannedTrip) { _model = StateObject(wrappedValue: TripTravelController(trip: trip)) }
+    init(trip: PlannedTrip, onReplan: ((GeoPoint) -> Void)? = nil) {
+        self.onReplan = onReplan
+        _model = StateObject(wrappedValue: TripTravelController(trip: trip))
+    }
 
     var body: some View {
         NavigationStack {
@@ -199,7 +191,7 @@ struct TripTravelView: View {
                             Button("Iniciar caminata") {
                                 walking = .init(id: "leg-\(model.index)", name: "Siguiente punto del viaje", point: target)
                             }.buttonStyle(.borderedProminent)
-                            Button("Ya llegué") { model.advance() }
+                            Button("Ya llegué") { model.advance() }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                         case .ride(let service, let stops):
                             Label(service.name, systemImage: "bus").font(.title2)
                             Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
@@ -208,13 +200,20 @@ struct TripTravelView: View {
                             if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
                             if model.aboard {
                                 if model.paused { Button("Continuar seguimiento") { model.resume() } }
-                                Button("Ya bajé") { model.advance() }.buttonStyle(.borderedProminent)
+                                Button("Ya bajé") { model.advance() }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent)
                             } else {
-                                Button("Ya subí") { model.board() }.buttonStyle(.borderedProminent)
+                                Button("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent)
                             }
                         }
                     }
                     if !model.message.isEmpty { Text(model.message) }
+                    if model.missedStop, let point = model.point, let onReplan {
+                        Button("Recalcular desde aquí") {
+                            model.finish()
+                            onReplan(point)
+                            dismiss()
+                        }.frame(minHeight: 44)
+                    }
                 }.padding()
             }
             .navigationTitle("Tu viaje")

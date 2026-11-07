@@ -1,17 +1,17 @@
 import Foundation
 
-struct WalkingDestination: Identifiable, Equatable {
+struct WalkingDestination: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let point: GeoPoint
 }
 
-struct WalkingStep {
+struct WalkingStep: Sendable {
     let instruction: String
     let endDistance: Double
 }
 
-struct WalkingRoute {
+struct WalkingRoute: Sendable {
     let points: [GeoPoint]
     let steps: [WalkingStep]
     let duration: TimeInterval
