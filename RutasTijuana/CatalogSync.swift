@@ -53,7 +53,7 @@ struct PublishedCatalog: Codable {
         return catalog
     }
 }
-struct CatalogSnapshot { let version: String; let sha256: String; let data: Data }
+struct CatalogSnapshot: Sendable { let version: String; let sha256: String; let data: Data }
 protocol CatalogCache {
     func snapshots() throws -> [CatalogSnapshot]
     func replace(_ snapshot: CatalogSnapshot) throws

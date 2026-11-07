@@ -44,12 +44,9 @@ final class CatalogRepository: ObservableObject {
             }
             #endif
             let snapshots = try cache?.snapshots() ?? []
-            for snapshot in snapshots {
-                if let saved = try? snapshot.validated(digest: Self.digest) {
-                    catalog = saved
-                    break
-                }
-            }
+            catalog = await Task.detached(priority: .userInitiated) {
+                snapshots.lazy.compactMap { try? $0.validated(digest: Self.digest) }.first
+            }.value
             if catalog == nil && !snapshots.isEmpty { message = "No se pudo abrir el catálogo guardado." }
             if !fixture, let newest = snapshots.first, catalog?.version != newest.version {
                 await update(force: true)
@@ -76,7 +73,9 @@ final class CatalogRepository: ObservableObject {
             if let updated = try await sync.update(from: endpoint, force: force) { catalog = updated; message = nil }
         } catch {
             if let snapshots = try? cache.snapshots(), !snapshots.contains(where: { $0.version == catalog?.version }) {
-                catalog = snapshots.lazy.compactMap { try? $0.validated(digest: Self.digest) }.first
+                catalog = await Task.detached(priority: .userInitiated) {
+                    snapshots.lazy.compactMap { try? $0.validated(digest: Self.digest) }.first
+                }.value
             }
             message = catalog == nil ? "No se pudo descargar el catÃ¡logo. Puedes volver a intentarlo." : "No se pudo actualizar. Se conserva el catÃ¡logo guardado." }
     }
