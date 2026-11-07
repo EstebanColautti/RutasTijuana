@@ -108,6 +108,7 @@ struct TripPlannerView: View {
                         else { destination = point; destinationName = row.element.name ?? "Destino" }
                         places = []
                         query = ""
+                        camera = .automatic
                     } label: {
                         VStack(alignment: .leading) {
                             Text(row.element.name ?? "Lugar")
@@ -136,6 +137,8 @@ struct TripPlannerView: View {
                     ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
                         legSummary(row.element)
                     }
+                    Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
+                        .font(.footnote)
                     Button("Iniciar viaje") { travelling = true }
                         .accessibilityIdentifier("trip-begin")
                         .buttonStyle(.borderedProminent).frame(minHeight: 44)
@@ -145,7 +148,7 @@ struct TripPlannerView: View {
         .navigationTitle("Planear viaje")
         .fullScreenCover(isPresented: $travelling) {
             if let trip {
-                TripTravelView(trip: trip, onReplan: { point in
+                TripTravelView(trip: trip, destinationName: destinationName, onReplan: { point in
                     invalidate()
                     origin = point
                     originName = "Tu ubicación"

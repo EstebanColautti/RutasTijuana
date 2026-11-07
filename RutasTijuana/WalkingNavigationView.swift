@@ -14,16 +14,16 @@ struct WalkingNavigationView: View {
     @StateObject private var connectivity = ConnectivityMonitor()
     @State private var showingSteps = false
     @State private var confirmEnd = false
-    init(destination: WalkingDestination, onArrival: (() -> Void)? = nil) {
+    init(destination: WalkingDestination, preparedRoute: WalkingRoute? = nil, onArrival: (() -> Void)? = nil) {
         self.onArrival = onArrival
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--walking-fixture") {
-            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: FixtureWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination)))
+        if ProcessInfo.processInfo.arguments.contains("--walking-fixture") || ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: FixtureWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination), preparedRoute: preparedRoute))
         } else {
-            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination))
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, preparedRoute: preparedRoute))
         }
         #else
-        _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination))
+        _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, preparedRoute: preparedRoute))
         #endif
     }
     var body: some View {

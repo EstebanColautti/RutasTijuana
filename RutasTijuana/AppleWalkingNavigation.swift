@@ -134,7 +134,7 @@ extension MKPolyline {
     private var failures = 0
     private let activity = NavigationActivityController()
 
-    init(destination: WalkingDestination, provider: WalkingRouteProvider? = nil, locations: NavigationLocationProvider? = nil, now: @escaping () -> Date = Date.init) {
+    init(destination: WalkingDestination, provider: WalkingRouteProvider? = nil, locations: NavigationLocationProvider? = nil, now: @escaping () -> Date = Date.init, preparedRoute: WalkingRoute? = nil) {
         self.destination = destination
         self.provider = provider ?? AppleWalkingRouteProvider()
         self.locations = locations ?? AppleNavigationLocationProvider()
@@ -148,6 +148,16 @@ extension MKPolyline {
         self.locations.onError = { [weak self] _ in
             self?.status.location = .acquiring
             self?.activityUpdate()
+        }
+        if let preparedRoute, preparedRoute.points.count >= 2, preparedRoute.length.isFinite, preparedRoute.length > 0,
+           preparedRoute.duration.isFinite, preparedRoute.duration >= 0,
+           let endpoint = preparedRoute.points.last, endpoint.distance(to: destination.point) <= 25 {
+            route = preparedRoute
+            routeOrigin = preparedRoute.points.first
+            engine = WalkingProgressEngine(route: preparedRoute, destination: destination)
+            progress = engine!.progress
+            phase = .preview
+            status.endpointGap = endpoint.distance(to: destination.point)
         }
     }
     var message: String { status.messages(hasRoute: route != nil).joined(separator: "\n") }

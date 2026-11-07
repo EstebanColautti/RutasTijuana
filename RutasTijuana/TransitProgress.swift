@@ -16,6 +16,11 @@ struct TransitProgressEngine {
     private var nearCount = 0
     private var notified = false
 
+    init(path: [GeoPoint], destination: GeoPoint) {
+        self.path = path
+        self.destination = destination
+    }
+
     mutating func update(_ fix: WalkingFix, now: Date) -> TransitRideProgress? {
         guard fix.isReliable(at: now), path.count > 1 else {
             nearSince = nil

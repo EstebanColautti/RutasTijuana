@@ -51,6 +51,18 @@ import Combine
     }
     var leg: TripLeg? { trip.legs.indices.contains(index) ? trip.legs[index] : nil }
     var finished: Bool { index >= trip.legs.count }
+    var ridePath: [GeoPoint] { path }
+
+    func previousLeg() {
+        guard index > 0 else { return }
+        stopTracking()
+        index -= 1
+        engine = nil
+        remaining = nil
+        paused = false
+        missedStop = false
+        message = ""
+    }
 
     func advance() {
         stopTracking()
@@ -165,12 +177,27 @@ import Combine
 
 struct TripTravelView: View {
     private let onReplan: ((GeoPoint) -> Void)?
+    private let destinationName: String
     @StateObject private var model: TripTravelController
     @Environment(\.dismiss) private var dismiss
     @State private var walking: WalkingDestination?
-    init(trip: PlannedTrip, onReplan: ((GeoPoint) -> Void)? = nil) {
+    init(trip: PlannedTrip, destinationName: String = "Destino", onReplan: ((GeoPoint) -> Void)? = nil) {
         self.onReplan = onReplan
+        self.destinationName = destinationName
         _model = StateObject(wrappedValue: TripTravelController(trip: trip))
+    }
+
+    private var walkingRoute: WalkingRoute? {
+        if case .walk(_, _, let route)? = model.leg { return route }
+        return nil
+    }
+
+    private var walkingTarget: String {
+        let next = model.index + 1
+        if model.trip.legs.indices.contains(next), case .ride(_, let stops) = model.trip.legs[next] {
+            return stops.first?.name ?? "Parada de subida"
+        }
+        return destinationName
     }
 
     var body: some View {
@@ -183,20 +210,30 @@ struct TripTravelView: View {
                     } else if let leg = model.leg {
                         switch leg {
                         case .walk(_, let target, let route):
-                            Label("Camina al siguiente punto", systemImage: "figure.walk").font(.title2)
+                            Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(.title2)
                             Text(WalkingFormat.distance(route.length))
                             Map {
                                 MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) }).stroke(.blue, lineWidth: 5)
                             }.frame(height: 220)
                             Button("Iniciar caminata") {
-                                walking = .init(id: "leg-\(model.index)", name: "Siguiente punto del viaje", point: target)
-                            }.buttonStyle(.borderedProminent)
+                                walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target)
+                            }.buttonStyle(.borderedProminent).accessibilityIdentifier("trip-walk")
                             Button("Ya llegué") { model.advance() }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                         case .ride(let service, let stops):
                             Label(service.name, systemImage: "bus").font(.title2)
                             Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
                             Text("Sube en \(stops.first?.name ?? "")")
                             Text("Baja en \(stops.last?.name ?? "")")
+                            if model.ridePath.count > 1 {
+                                Map {
+                                    MapPolyline(coordinates: model.ridePath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                                        .stroke(.indigo, lineWidth: 5)
+                                    if let point = model.point {
+                                        Marker("Tu ubicación", coordinate: .init(latitude: point.latitude, longitude: point.longitude))
+                                    }
+                                }.frame(height: 220)
+                                .accessibilityLabel("Recorrido hasta la parada de bajada")
+                            }
                             if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
                             if model.aboard {
                                 if model.paused { Button("Continuar seguimiento") { model.resume() } }
@@ -205,6 +242,9 @@ struct TripTravelView: View {
                                 Button("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent)
                             }
                         }
+                    }
+                    if !model.finished, model.index > 0 {
+                        Button("Volver a la etapa anterior") { model.previousLeg() }.frame(minHeight: 44)
                     }
                     if !model.message.isEmpty { Text(model.message) }
                     if model.missedStop, let point = model.point, let onReplan {
@@ -219,7 +259,7 @@ struct TripTravelView: View {
             .navigationTitle("Tu viaje")
             .toolbar { Button("Finalizar") { model.finish(); dismiss() } }
             .fullScreenCover(item: $walking) { destination in
-                WalkingNavigationView(destination: destination, onArrival: {
+                WalkingNavigationView(destination: destination, preparedRoute: walkingRoute, onArrival: {
                     walking = nil
                     model.advance()
                 })
