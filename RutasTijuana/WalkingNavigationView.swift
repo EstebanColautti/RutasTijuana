@@ -118,18 +118,16 @@ struct WalkingNavigationView: View {
             .sheet(isPresented: $showingSteps) {
                 NavigationStack {
                     List(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
-                        Label {
-                            VStack(alignment: .leading) {
-                                Text(step.instruction).fixedSize(horizontal: false, vertical: true)
-                                if model.phase == .navigating {
-                                    Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
-                                        .font(.caption).foregroundStyle(.primary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .padding(.vertical, 4)
-                                }
-                            }
-                        } icon: {
+                        HStack(alignment: .top, spacing: 12) {
                             Image(systemName: index < model.progress.stepIndex ? "checkmark.circle" : index == model.progress.stepIndex ? "location.circle.fill" : "circle")
+                                .accessibilityHidden(true)
+                            Text(step.instruction + (model.phase == .navigating
+                                ? "\n" + (index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
+                                : ""))
+                                .font(.body)
+                                .lineSpacing(6)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.vertical, 8)
                         .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)

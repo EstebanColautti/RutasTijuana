@@ -130,6 +130,18 @@ function ItineraryEditor({ feature, stops, onChange }: {
                                             <option key={stop.id} value={stop.id}>{stop.name}</option>)}
                                     </select>
                                 </label>
+                                <button type="button" className="secondary" disabled={index === 0}
+                                    aria-label={"Subir parada " + (index + 1)} onClick={() => {
+                                        const next = [...order];
+                                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                                        update(shape, next);
+                                    }}>Subir</button>
+                                <button type="button" className="secondary" disabled={index === order.length - 1}
+                                    aria-label={"Bajar parada " + (index + 1)} onClick={() => {
+                                        const next = [...order];
+                                        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                                        update(shape, next);
+                                    }}>Bajar</button>
                                 <button type="button" className="secondary" onClick={() => update(shape, order.filter((_, position) => position !== index))}>Quitar parada {index + 1}</button>
                             </li>
                         ))}

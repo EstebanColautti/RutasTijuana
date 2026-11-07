@@ -52,3 +52,29 @@ test('a delayed save locks edits and keeps the draft on conflict', async () => {
  expect(description.value).toBe('Mi edición');
  expect(screen.getByRole('button', { name: 'Descargar borrador' })).toBeTruthy();
 });
+
+test('an editor reorders published stops without changing their identifiers', async () => {
+ const api = service('editor'), user = userEvent.setup();
+ const point = (id: string): Document['features'][number] => ({
+   id, name: id, groupID: 'g', kind: 'stop', color: '#2476E8', included: true,
+   geometry: { type: 'Point', coordinates: [-117, 32.5] }, publicDescription: '', publicFields: [],
+ });
+ const route: Document['features'][number] = {
+   ...point('route'), kind: 'route', name: 'Ruta de prueba',
+   geometry: { type: 'LineString', coordinates: [[-117, 32.5], [-117.01, 32.51]] },
+   publicFields: [
+     { category: 'route-shape', label: 'Tipo', value: 'linear' },
+     { category: 'stop-order', label: 'Orden', value: '["one","two"]' },
+   ],
+ };
+ api.draft = async () => ({ revision: 0, document: { groups: [{ id: 'g', name: 'Ejemplo' }], features: [route, point('one'), point('two')] } });
+ api.save = vi.fn(async () => 1);
+ render(<Editor service={api} onSignOut={() => {}} />);
+ await user.click(await screen.findByRole('button', { name: /Ruta de prueba/ }));
+ await user.click(screen.getByRole('button', { name: 'Bajar parada 1' }));
+ await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+ await screen.findByText('Cambios guardados.');
+ const saved = vi.mocked(api.save).mock.calls[0][0];
+ expect(saved.features.find((feature) => feature.id === 'route')?.publicFields.find((field) => field.category === 'stop-order')?.value).toBe('["two","one"]');
+ expect(saved.features.map((feature) => feature.id)).toEqual(['route','one','two']);
+});
