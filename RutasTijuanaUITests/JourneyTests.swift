@@ -102,6 +102,28 @@ final class JourneyTests: XCTestCase {
         try audit("Indicaciones de la guía", types: [.textClipped])
     }
 
+    func testConsultationTextSizes() {
+        let sizes = [
+            "XS", "S", "M", "L", "XL", "XXL", "XXXL",
+            "AccessibilityM", "AccessibilityL", "AccessibilityXL",
+            "AccessibilityXXL", "AccessibilityXXXL",
+        ]
+        for size in sizes {
+            app.terminate()
+            app.launchArguments = ["--ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategory" + size]
+            app.launch()
+            tap("Elegir ubicación inicial")
+            tap("stop-demo-1")
+            tap("Continuar")
+            tap("stop-demo-4")
+            tap("Ver trayecto")
+            XCTAssertTrue(app.staticTexts["Ruta aceptada"].waitForExistence(timeout: 5))
+            capture("Consulta texto " + size)
+            tap("Nueva consulta")
+            XCTAssertTrue(app.buttons["Elegir ubicación inicial"].waitForExistence(timeout: 5))
+        }
+    }
+
     private func checkAccessibleControl(_ element: XCUIElement, label: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)
