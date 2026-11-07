@@ -414,6 +414,7 @@ struct TripPlannerView: View {
             return
         }
         if planner == nil || (!paused && plannedVersion != catalog.version) {
+            if plannedVersion != catalog.version { trip = nil }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                 planner = TripPlanner(network: .init(catalog: catalog), provider: FixtureTripWalkingProvider())
@@ -436,7 +437,10 @@ struct TripPlannerView: View {
                 switch result {
                 case .found(let result): trip = result; paused = false; camera = .automatic
                 case .paused: paused = true; message = "La búsqueda necesita continuar."
-                case .unavailable: message = "No se encontró una conexión con los recorridos disponibles."
+                case .unavailable:
+                    trip = nil
+                    paused = false
+                    message = "No se encontró una conexión con los recorridos disponibles."
                 }
             } catch TripPlanningError.tryAgainLater {
                 guard !Task.isCancelled else { return }
