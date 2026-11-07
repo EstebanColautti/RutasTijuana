@@ -66,8 +66,44 @@ final class JourneyTests: XCTestCase {
         try audit("Resultado")
     }
 
-    private func audit(_ screen: String) throws {
-        try app.performAccessibilityAudit { issue in
+    func testCatalogAndWalkingAccessibility() throws {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-info-sample", "--walking-fixture"]
+        app.launch()
+        tap("Explorar recorridos")
+        checkAccessibleControl(app.textFields["catalog-search"], label: "Buscar nombre, grupo o información")
+        tap("catalog-sample-route")
+        tap("catalog-information")
+        XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
+        try audit("Información del catálogo", types: [.textClipped])
+        tap("catalog-information-close")
+        app.terminate()
+
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        checkAccessibleControl(app.buttons["Recentrar"], label: "Recentrar")
+        checkAccessibleControl(app.buttons["Finalizar"], label: "Finalizar")
+        tap("Iniciar guía")
+        tap("Ver pasos")
+        XCTAssertTrue(app.navigationBars["Indicaciones"].waitForExistence(timeout: 5))
+        try audit("Indicaciones de la guía", types: [.textClipped])
+    }
+
+    private func checkAccessibleControl(_ element: XCUIElement, label: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(element.isHittable, file: file, line: line)
+        XCTAssertEqual(element.label, label, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.width, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.height, 44, file: file, line: line)
+    }
+
+    private func audit(_ screen: String, types: XCUIAccessibilityAuditType = .all) throws {
+        try app.performAccessibilityAudit(for: types) { issue in
             if let element = issue.element {
                 print("[\(screen)] \(issue.auditType): \(element.label), \(element.identifier), \(element.frame)")
                 if issue.auditType == .hitRegion && element.identifier.isEmpty && element.label == "Aviso legal" {
