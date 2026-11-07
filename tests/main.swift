@@ -532,3 +532,21 @@ testTransitProgress()
     print("Pruebas de cancelación y ampliación correctas")
 }
 try await testTripCancellationAndExpansion()
+
+
+@MainActor func testTripSearchWork() async throws {
+    let services = (0..<100).map { service in
+        TripService(id: "grid-\(service)", name: "Synthetic", direction: nil,
+            stops: (0..<10).map { stop in
+                TransitStop(id: "grid-\(service)-\(stop)", name: "Synthetic",
+                    point: .init(latitude: 32 + Double(stop) * 0.001, longitude: -117 + Double(service) * 0.01))
+            }, circular: false)
+    }
+    let provider = SyntheticTripWalkingProvider()
+    let planner = TripPlanner(network: .init(version: "large", services: services), provider: provider)
+    let result = try await planner.search(from: services[0].stops.first!.point, to: services[0].stops.last!.point)
+    guard case .found(let trip) = result else { fatalError("Large catalogs must retain a direct connection") }
+    check(provider.calls == 0 && trip.transfers == 0, "Lazy walking search does not request every possible stop pair")
+    print("Pruebas de búsqueda progresiva correctas")
+}
+try await testTripSearchWork()

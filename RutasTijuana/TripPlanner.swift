@@ -245,34 +245,34 @@ actor TripPlanner {
                     exceedsPreferences: score(current)[0] > 0))
             }
             for departure in departures[current.stop] ?? [] {
-                    let service = departure.service
-                    let position = departure.position
-                    let nextPosition = position + 1
-                    guard nextPosition < service.stops.count || service.circular else { continue }
-                    let nextStop = service.stops[nextPosition % service.stops.count]
-                    guard let nextIndex = indices[nextStop.id] else { continue }
-                    let key = "\(nextIndex)|\(service.id)"
-                    guard !current.visited.contains(key) else { continue }
-                    var next = current
-                    next.stop = nextIndex
-                    next.visited.insert(key)
-                    next.tie += key + ";"
-                    let distanceKey = "\(service.id.count):\(service.id):\(position)"
-                    if rideDistances[distanceKey] == nil {
-                        rideDistances[distanceKey] = service.section(through: [service.stops[position], nextStop]).map { path in
-                            zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
-                        } ?? .infinity
-                    }
-                    next.riding += rideDistances[distanceKey]!
-                    if current.service == service.id, case .ride(_, let previousStops)? = next.legs.last {
-                        next.legs.removeLast()
-                        next.legs.append(.ride(service: service, stops: previousStops + [nextStop]))
-                    } else {
-                        next.boardings += 1
-                        next.legs.append(.ride(service: service, stops: [service.stops[position], nextStop]))
-                    }
-                    next.service = service.id
-                    push(next)
+                let service = departure.service
+                let position = departure.position
+                let nextPosition = position + 1
+                guard nextPosition < service.stops.count || service.circular else { continue }
+                let nextStop = service.stops[nextPosition % service.stops.count]
+                guard let nextIndex = indices[nextStop.id] else { continue }
+                let key = "\(nextIndex)|\(service.id)"
+                guard !current.visited.contains(key) else { continue }
+                var next = current
+                next.stop = nextIndex
+                next.visited.insert(key)
+                next.tie += key + ";"
+                let distanceKey = "\(service.id.count):\(service.id):\(position)"
+                if rideDistances[distanceKey] == nil {
+                    rideDistances[distanceKey] = service.section(through: [service.stops[position], nextStop]).map { path in
+                        zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+                    } ?? .infinity
+                }
+                next.riding += rideDistances[distanceKey]!
+                if current.service == service.id, case .ride(_, let previousStops)? = next.legs.last {
+                    next.legs.removeLast()
+                    next.legs.append(.ride(service: service, stops: previousStops + [nextStop]))
+                } else {
+                    next.boardings += 1
+                    next.legs.append(.ride(service: service, stops: [service.stops[position], nextStop]))
+                }
+                next.service = service.id
+                push(next)
             }
             guard current.service != nil || current.stop == 0 else { continue }
             enqueueWalk(from: WalkSource(label: current))

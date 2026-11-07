@@ -94,6 +94,7 @@ extension RouteCatalog {
 
 struct TripPlannerView: View {
     let catalog: RouteCatalog
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var location = LocationService()
     @State private var origin: GeoPoint?
     @State private var destination: GeoPoint?
@@ -185,7 +186,7 @@ struct TripPlannerView: View {
                     TripActionButton("Cancelar") { invalidate() }.frame(minHeight: 44)
                 } else {
                     TripActionButton(paused ? "Continuar búsqueda" : "Calcular viaje") { calculate() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                         .accessibilityIdentifier("trip-calculate")
                         .disabled(origin == nil || destination == nil)
                         .frame(minHeight: 44)
@@ -207,10 +208,12 @@ struct TripPlannerView: View {
                         .font(.footnote)
                     TripActionButton("Iniciar viaje") { travelling = true }
                         .accessibilityIdentifier("trip-begin")
-                        .buttonStyle(.borderedProminent).frame(minHeight: 44)
+                        .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).frame(minHeight: 44)
                 }
             }.padding()
         }
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .preferredColorScheme(testColorScheme)
         .navigationTitle("Planear viaje")
         .sheet(isPresented: $selectingOnMap) { mapSelection }
         .fullScreenCover(isPresented: $travelling) {
@@ -243,6 +246,14 @@ struct TripPlannerView: View {
             search?.cancel()
             location.cancel()
         }
+    }
+
+    private var testColorScheme: ColorScheme? {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--trip-dark") ? .dark : nil
+        #else
+        return nil
+        #endif
     }
 
     @MapContentBuilder private var mapContents: some MapContent {

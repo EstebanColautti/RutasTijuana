@@ -13,7 +13,7 @@ import Accessibility
     @Published private(set) var paused = false
     @Published private(set) var point: GeoPoint?
     @Published private(set) var missedStop = false
-    private let locations: any NavigationLocationProvider
+    private var locations: any NavigationLocationProvider
     private let fixture: Bool
     private let activity = NavigationActivityController()
     private var timer: Task<Void, Never>?
@@ -25,6 +25,7 @@ import Accessibility
     private var movementPoint: GeoPoint?
     private let session = UUID().uuidString
     private var active = true
+    private var requestedNotifications = false
 
     init(trip: PlannedTrip) {
         self.trip = trip
@@ -44,6 +45,10 @@ import Accessibility
         native.transportMode()
         locations = native
         #endif
+        connectLocations()
+    }
+
+    private func connectLocations() {
         locations.onFix = { [weak self] fix in self?.receive(fix) }
         locations.onDenied = { [weak self] in
             self?.pause("La ubicación está desactivada. Puedes confirmar la bajada manualmente.")
@@ -93,6 +98,14 @@ import Accessibility
         if engine == nil, let destination = stops.last?.point {
             engine = TransitProgressEngine(path: path, destination: destination)
         }
+        #if DEBUG
+        if fixture, let boarding = stops.first?.point {
+            locations.stop()
+            locations = FixtureNavigationLocationProvider(destination: .init(id: "ride", name: "Parada de ejemplo",
+                point: .init(latitude: boarding.latitude + 0.001, longitude: boarding.longitude)))
+            connectLocations()
+        }
+        #endif
         locations.start()
         locations.enableBackground()
         timer?.cancel()
@@ -106,16 +119,25 @@ import Accessibility
                 }
                 if previous.map({ !$0.isReliable(at: Date()) }) ?? true {
                     message = "Ubicación sin actualizar. Puedes confirmar tu bajada manualmente."
+                    if case .ride(_, let stops)? = leg, let stop = stops.last {
+                        activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
+                                        status: "Sin ubicación actual", locationCurrent: false)
+                    }
                 }
             }
         }
-        if !fixture { Task {
-            let center = UNUserNotificationCenter.current()
-            let settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        if !fixture && !requestedNotifications {
+            requestedNotifications = true
+            Task { [weak self] in
+                guard let self, active else { return }
+                let center = UNUserNotificationCenter.current()
+                let settings = await center.notificationSettings()
+                guard active else { return }
+                if settings.authorizationStatus == .notDetermined {
+                    _ = try? await center.requestAuthorization(options: [.alert, .sound])
+                }
             }
-        } }
+        }
     }
     func resume() { board() }
     func finish() {
@@ -146,8 +168,14 @@ import Accessibility
     private func receive(_ fix: WalkingFix) {
         guard active, aboard, !paused,
               case .ride(_, let stops)? = leg, let stop = stops.last else { return }
+        guard Date().timeIntervalSince(started) < 7200, Date().timeIntervalSince(movement) < 900 else {
+            pause("Seguimiento pausado. Confirma que quieres continuar.")
+            return
+        }
         guard let progress = engine?.update(fix, now: Date()) else {
             message = "Ubicación sin actualizar. Puedes confirmar tu bajada manualmente."
+            activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
+                            status: "Ubicación imprecisa", locationCurrent: false)
             return
         }
         previous = fix
@@ -157,8 +185,12 @@ import Accessibility
             movement = Date()
         }
         remaining = progress.remaining
+        missedStop = progress.passedStop
+        defer {
+            activity.update(destination: stop.name, instruction: message, meters: Int(progress.remaining),
+                            status: progress.offRoute ? "Revisa el recorrido" : "En transporte", locationCurrent: true)
+        }
         if progress.passedStop {
-            missedStop = true
             message = "Parece que pasaste tu parada. Puedes volver a planear desde tu ubicación."
             return
         }
@@ -174,8 +206,6 @@ import Accessibility
             content.sound = .default
             UNUserNotificationCenter.current().add(.init(identifier: session + "-\(index)", content: content, trigger: nil)) { _ in }
         }
-        activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
-                        status: "En transporte", locationCurrent: true)
     }
 }
 
@@ -184,6 +214,7 @@ struct TripTravelView: View {
     private let destinationName: String
     @StateObject private var model: TripTravelController
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var walking: WalkingDestination?
     @AccessibilityFocusState private var stageFocused: Bool
     init(trip: PlannedTrip, destinationName: String = "Destino", onReplan: ((GeoPoint) -> Void)? = nil) {
@@ -231,7 +262,7 @@ struct TripTravelView: View {
                             }.frame(height: 220)
                             TripActionButton("Iniciar caminata") {
                                 walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target)
-                            }.buttonStyle(.borderedProminent).accessibilityIdentifier("trip-walk")
+                            }.buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).accessibilityIdentifier("trip-walk")
                             TripActionButton("Ya llegué") { model.advance() }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                         case .ride(let service, let stops):
                             Label(service.name, systemImage: "bus").font(.title2)
@@ -253,9 +284,9 @@ struct TripTravelView: View {
                             if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
                             if model.aboard {
                                 if model.paused { TripActionButton("Continuar seguimiento") { model.resume() } }
-                                TripActionButton("Ya bajé") { model.advance() }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent)
+                                TripActionButton("Ya bajé") { model.advance() }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                             } else {
-                                TripActionButton("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent)
+                                TripActionButton("Ya subí") { model.board() }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                             }
                         }
                     }
@@ -272,6 +303,7 @@ struct TripTravelView: View {
                     }
                 }.padding()
             }
+            .id(model.index)
             .navigationTitle("Tu viaje")
             .toolbar { TripActionButton("Finalizar") { model.finish(); dismiss() } }
             .fullScreenCover(item: $walking) { destination in
@@ -281,6 +313,7 @@ struct TripTravelView: View {
                 })
             }
         }
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
         .onChange(of: model.message) { _, text in
             if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
         }

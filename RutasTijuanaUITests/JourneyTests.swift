@@ -131,7 +131,13 @@ final class JourneyTests: XCTestCase {
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts.matching(identifier: "trip-result").count, 1)
+        for _ in 0..<8 {
+            if app.buttons["trip-begin"].isHittable { break }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        capture("Itinerario combinado")
         tap("trip-begin")
+        capture("Caminata inicial del viaje")
         tap("trip-walk")
         tap("Iniciar guía")
         XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 5))
@@ -139,6 +145,7 @@ final class JourneyTests: XCTestCase {
         app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
         tap("trip-walk-arrived")
         tap("trip-board")
+        capture("Seguimiento de transporte")
         tap("trip-alight")
         tap("trip-board")
         tap("trip-alight")
@@ -146,6 +153,27 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Llegaste al destino"].waitForExistence(timeout: 5))
         capture("Viaje combinado")
         tap("Terminar")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+    }
+
+    func testCombinedTripLargeText() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture", "--trip-dark",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        for _ in 0..<8 {
+            if app.buttons["trip-begin"].isHittable { break }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(app.buttons["trip-begin"].isHittable)
+        capture("Itinerario con texto grande")
+        tap("trip-begin")
+        tap("trip-walk-arrived")
+        tap("trip-board")
+        capture("Transporte con texto grande")
+        tap("Finalizar")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
     }
 
@@ -340,10 +368,11 @@ final class JourneyTests: XCTestCase {
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
-        for _ in 0..<5 {
+        for _ in 0..<8 {
             if button.isHittable { break }
             app.scrollViews.firstMatch.swipeUp()
         }
+        XCTAssertTrue(button.isHittable, identifier)
         button.tap()
     }
 
