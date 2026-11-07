@@ -12,6 +12,7 @@ import Accessibility
     @Published private(set) var remaining: Double?
     @Published private(set) var paused = false
     @Published private(set) var point: GeoPoint?
+    @Published private(set) var locationCurrent = false
     @Published private(set) var missedStop = false
     private var locations: any NavigationLocationProvider
     private let fixture: Bool
@@ -58,6 +59,7 @@ import Accessibility
     var leg: TripLeg? { trip.legs.indices.contains(index) ? trip.legs[index] : nil }
     var finished: Bool { index >= trip.legs.count }
     var ridePath: [GeoPoint] { path }
+    var locationIsCurrent: Bool { locationCurrent && previous?.isReliable(at: Date()) == true }
 
     func previousLeg() {
         guard index > 0 else { return }
@@ -118,6 +120,7 @@ import Accessibility
                     return
                 }
                 if previous.map({ !$0.isReliable(at: Date()) }) ?? true {
+                    locationCurrent = false
                     message = "Ubicación sin actualizar. Puedes confirmar tu bajada manualmente."
                     if case .ride(_, let stops)? = leg, let stop = stops.last {
                         activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
@@ -153,6 +156,7 @@ import Accessibility
         timer = nil
         activity.end(message: "Viaje pausado")
         paused = true
+        locationCurrent = false
         message = text
     }
     private func stopTracking() {
@@ -160,6 +164,7 @@ import Accessibility
         timer?.cancel()
         timer = nil
         aboard = false
+        locationCurrent = false
         let identifier = session + "-\(index)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
@@ -173,6 +178,7 @@ import Accessibility
             return
         }
         guard let progress = engine?.update(fix, now: Date()) else {
+            locationCurrent = false
             message = "Ubicación sin actualizar. Puedes confirmar tu bajada manualmente."
             activity.update(destination: stop.name, instruction: message, meters: Int(remaining ?? 0),
                             status: "Ubicación imprecisa", locationCurrent: false)
@@ -180,6 +186,7 @@ import Accessibility
         }
         previous = fix
         point = fix.point
+        locationCurrent = true
         if movementPoint == nil || movementPoint!.distance(to: fix.point) >= max(10, fix.accuracy) {
             movementPoint = fix.point
             movement = Date()
@@ -276,7 +283,9 @@ struct TripTravelView: View {
                                     MapPolyline(coordinates: model.ridePath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                                         .stroke(.indigo, lineWidth: 5)
                                     if let point = model.point {
-                                        Marker("Tu ubicación", coordinate: .init(latitude: point.latitude, longitude: point.longitude))
+                                        Marker(model.locationIsCurrent ? "Tu ubicación" : "Última ubicación",
+                                               coordinate: .init(latitude: point.latitude, longitude: point.longitude))
+                                            .tint(model.locationIsCurrent ? .blue : .gray)
                                     }
                                 }.frame(height: 220)
                                 .accessibilityLabel("Recorrido hasta la parada de bajada")
@@ -293,13 +302,14 @@ struct TripTravelView: View {
                     if !model.finished, model.index > 0 {
                         TripActionButton("Volver a la etapa anterior") { model.previousLeg() }.frame(minHeight: 44)
                     }
-                    if !model.message.isEmpty { Text(model.message) }
+                    if !model.message.isEmpty { Text(model.message).accessibilityIdentifier("trip-travel-status") }
                     if model.missedStop, let point = model.point, let onReplan {
                         TripActionButton("Recalcular desde aquí") {
+                            guard model.locationIsCurrent else { return }
                             model.finish()
                             onReplan(point)
                             dismiss()
-                        }.frame(minHeight: 44)
+                        }.frame(minHeight: 44).disabled(!model.locationIsCurrent)
                     }
                 }.padding()
             }

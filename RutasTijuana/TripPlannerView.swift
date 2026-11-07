@@ -355,6 +355,9 @@ struct TripPlannerView: View {
                 Text(service.direction ?? "Sentido según el orden de paradas")
                 Text("Sube en \(stops.first?.name ?? "")")
                 Text("Baja en \(stops.last?.name ?? "")")
+                if service.section(through: stops) == nil {
+                    Text("El seguimiento de esta etapa usa confirmación manual.").font(.footnote)
+                }
             }
         }
     }

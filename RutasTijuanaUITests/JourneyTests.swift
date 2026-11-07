@@ -198,6 +198,23 @@ final class JourneyTests: XCTestCase {
         capture("Consulta con origen manual")
     }
 
+    func testTripImpreciseLocation() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture", "--trip-imprecise"]
+        app.launch()
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        tap("trip-begin")
+        tap("trip-walk-arrived")
+        tap("trip-board")
+        let status = app.staticTexts["trip-travel-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        XCTAssertTrue(status.label.contains("Ubicación sin actualizar"))
+        XCTAssertTrue(app.buttons["trip-alight"].isEnabled)
+        capture("Transporte sin ubicación precisa")
+        tap("trip-finish")
+    }
+
     private func checkAccessibleControl(_ element: XCUIElement, label: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)

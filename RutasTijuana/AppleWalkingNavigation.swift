@@ -360,7 +360,7 @@ extension MKPolyline {
     private var updates: Task<Void, Never>?
     init(destination: WalkingDestination) { self.destination = destination }
     private func emit() {
-        onFix?(WalkingFix(point: GeoPoint(latitude: destination.point.latitude - 0.001, longitude: destination.point.longitude), accuracy: 5, timestamp: Date()))
+        onFix?(WalkingFix(point: GeoPoint(latitude: destination.point.latitude - 0.001, longitude: destination.point.longitude), accuracy: ProcessInfo.processInfo.arguments.contains("--trip-imprecise") ? 100 : 5, timestamp: Date()))
     }
     func start() {
         emit()
