@@ -5,6 +5,7 @@ struct WalkingNavigationView: View {
     @StateObject private var model: WalkingNavigationCoordinator
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var camera: MapCameraPosition = .automatic
     @State private var lastHeading = 0.0
@@ -62,6 +63,7 @@ struct WalkingNavigationView: View {
                             Label("Recentrar", systemImage: "location.fill")
                                 .labelStyle(.iconOnly)
                                 .font(.body)
+                                .foregroundStyle(.primary)
                                 .frame(minWidth: 44, minHeight: 44)
                                 .background(.regularMaterial, in: Circle())
                         }
@@ -100,7 +102,16 @@ struct WalkingNavigationView: View {
                 }
             }
             .navigationTitle("Ir a la parada").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Finalizar") { confirmEnd = true } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { confirmEnd = true } label: {
+                        Text("Finalizar")
+                            .foregroundStyle(colorScheme == .dark ? .white : .primary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                }
+            }
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
                 Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
             }

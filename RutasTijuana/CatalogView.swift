@@ -57,7 +57,7 @@ struct CatalogView: View {
                 }
             }
             if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
-            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.secondary).padding(10) }
+            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
         }
         .sheet(isPresented: $showingInformation) {
             if let selection { informationSheet(selection) }
@@ -155,10 +155,10 @@ struct CatalogView: View {
                     .foregroundStyle(color(feature.color))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
-                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.secondary)
+                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
                     if let reference, let distance = feature.distance(to: reference) {
                         Text(distanceCaption(feature, meters: distance))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.primary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -172,8 +172,16 @@ struct CatalogView: View {
 
     private var filters: some View {
         VStack(spacing: 10) {
-            TextField("Buscar nombre, grupo o información", text: $query)
-                .textFieldStyle(.roundedBorder).accessibilityIdentifier("catalog-search")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Buscar nombre, grupo o información").font(.subheadline)
+                TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
+                    .accessibilityLabel("Buscar nombre, grupo o información")
+                    .accessibilityIdentifier("catalog-search")
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
+            }
             HStack {
                 Picker("Grupo", selection: $groupID) {
                     Text("Todos los grupos").tag(String?.none)
@@ -185,7 +193,7 @@ struct CatalogView: View {
                 }.accessibilityIdentifier("catalog-filter")
             }
             HStack {
-                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.secondary)
+                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.primary)
                 Spacer()
                 if reference != nil {
                     Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
@@ -243,7 +251,7 @@ struct CatalogView: View {
                 Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.primary)
             if feature.kind == .stop, case .point(let point) = feature.geometry {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
@@ -257,7 +265,7 @@ struct CatalogView: View {
                     Text("Horario y frecuencia: dato no disponible").font(.caption)
                 }
                 Text("Distancia al trazado en línea recta.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.primary)
             }
             if feature.information != nil {
                 Button("Ver información disponible") { showingInformation = true }
@@ -272,7 +280,7 @@ struct CatalogView: View {
             List {
                 Section {
                     Text("Información del catálogo y detalles geométricos.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(.primary)
                 }
                 if let information = feature.information {
                     if !information.description.isEmpty {
@@ -282,9 +290,9 @@ struct CatalogView: View {
                         Section(item.element.label) {
                             Text(item.element.value).textSelection(.enabled)
                             if item.element.inferred {
-                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.secondary)
+                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.primary)
                             } else {
-                                Text("Texto disponible").font(.caption).foregroundStyle(.secondary)
+                                Text("Texto disponible").font(.caption).foregroundStyle(.primary)
                             }
                             if !item.element.evidence.isEmpty && item.element.evidence != item.element.value {
                                 Text("Texto: \(item.element.evidence)").font(.caption).textSelection(.enabled)
