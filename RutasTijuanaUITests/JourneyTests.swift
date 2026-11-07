@@ -190,8 +190,7 @@ final class JourneyTests: XCTestCase {
             app.scrollViews.firstMatch.swipeUp()
         }
         search.tap()
-        search.typeText("Parada 1")
-        tap("Buscar lugar")
+        search.typeText("Parada 1\n")
         tap("trip-place-0")
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))

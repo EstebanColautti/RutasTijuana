@@ -155,6 +155,7 @@ jobs:
           fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
       - name: Compilar pruebas
         run: |
           set -o pipefail

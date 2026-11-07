@@ -200,7 +200,7 @@ struct TripPlannerView: View {
                         .accessibilityFocused($resultFocused)
                         .accessibilityIdentifier("trip-result")
                         .onAppear { resultFocused = true }
-                    Text("\(trip.transfers) transbordos · \(WalkingFormat.distance(trip.walkingMeters)) a pie")
+                    Text("\(trip.transfers) \(trip.transfers == 1 ? "transbordo" : "transbordos") · \(WalkingFormat.distance(trip.walkingMeters)) a pie")
                     if trip.exceedsPreferences {
                         Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
                     }
@@ -216,6 +216,7 @@ struct TripPlannerView: View {
                 }
             }.padding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
         .preferredColorScheme(testColorScheme)
         .navigationTitle("Planear viaje")
