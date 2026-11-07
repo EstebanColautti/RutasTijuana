@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Editor } from '../admin/src/Editor';
 import type { CatalogAPI } from '../admin/src/api';
-import type { Document } from '../shared/catalog';
+import { publicationIssues, type Document } from '../shared/catalog';
 afterEach(cleanup);
 function service(role:'admin'|'editor'):CatalogAPI {
  let document:Document={groups:[{id:'g',name:'Ejemplo'}],features:[{id:'f',name:'Lugar de ejemplo',groupID:'g',kind:'reference',color:'#2476E8',geometry:{type:'Point',coordinates:[-117,32.5]},included:false,publicDescription:'',publicFields:[],privateNotes:'PRIVATE_NOTE',source:{description:'PRIVATE_SOURCE'}}]};
@@ -77,4 +77,21 @@ test('an editor reorders published stops without changing their identifiers', as
  const saved = vi.mocked(api.save).mock.calls[0][0];
  expect(saved.features.find((feature) => feature.id === 'route')?.publicFields.find((field) => field.category === 'stop-order')?.value).toBe('["two","one"]');
  expect(saved.features.map((feature) => feature.id)).toEqual(['route','one','two']);
+});
+
+test('publication preflight rejects excluded stops, ambiguous contacts and impossible dates', () => {
+ const feature: Document['features'][number] = { id:'r', name:'Route', groupID:'g', kind:'route', color:'#2476E8', included:true,
+ geometry:{type:'LineString',coordinates:[[-117,32.5],[-117.01,32.51]]},publicDescription:'',publicFields:[
+ {category:'stop-order',label:'Orden',value:'["one","two"]'},
+ {category:'route-shape',label:'Tipo',value:'linear'},
+ {category:'updated-at',label:'Fecha',value:'2026-02-30'}]};
+ const document:Document={groups:[{id:'g',name:'Example'}],features:[feature]};
+ expect(publicationIssues(document)).toHaveLength(2);
+ const contact = { ...feature, kind:'reference' as const, publicFields:[
+ {category:'service-role',label:'Servicio',value:'contact'},
+ {category:'contact',label:'Contacto',value:'https://example.test'}]};
+ document.features=[contact,{...contact,id:'other'}];
+ expect(publicationIssues(document)).toEqual(['Conserva un único contacto oficial.']);
+ document.features=[contact];
+ expect(publicationIssues(document)).toEqual([]);
 });

@@ -3,6 +3,7 @@ import {
     geometryPoints,
     importCatalog,
     parseDocument,
+    publicationIssues,
     validGeometry,
     type Audit,
     type Document,
@@ -370,7 +371,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                             <button
                                 disabled={busy || dirty || !draft}
                                 onClick={() =>
-                                    void run(async () => setPreview(await service.preview()))
+                                    void run(async () => {
+                                        const issues = draft ? publicationIssues(draft.document) : ['Abre el borrador.'];
+                                        if (issues.length) throw new Error(issues.join('\n'));
+                                        setPreview(await service.preview());
+                                    })
                                 }
                             >
                                 Preparar publicación

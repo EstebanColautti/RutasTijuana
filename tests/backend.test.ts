@@ -242,7 +242,7 @@ test('withdrawal requires a safe replacement and invalidates old public content'
     await expect(call('select restore_catalog($1)', [active])).rejects.toThrow();
 });
 
-test('publication rejects ambiguous services and invalid civil dates', async () => {
+test('publication rejects invalid civil dates', async () => {
     const baseline = (await call('select preview_catalog() as p'))[0].p;
     const invalid = structuredClone(document);
     invalid.features[0].publicFields.push(
