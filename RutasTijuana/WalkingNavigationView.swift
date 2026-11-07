@@ -120,10 +120,11 @@ struct WalkingNavigationView: View {
                     List(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
                         Label {
                             VStack(alignment: .leading) {
-                                Text(step.instruction)
+                                Text(step.instruction).fixedSize(horizontal: false, vertical: true)
                                 if model.phase == .navigating {
                                     Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(.primary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                         } icon: {
