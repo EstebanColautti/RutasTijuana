@@ -3,6 +3,7 @@ import MapKit
 import UniformTypeIdentifiers
 
 struct CatalogView: View {
+    @FocusState private var searchFocused: Bool
     @ObservedObject private var repository = CatalogRepository.shared
     @State private var privateCatalog: RouteCatalog?
     private var catalog: RouteCatalog? { privateCatalog ?? repository.catalog }
@@ -175,12 +176,15 @@ struct CatalogView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Buscar nombre, grupo o información").font(.subheadline)
                 TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
+                    .focused($searchFocused)
                     .accessibilityLabel("Buscar nombre, grupo o información")
                     .accessibilityIdentifier("catalog-search")
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
                     .background(.background, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
+                    .contentShape(Rectangle())
+                    .onTapGesture { searchFocused = true }
             }
             HStack {
                 Picker("Grupo", selection: $groupID) {

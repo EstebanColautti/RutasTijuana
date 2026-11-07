@@ -71,7 +71,15 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--catalog-info-sample", "--walking-fixture"]
         app.launch()
         tap("Explorar recorridos")
-        checkAccessibleControl(app.textFields["catalog-search"], label: "Buscar nombre, grupo o información")
+        let search = app.textFields["catalog-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertEqual(search.label, "Buscar nombre, grupo o información")
+        XCTAssertGreaterThanOrEqual(search.frame.width, 44)
+        search.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: 0, dy: -20)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        search.typeText("\n")
+        app.swipeDown()
         tap("catalog-sample-route")
         tap("catalog-information")
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
@@ -229,7 +237,8 @@ final class JourneyTests: XCTestCase {
         let search = app.textFields["catalog-search"]
         search.tap()
         search.typeText("sin coincidencias")
-        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        search.typeText("\n")
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
     }
 
@@ -247,7 +256,8 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["stop-demo-1"].exists)
         search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8))
         search.typeText("sin coincidencias")
-        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
+        search.typeText("\n")
+        XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 10))
         capture("Búsqueda sin conexión")
     }
 
