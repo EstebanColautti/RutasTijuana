@@ -160,7 +160,7 @@ extension MKPolyline {
             status.endpointGap = endpoint.distance(to: destination.point)
         }
     }
-    var message: String { status.messages(hasRoute: route != nil).joined(separator: "\n") }
+    var message: String { status.messages(hasRoute: route != nil, endpoint: destination.endpointDescription).joined(separator: "\n") }
     var isLocationCurrent: Bool { status.location == .ready && fix?.isReliable(at: now()) == true }
     var offersRetry: Bool { status.offersRetry(phase: phase) }
     var instruction: String {

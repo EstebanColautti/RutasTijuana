@@ -207,7 +207,7 @@ actor TripPlanner {
                 && route.points.first!.distance(to: from) <= 25 && route.points.last!.distance(to: to) <= 25
         }
         var requests = 0
-        var best: [String: [[Double]]] = [:]
+        var best: [String: Double] = [:]
         var frontier = [Label(stop: 0, service: nil, legs: [], boardings: 0, walking: 0,
                               riding: 0, excessWalking: 0, visited: ["0|"], tie: "", pendingWalk: nil)]
         func score(_ label: Label) -> [Double] {
@@ -328,11 +328,11 @@ actor TripPlanner {
                 push(current)
                 continue
             }
-            let stateKey = "\(current.stop)|\(current.service ?? "")"
-            let cost = [Double(current.boardings), current.walking, current.riding, current.excessWalking]
-            let previous = best[stateKey] ?? []
-            if previous.contains(where: { zip($0, cost).allSatisfy { $0 <= $1 } }) { continue }
-            best[stateKey] = previous.filter { !zip(cost, $0).allSatisfy { $0 <= $1 } } + [cost]
+            let stateKey = "\(current.stop)|\(current.service ?? "")|\(current.boardings)"
+            let currentScore = score(current)
+            let cost = currentScore[0] - currentScore[1]
+            if let previous = best[stateKey], previous <= cost + 0.000001 { continue }
+            best[stateKey] = cost
             if current.stop == final && current.boardings > 0 {
                 var legs: [TripLeg] = []
                 var meters = 0.0

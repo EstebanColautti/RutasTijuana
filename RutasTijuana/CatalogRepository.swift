@@ -36,7 +36,7 @@ final class CatalogRepository: ObservableObject {
         guard !opened else { await update(force: false); return }
         opened = true
         do {
-            let name = fixture ? "CatalogTests" : testing ? "CatalogUITests" : "Catalog"
+            let name = fixture ? "CatalogTests" : testing ? (bundleEnabled ? "CatalogBundleTests" : "CatalogUITests") : "Catalog"
             let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent(name, isDirectory: true)
             let cache = try SQLiteCatalogCache(url: directory.appendingPathComponent("catalog.sqlite"))
