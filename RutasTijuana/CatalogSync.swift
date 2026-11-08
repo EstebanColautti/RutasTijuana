@@ -10,6 +10,7 @@ struct CatalogManifest: Codable, Equatable {
     let sha256: String
     let downloadURL: URL
     var withdrawnVersions: [String]?
+    var assets: [CatalogAsset]? = nil
 }
 struct PublishedCatalog: Codable {
     struct Information: Codable {
@@ -26,6 +27,8 @@ struct PublishedCatalog: Codable {
         let geometry: CatalogGeometry
         let information: Information
         var itinerary: CatalogFeature.Itinerary?
+        var routeDetails: CatalogRouteDetails? = nil
+        var media: [String]? = nil
     }
     let schemaVersion: Int
     let version: String
@@ -38,9 +41,10 @@ struct PublishedCatalog: Codable {
         let converted = features.map { feature in
             CatalogFeature(id: feature.id, name: feature.name, groupID: feature.groupID, kind: feature.kind,
                 color: feature.color, verified: false, geometry: feature.geometry,
-                information: CatalogInformation(description: feature.information.description,
+                information: CatalogPublic.information(CatalogInformation(description: feature.information.description,
                     fields: feature.information.fields.map { .init(category: $0.category, label: $0.label,
-                        value: $0.value, evidence: "", inferred: false) }), itinerary: feature.itinerary)
+                        value: $0.value, evidence: "", inferred: false) }), description: true), itinerary: feature.itinerary,
+                routeDetails: feature.routeDetails, media: feature.media)
         }
         let catalog = RouteCatalog(schemaVersion: 1, version: version, publishable: true, licenseStatus: "published",
                                    groups: groups, features: converted, serviceInformation: serviceInformation)
@@ -82,6 +86,7 @@ struct CatalogSynchronizer {
     let cache: any CatalogCache
     let digest: (Data) -> String
     let allowLoopbackHTTP: Bool
+    var mediaCache: (any CatalogMediaCache)? = nil
     static let maximumBytes = 16 * 1024 * 1024
 
     func update(from endpoint: URL, force: Bool, now: Date = Date()) async throws -> RouteCatalog? {
@@ -110,17 +115,41 @@ struct CatalogSynchronizer {
         try Self.checkAddress(downloadURL, allowLoopbackHTTP: allowLoopbackHTTP)
         guard endpoint.scheme == downloadURL.scheme, endpoint.host == downloadURL.host,
               endpoint.port == downloadURL.port else { throw CatalogSyncError.address }
+        let snapshot: CatalogSnapshot
+        let catalog: RouteCatalog
+        let replacing: Bool
         if let current = try cache.current(), current.version == manifest.version,
            current.sha256 == manifest.sha256, current.data.count == manifest.bytes,
-           let catalog = try? current.validated(digest: digest) {
-            try cache.recordSuccess(now)
-            return catalog
+           let saved = try? current.validated(digest: digest) {
+            snapshot = current
+            catalog = saved
+            replacing = false
+        } else {
+            let payload = try await transport.fetch(downloadURL, limit: manifest.bytes)
+            guard payload.count == manifest.bytes else { throw CatalogSyncError.integrity }
+            snapshot = CatalogSnapshot(version: manifest.version, sha256: manifest.sha256, data: payload)
+            catalog = try snapshot.validated(digest: digest)
+            replacing = true
         }
-        let payload = try await transport.fetch(downloadURL, limit: manifest.bytes)
-        guard payload.count == manifest.bytes else { throw CatalogSyncError.integrity }
-        let snapshot = CatalogSnapshot(version: manifest.version, sha256: manifest.sha256, data: payload)
-        let catalog = try snapshot.validated(digest: digest)
-        try cache.replace(snapshot)
+        let assets = manifest.assets ?? []
+        let referenced = Set(catalog.features.flatMap { $0.media ?? [] })
+        guard Set(assets.map(\.id)).count == assets.count, referenced == Set(assets.map(\.id)) else { throw CatalogSyncError.format }
+        if !assets.isEmpty {
+            guard let mediaCache else { throw CatalogSyncError.storage }
+            var total = snapshot.data.count
+            for asset in assets {
+                guard asset.isValid else { throw CatalogSyncError.format }
+                total += asset.bytes
+                guard total <= 32 * 1024 * 1024 else { throw CatalogSyncError.tooLarge }
+                if try mediaCache.contains(asset, digest: digest) { continue }
+                guard let address = URL(string: asset.downloadURL.relativeString, relativeTo: endpoint)?.absoluteURL else { throw CatalogSyncError.address }
+                try Self.checkAddress(address, allowLoopbackHTTP: allowLoopbackHTTP)
+                guard address.scheme == endpoint.scheme, address.host == endpoint.host, address.port == endpoint.port else { throw CatalogSyncError.address }
+                let data = try await transport.fetch(address, limit: asset.bytes)
+                try mediaCache.store(data, asset: asset, digest: digest)
+            }
+        }
+        if replacing { try cache.replace(snapshot) }
         try cache.recordSuccess(now)
         return catalog
     }
@@ -150,7 +179,7 @@ private final class CatalogDownload: NSObject, URLSessionDataDelegate, @unchecke
             config.httpCookieStorage = nil; config.urlCache = nil; config.httpShouldSetCookies = false
             let queue = OperationQueue(); queue.maxConcurrentOperationCount = 1
             let session = URLSession(configuration: config, delegate: download, delegateQueue: queue)
-            var request = URLRequest(url: url); request.setValue("application/json", forHTTPHeaderField: "Accept")
+            var request = URLRequest(url: url); request.setValue("application/json, image/jpeg", forHTTPHeaderField: "Accept")
             session.dataTask(with: request).resume()
         }
     }
@@ -162,7 +191,7 @@ private final class CatalogDownload: NSObject, URLSessionDataDelegate, @unchecke
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               response.expectedContentLength <= Int64(limit),
-              (response.mimeType ?? "").lowercased() == "application/json" else {
+              ["application/json", "image/jpeg"].contains((response.mimeType ?? "").lowercased()) else {
             failure = CatalogSyncError.response; completionHandler(.cancel); return
         }
         completionHandler(.allow)

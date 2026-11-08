@@ -307,24 +307,16 @@ struct CatalogView: View {
                     Text("Información del catálogo y detalles geométricos.")
                         .font(.footnote).foregroundStyle(.primary)
                 }
-                if let information = feature.information {
+                if let media = feature.media?.first {
+                    Section("Fotografía") { CatalogPhoto(id: media) }
+                }
+                if let information = CatalogPublic.information(feature.information, description: true) {
                     if !information.description.isEmpty {
                         Section("Descripción disponible") { Text(information.description).textSelection(.enabled) }
                     }
                     ForEach(Array(information.fields.enumerated()), id: \.offset) { item in
                         Section {
                             Text(item.element.value).textSelection(.enabled)
-                            if item.element.inferred {
-                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.primary)
-                            } else {
-                                Text("Texto disponible").font(.caption).foregroundStyle(.primary)
-                            }
-                            if !item.element.evidence.isEmpty && item.element.evidence != item.element.value {
-                                Text("Texto: \(item.element.evidence)")
-                                    .font(.caption)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .textSelection(.enabled)
-                            }
                         } header: {
                             Text(item.element.label)
                                 .textCase(nil)
@@ -357,7 +349,7 @@ struct CatalogView: View {
                 let decoded = try await Task.detached(priority: .userInitiated) {
                     try RouteCatalog.decode(data, allowPrivate: allowPrivate)
                 }.value
-                privateCatalog = decoded; selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
+                privateCatalog = CatalogPublic.catalog(decoded); selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
             } catch let error as CatalogError { errorMessage = error.localizedDescription }
             catch is DecodingError { errorMessage = "El archivo no tiene un formato de catálogo válido." }
             catch { errorMessage = "No se pudo leer el archivo seleccionado." }

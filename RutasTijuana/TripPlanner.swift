@@ -1,15 +1,25 @@
 import Foundation
 
 struct TripService: Sendable {
-    let id: String
+    var id: String
     let name: String
     let direction: String?
-    let stops: [TransitStop]
-    let circular: Bool
+    var stops: [TransitStop]
+    var circular: Bool
     var geometry: [[GeoPoint]] = []
+    var accessPositions: [String: Double] = [:]
 
     func section(through selected: [TransitStop]) -> [GeoPoint]? {
-        JourneyScenario(schemaVersion: 1, name: name, coverageRadius: 1000,
+        if let first = selected.first, let last = selected.last,
+           let start = accessPositions[first.id], let end = accessPositions[last.id], let points = geometry.first {
+            let measure = RouteMeasure(points)
+            if end > start { return measure.section(from: start, to: end) }
+            if circular, let a = measure.section(from: start, to: measure.length), let b = measure.section(from: 0, to: end) {
+                return a + b.dropFirst()
+            }
+            return nil
+        }
+        return JourneyScenario(schemaVersion: 1, name: name, coverageRadius: 1000,
             stops: stops, places: [], circular: circular, routeGeometry: geometry).mappedSection(for: selected)
     }
 }
@@ -21,9 +31,13 @@ struct TripNetwork: Sendable {
     init(catalog: RouteCatalog) {
         version = catalog.version
         services = catalog.features.compactMap { feature in
-            guard let scenario = catalog.journeyScenario(for: feature) else { return nil }
-            return TripService(id: feature.id, name: feature.name, direction: scenario.direction,
+            if let scenario = catalog.journeyScenario(for: feature) {
+                return TripService(id: feature.id, name: feature.name, direction: scenario.direction,
                                stops: scenario.stops, circular: scenario.circular == true, geometry: scenario.routeGeometry ?? [])
+            }
+            guard catalog.readyForDistribution, feature.kind == .route, !feature.geometry.lines.isEmpty else { return nil }
+            return TripService(id: feature.id, name: feature.name, direction: feature.routeDetails?.direction,
+                stops: [], circular: feature.routeDetails?.circular == true, geometry: feature.geometry.lines.map { $0.map(\.point) })
         }.sorted { $0.id < $1.id }
     }
 
@@ -101,6 +115,7 @@ actor TripPlanner {
     private var generation = UUID()
     private var queryOrigin: GeoPoint?
     private var queryDestination: GeoPoint?
+    private var preparedServices: [TripService] = []
 
     init(network: TripNetwork, provider: any TripWalkingProvider, preferences: TripPreferences = .init()) {
         self.network = network
@@ -122,16 +137,18 @@ actor TripPlanner {
             walking.removeAll()
             queryOrigin = origin
             queryDestination = destination
+            preparedServices = []
         }
         let token = UUID()
         generation = token
-        let stops = network.services.flatMap(\.stops).reduce(into: [String: TransitStop]()) { $0[$1.id] = $1 }
+        if preparedServices.isEmpty { preparedServices = try RouteAccess.services(network.services, origin: origin, destination: destination) }
+        let stops = preparedServices.flatMap(\.stops).reduce(into: [String: TransitStop]()) { $0[$1.id] = $1 }
             .values.sorted { $0.id < $1.id }
         let points = [origin] + stops.map(\.point) + [destination]
         let final = points.count - 1
         let indices = Dictionary(uniqueKeysWithValues: stops.enumerated().map { ($0.element.id, $0.offset + 1) })
         var departures: [Int: [(service: TripService, position: Int)]] = [:]
-        for service in network.services {
+        for service in preparedServices {
             for position in service.stops.indices {
                 if let index = indices[service.stops[position].id] {
                     departures[index, default: []].append((service, position))
@@ -206,7 +223,12 @@ actor TripPlanner {
             if let pending = current.pendingWalk {
                 enqueueWalk(from: pending.source)
                 let key = "\(pending.from):\(current.stop)"
+                if pending.from > 0 && current.stop != final,
+                   (stops[pending.from - 1].suggested || stops[current.stop - 1].suggested),
+                   points[pending.from].distance(to: points[current.stop]) <= 2 { continue }
                 if walking[key] == nil && (pending.from == 0 || current.stop == final)
+                    && !(current.stop != final && stops[current.stop - 1].suggested)
+                    && !(pending.from > 0 && stops[pending.from - 1].suggested)
                     && points[pending.from].distance(to: points[current.stop]) <= 1 {
                     walking[key] = .route(.init(points: [points[pending.from], points[current.stop]], steps: [], duration: 0))
                 }

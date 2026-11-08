@@ -209,10 +209,12 @@ import Accessibility
             message = "Tu ubicación no coincide con el recorrido. Revisa la parada de bajada."
             return
         }
-        message = (progress.remaining <= 350 ? "Se acerca tu parada. Baja en " : "Baja en ") + stop.name
+        message = stop.suggested
+            ? (progress.remaining <= 350 ? "Se acerca el punto de bajada sugerido. Confirma con el conductor." : "Continúa hasta el punto de bajada sugerido.")
+            : (progress.remaining <= 350 ? "Se acerca tu parada. Baja en " : "Baja en ") + stop.name
         if progress.notifyAlighting {
             let content = UNMutableNotificationContent()
-            content.title = "Se acerca tu parada"
+            content.title = stop.suggested ? "Se acerca tu bajada" : "Se acerca tu parada"
             content.body = "Prepárate para bajar. Abre la app para ver el viaje."
             content.sound = .default
             UNUserNotificationCenter.current().add(.init(identifier: session + "-\(index)", content: content, trigger: nil)) { _ in }

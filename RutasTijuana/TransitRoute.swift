@@ -17,6 +17,9 @@ struct TransitStop: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let name: String
     let point: GeoPoint
+    var suggested: Bool = false
+
+    private enum CodingKeys: String, CodingKey { case id, name, point }
 }
 
 struct NearbyStop: Identifiable {

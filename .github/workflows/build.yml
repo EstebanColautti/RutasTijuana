@@ -106,7 +106,7 @@ jobs:
       - name: Release
         run: |
           set -o pipefail
-          xcodebuild -project RutasTijuana.xcodeproj -scheme RutasTijuana -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/Release" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build 2>&1 | tee "$RUNNER_TEMP/release.log"
+          xcodebuild -project RutasTijuana.xcodeproj -scheme RutasTijuana -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/Release" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build 2>&1 | tee "$RUNNER_TEMP/release.log"
           python3 scripts/check_app_bundle.py "$RUNNER_TEMP/Release/Build/Products/Release-iphonesimulator/RutasTijuana.app"
       - id: elapsed
         if: always()
@@ -159,7 +159,7 @@ jobs:
       - name: Compilar pruebas
         run: |
           set -o pipefail
-          xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/ui-build.log"
+          xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/ui-build.log"
           python3 scripts/check_app_bundle.py "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app"
       - name: Interfaz
         run: |

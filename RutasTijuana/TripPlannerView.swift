@@ -353,9 +353,12 @@ struct TripPlannerView: View {
         case .ride(let service, let stops):
             VStack(alignment: .leading) {
                 Label(service.name, systemImage: "bus")
-                Text(service.direction ?? "Sentido según el orden de paradas")
-                Text("Sube en \(stops.first?.name ?? "")")
-                Text("Baja en \(stops.last?.name ?? "")")
+                Text(service.direction ?? "Sentido del recorrido")
+                Text(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")")
+                Text(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")")
+                if stops.contains(where: \.suggested) {
+                    Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
+                }
                 if service.section(through: stops) == nil {
                     Text("El seguimiento de esta etapa usa confirmación manual.").font(.footnote)
                 }

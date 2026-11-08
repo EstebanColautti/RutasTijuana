@@ -528,7 +528,8 @@ testTransitProgress()
         _ = try await request.value
         fatalError("A cancelled search must ignore its late route")
     } catch is CancellationError { }
-    check(TripNetwork(catalog: .sample).services.isEmpty, "Unordered catalog lines cannot become transport connections")
+    let geometryServices = TripNetwork(catalog: .sample).services
+    check(!geometryServices.isEmpty && geometryServices.allSatisfy { $0.stops.isEmpty }, "Geometry services keep calculated access separate from confirmed stops")
     print("Pruebas de cancelación y ampliación correctas")
 }
 try await testTripCancellationAndExpansion()
@@ -550,3 +551,29 @@ try await testTripCancellationAndExpansion()
     print("Pruebas de búsqueda progresiva correctas")
 }
 try await testTripSearchWork()
+
+@MainActor func testCalculatedAccess() async throws {
+    let a = GeoPoint(latitude: 32, longitude: -117)
+    let b = GeoPoint(latitude: 32.02, longitude: -117)
+    let service = TripService(id: "line", name: "Example", direction: nil, stops: [], circular: false, geometry: [[a,b]])
+    let services = try RouteAccess.services([service], origin: a, destination: b)
+    check(services.count == 1 && services[0].stops.count > 2, "Calculated access generated per query")
+    check(services[0].stops.allSatisfy(\.suggested), "Calculated access is always suggested")
+    let encoded = try JSONEncoder().encode(services[0].stops[0])
+    check(!(try JSONDecoder().decode(TransitStop.self, from: encoded)).suggested, "Suggested access cannot enter the permanent stop schema")
+    let path = services[0].section(through: [services[0].stops[1], services[0].stops[services[0].stops.count-2]])
+    check(path != nil && path!.first != a && path!.last != b, "Ride geometry clips at measured access positions")
+    check(services[0].section(through: [services[0].stops.last!,services[0].stops.first!]) == nil, "Linear geometry is not reversed")
+    let split = TripService(id: "split", name: "Example", direction: nil, stops: [], circular: false, geometry: [[a,b],[.init(latitude:33,longitude:-117),.init(latitude:33.01,longitude:-117)]])
+    let parts = try RouteAccess.services([split], origin:a,destination:b)
+    check(parts.count == 2 && parts.allSatisfy { $0.geometry.count == 1 }, "Disconnected geometry remains disconnected")
+    let planner = TripPlanner(network:.init(version:"access",services:[service]),provider:SyntheticTripWalkingProvider())
+    var result = try await planner.search(from:a,to:b)
+    for _ in 0..<20 {
+        if case .paused = result { result = try await planner.search(from:a,to:b) } else { break }
+    }
+    guard case .found(let trip) = result else { fatalError("Geometry-only route must support a journey") }
+    check(trip.legs.contains { if case .ride(_,let stops) = $0 { return stops.first!.suggested && stops.last!.suggested }; return false }, "Single journey flow includes suggested boarding and alighting")
+    print("Pruebas de accesos calculados correctas")
+}
+try await testCalculatedAccess()
