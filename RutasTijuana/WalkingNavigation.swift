@@ -4,6 +4,10 @@ struct WalkingDestination: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let point: GeoPoint
+    var purpose: Purpose = .stop
+    enum Purpose: Sendable { case stop, suggestedAccess, destination }
+    var title: String { purpose == .stop ? "Ir a la parada" : purpose == .suggestedAccess ? "Ir al punto sugerido" : "Ir al destino" }
+    var arrival: String { purpose == .stop ? "Llegaste a la parada" : purpose == .suggestedAccess ? "Llegaste al punto sugerido" : "Llegaste al destino" }
 }
 
 struct WalkingStep: Sendable {

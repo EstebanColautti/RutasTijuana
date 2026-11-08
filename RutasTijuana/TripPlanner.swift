@@ -47,6 +47,13 @@ struct TripNetwork: Sendable {
     }
 }
 
+enum TripCost {
+    static let walkingSpeed = 1.3
+    static let ridingSpeed = 6.0
+    static let transferPenalty = 480.0
+    static let extraTransferPenalty = 900.0
+}
+
 struct TripPreferences: Sendable {
     var walkingMeters = 800.0
     var transfers = 2
@@ -83,6 +90,27 @@ extension TripWalkingProvider {
     func cancel() async {}
 }
 
+private struct TripPointIndex {
+    private struct Cell: Hashable { let x: Int; let y: Int }
+    private let scale: Double
+    private var cells: [Cell: [Int]] = [:]
+    init(_ points: [GeoPoint]) {
+        scale = max(1, cos((points.first?.latitude ?? 0) * .pi / 180) * 111195)
+        for (index, point) in points.enumerated() { cells[cell(point), default: []].append(index) }
+    }
+    private func cell(_ point: GeoPoint) -> Cell {
+        .init(x: Int(floor(point.longitude * scale / 250)), y: Int(floor(point.latitude * 111195 / 250)))
+    }
+    func nearby(_ point: GeoPoint, radius: Double) -> [Int] {
+        let center = cell(point), span = Int(ceil(radius / 250)) + 1
+        var result: [Int] = []
+        for x in center.x-span...center.x+span {
+            for y in center.y-span...center.y+span { result += cells[.init(x: x, y: y)] ?? [] }
+        }
+        return result
+    }
+}
+
 actor TripPlanner {
     private struct Label {
         var stop: Int
@@ -104,7 +132,9 @@ actor TripPlanner {
     private final class WalkSource {
         let label: Label
         var excluded: Set<Int> = []
-        init(label: Label) { self.label = label }
+        var excludedServices: Set<String> = []
+        var radius = 800.0
+        init(label: Label) { self.label = label; if let service = label.service { excludedServices.insert(service) } }
     }
     private enum CachedWalk { case route(WalkingRoute), unavailable }
     private let network: TripNetwork
@@ -135,17 +165,27 @@ actor TripPlanner {
               preferences.transfers >= 0, preferences.requestsPerBatch > 0 else { throw TripPlanningError.invalidInput }
         if queryOrigin != origin || queryDestination != destination {
             walking.removeAll()
+            rideDistances.removeAll()
             queryOrigin = origin
             queryDestination = destination
             preparedServices = []
         }
         let token = UUID()
         generation = token
-        if preparedServices.isEmpty { preparedServices = try RouteAccess.services(network.services, origin: origin, destination: destination) }
+        if preparedServices.isEmpty {
+            let source = network.services
+            let preparation = Task.detached(priority: .userInitiated) {
+                try RouteAccess.services(source, origin: origin, destination: destination)
+            }
+            let prepared = try await withTaskCancellationHandler(operation: { try await preparation.value }, onCancel: { preparation.cancel() })
+            guard generation == token else { throw CancellationError() }
+            preparedServices = prepared
+        }
         let stops = preparedServices.flatMap(\.stops).reduce(into: [String: TransitStop]()) { $0[$1.id] = $1 }
             .values.sorted { $0.id < $1.id }
         let points = [origin] + stops.map(\.point) + [destination]
         let final = points.count - 1
+        let pointIndex = TripPointIndex(points)
         let indices = Dictionary(uniqueKeysWithValues: stops.enumerated().map { ($0.element.id, $0.offset + 1) })
         var departures: [Int: [(service: TripService, position: Int)]] = [:]
         for service in preparedServices {
@@ -155,14 +195,27 @@ actor TripPlanner {
                 }
             }
         }
+        func walkKey(_ from: GeoPoint, _ to: GeoPoint) -> String {
+            func coordinate(_ point: GeoPoint) -> String {
+                "\(point.latitude.bitPattern):\(point.longitude.bitPattern)"
+            }
+            return coordinate(from) + "|" + coordinate(to)
+        }
+        func valid(_ route: WalkingRoute, from: GeoPoint, to: GeoPoint) -> Bool {
+            route.points.count >= 2 && route.length.isFinite && route.duration.isFinite && route.duration >= 0
+                && route.points.allSatisfy { $0.latitude.isFinite && $0.longitude.isFinite && abs($0.latitude) <= 90 && abs($0.longitude) <= 180 }
+                && route.points.first!.distance(to: from) <= 25 && route.points.last!.distance(to: to) <= 25
+        }
         var requests = 0
         var best: [String: [[Double]]] = [:]
         var frontier = [Label(stop: 0, service: nil, legs: [], boardings: 0, walking: 0,
                               riding: 0, excessWalking: 0, visited: ["0|"], tie: "", pendingWalk: nil)]
         func score(_ label: Label) -> [Double] {
-            let transfers = max(0, label.boardings - 1)
-            return [Double(max(0, transfers - preferences.transfers)) + (label.excessWalking > 0 ? 1 : 0),
-                    label.excessWalking, Double(transfers), label.walking, label.riding]
+            let transfers = max(0, label.boardings - (label.service != nil || label.stop == final ? 1 : 0))
+            let remaining = max(0, points[label.stop].distance(to: destination) - 50) / TripCost.ridingSpeed
+            let cost = label.walking / TripCost.walkingSpeed + label.riding / TripCost.ridingSpeed + Double(transfers) * TripCost.transferPenalty
+                + label.excessWalking / TripCost.walkingSpeed + Double(max(0, transfers - preferences.transfers)) * TripCost.extraTransferPenalty
+            return [cost + remaining, remaining, Double(transfers), label.walking, label.riding]
         }
         func precedes(_ a: Label, _ b: Label) -> Bool {
             let left = score(a), right = score(b)
@@ -194,16 +247,38 @@ actor TripPlanner {
         }
         func enqueueWalk(from source: WalkSource) {
             let current = source.label
-            let eligible = points.indices.filter { target in
-                target != 0 && target != current.stop && !source.excluded.contains(target)
-                    && !current.visited.contains("\(target)|") && (target != final || current.boardings > 0)
+            var selected: Int?
+            while selected == nil {
+                let candidates = source.radius >= 3200 ? Array(points.indices) : pointIndex.nearby(points[current.stop], radius: source.radius) + [final]
+                let eligible = candidates.filter { target in
+                    guard target != 0 && target != current.stop && !source.excluded.contains(target)
+                        && !current.visited.contains("\(target)|") && (target != final || current.boardings > 0) else { return false }
+                    if target == final { return true }
+                    if current.stop > 0, (stops[current.stop - 1].suggested || stops[target - 1].suggested),
+                        points[current.stop].distance(to: points[target]) <= 2 { return false }
+                    return (departures[target] ?? []).contains { departure in
+                        !source.excludedServices.contains(departure.service.id)
+                            && (departure.position + 1 < departure.service.stops.count || departure.service.circular)
+                    }
+                }
+                guard let target = eligible.min(by: {
+                    let a = points[current.stop].distance(to: points[$0]), b = points[current.stop].distance(to: points[$1])
+                    return a == b ? $0 < $1 : a < b
+                }) else {
+                    if source.radius < 3200 { source.radius *= 2; continue }
+                    return
+                }
+                if source.radius < 3200 && points[current.stop].distance(to: points[target]) > source.radius {
+                    source.radius *= 2; continue
+                }
+                if case .unavailable = walking[walkKey(points[current.stop], points[target])] {
+                    source.excluded.insert(target); continue
+                }
+                selected = target
             }
-            guard let target = eligible.min(by: {
-                let a = points[current.stop].distance(to: points[$0])
-                let b = points[current.stop].distance(to: points[$1])
-                return a == b ? $0 < $1 : a < b
-            }) else { return }
+            guard let target = selected else { return }
             source.excluded.insert(target)
+            for departure in departures[target] ?? [] { source.excludedServices.insert(departure.service.id) }
             let estimate = max(0, points[current.stop].distance(to: points[target]) - 50)
             var next = current
             let state = "\(target)|"
@@ -222,7 +297,7 @@ actor TripPlanner {
             var current = pop()
             if let pending = current.pendingWalk {
                 enqueueWalk(from: pending.source)
-                let key = "\(pending.from):\(current.stop)"
+                let key = walkKey(points[pending.from], points[current.stop])
                 if pending.from > 0 && current.stop != final,
                    (stops[pending.from - 1].suggested || stops[current.stop - 1].suggested),
                    points[pending.from].distance(to: points[current.stop]) <= 2 { continue }
@@ -232,25 +307,22 @@ actor TripPlanner {
                     && points[pending.from].distance(to: points[current.stop]) <= 1 {
                     walking[key] = .route(.init(points: [points[pending.from], points[current.stop]], steps: [], duration: 0))
                 }
-                if walking[key] == nil {
-                    guard requests < preferences.requestsPerBatch else { return .paused }
-                    requests += 1
-                    let route = try await provider.route(from: points[pending.from], to: points[current.stop])
-                    try Task.checkCancellation()
-                    guard generation == token else { throw CancellationError() }
-                    if let route, route.points.count >= 2, route.length.isFinite, route.duration.isFinite, route.duration >= 0,
-                       route.points.allSatisfy({ $0.latitude.isFinite && $0.longitude.isFinite && abs($0.latitude) <= 90 && abs($0.longitude) <= 180 }),
-                       route.points.first!.distance(to: points[pending.from]) <= 25,
-                       route.points.last!.distance(to: points[current.stop]) <= 25 {
-                        walking[key] = .route(route)
-                    } else { walking[key] = .unavailable }
+                let route: WalkingRoute
+                let confirmed: Bool
+                switch walking[key] {
+                case .unavailable: continue
+                case .route(let saved): route = saved; confirmed = true
+                case nil:
+                    route = .init(points: [points[pending.from], points[current.stop]], steps: [], duration: 0)
+                    confirmed = false
                 }
-                guard case .route(let route) = walking[key] else { continue }
                 current.pendingWalk = nil
-                current.walking += route.length - pending.estimate
-                current.excessWalking += max(0, route.length - preferences.walkingMeters)
-                    - max(0, pending.estimate - preferences.walkingMeters)
-                if route.length > 1 {
+                if confirmed {
+                    current.walking += route.length - pending.estimate
+                    current.excessWalking += max(0, route.length - preferences.walkingMeters)
+                        - max(0, pending.estimate - preferences.walkingMeters)
+                }
+                if !confirmed || route.length > 1 {
                     current.legs.append(.walk(from: points[pending.from], to: points[current.stop], route: route))
                 }
                 push(current)
@@ -262,9 +334,35 @@ actor TripPlanner {
             if previous.contains(where: { zip($0, cost).allSatisfy { $0 <= $1 } }) { continue }
             best[stateKey] = previous.filter { !zip(cost, $0).allSatisfy { $0 <= $1 } } + [cost]
             if current.stop == final && current.boardings > 0 {
-                return .found(PlannedTrip(catalogVersion: network.version, legs: current.legs,
-                    transfers: max(0, current.boardings - 1), walkingMeters: current.walking,
-                    exceedsPreferences: score(current)[0] > 0))
+                var legs: [TripLeg] = []
+                var meters = 0.0
+                var exceeded = max(0, current.boardings - 1) > preferences.transfers
+                var unavailable = false
+                for leg in current.legs {
+                    guard case .walk(let from, let to, _) = leg else { legs.append(leg); continue }
+                    let key = walkKey(from, to)
+                    if walking[key] == nil {
+                        guard requests < preferences.requestsPerBatch else { return .paused }
+                        requests += 1
+                        let response = try await provider.route(from: from, to: to)
+                        try Task.checkCancellation()
+                        guard generation == token else { throw CancellationError() }
+                        if let response, valid(response, from: from, to: to) { walking[key] = .route(response) }
+                        else { walking[key] = .unavailable }
+                    }
+                    guard case .route(let route) = walking[key] else { unavailable = true; break }
+                    meters += route.length
+                    exceeded = exceeded || route.length > preferences.walkingMeters
+                    if route.length > 1 { legs.append(.walk(from: from, to: to, route: route)) }
+                }
+                if unavailable {
+                    best.removeAll()
+                    frontier = [Label(stop: 0, service: nil, legs: [], boardings: 0, walking: 0,
+                        riding: 0, excessWalking: 0, visited: ["0|"], tie: "", pendingWalk: nil)]
+                    continue
+                }
+                return .found(PlannedTrip(catalogVersion: network.version, legs: legs,
+                    transfers: max(0, current.boardings - 1), walkingMeters: meters, exceedsPreferences: exceeded))
             }
             for departure in departures[current.stop] ?? [] {
                 let service = departure.service
@@ -281,9 +379,14 @@ actor TripPlanner {
                 next.tie += key + ";"
                 let distanceKey = "\(service.id.count):\(service.id):\(position)"
                 if rideDistances[distanceKey] == nil {
-                    rideDistances[distanceKey] = service.section(through: [service.stops[position], nextStop]).map { path in
-                        zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
-                    } ?? .infinity
+                    if let start = service.accessPositions[service.stops[position].id], let end = service.accessPositions[nextStop.id] {
+                        let length = end > start ? end - start : (service.circular ? RouteMeasure(service.geometry[0]).length - start + end : .infinity)
+                        rideDistances[distanceKey] = length
+                    } else {
+                        rideDistances[distanceKey] = service.section(through: [service.stops[position], nextStop]).map { path in
+                            zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+                        } ?? service.stops[position].point.distance(to: nextStop.point)
+                    }
                 }
                 next.riding += rideDistances[distanceKey]!
                 if current.service == service.id, case .ride(_, let previousStops)? = next.legs.last {

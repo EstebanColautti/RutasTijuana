@@ -40,7 +40,7 @@ struct RouteMeasure: Sendable {
     func nearest(_ point: GeoPoint, limit: Int = 4) -> [Double] {
         let candidates = (0..<max(0, points.count - 1)).map { projection(point, segment: $0) }.sorted { $0.meters < $1.meters }
         var selected: [Double] = []
-        for candidate in candidates {
+        for candidate in candidates where candidate.meters <= (candidates.first?.meters ?? 0) + 15 {
             if selected.allSatisfy({ abs($0 - candidate.along) > 50 }) { selected.append(candidate.along) }
             if selected.count == limit { break }
         }
@@ -53,6 +53,7 @@ enum RouteAccess {
         var service: TripService
         let measure: RouteMeasure
         var positions: Set<Int> = []
+        var anchors: Set<Int> = []
     }
     private struct Cell: Hashable { let x: Int; let y: Int }
     private struct Segment { let path: Int; let index: Int }
@@ -89,6 +90,7 @@ enum RouteAccess {
             for point in [origin, destination] {
                 for along in measure.nearest(point) { add(index, along, offsets: true) }
             }
+            paths[index].anchors = paths[index].positions
             for segment in 0..<measure.points.count - 1 {
                 let a = cell(measure.points[segment]), b = cell(measure.points[segment + 1])
                 guard abs(a.x - b.x) <= 200 && abs(a.y - b.y) <= 200 else { continue }
@@ -139,7 +141,11 @@ enum RouteAccess {
         for meeting in meetings.values { add(meeting.a, meeting.from, offsets: meeting.meters <= 2); add(meeting.b, meeting.to, offsets: meeting.meters <= 2) }
         return documented + paths.map { path in
             var service = path.service
-            for position in path.positions.sorted() {
+            var selected = path.anchors.sorted()
+            for position in path.positions.sorted() where !path.anchors.contains(position) {
+                if selected.allSatisfy({ abs($0 - position) >= 7500 }) { selected.append(position) }
+            }
+            for position in selected.sorted() {
                 let along = min(path.measure.length, Double(position) / 100)
                 if service.circular && along >= path.measure.length - 0.01 { continue }
                 let id = "access:\(service.id):\(position)"

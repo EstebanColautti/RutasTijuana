@@ -2,13 +2,13 @@
 
 Prototipo de una app de rutas en Tijuana, desarrollado en SwiftUI.
 
-La app permite elegir origen y destino, seleccionar paradas cercanas y consultar un trayecto en el mapa. Incluye un circuito ficticio con seis paradas para probar la navegación. No contiene rutas, paradas ni horarios de transporte reales.
+La app permite elegir origen y destino, seleccionar paradas cercanas y consultar un trayecto en el mapa. Incluye un catálogo configurable y un circuito de ejemplo para evaluación.
 
 La selección usa un panel inferior, búsqueda de paradas y lugares, y permite continuar desde la lista sin conexión. Los escenarios de evaluación se abren desde un JSON local en Debug.
 
 **Explorar recorridos** permite abrir un catálogo JSON local, buscar por nombre o grupo y consultar trazados próximos a un punto. Las áreas se muestran como referencias. La cercanía no confirma un lugar de ascenso ni un trayecto peatonal.
 
-Los catálogos publicados se descargan desde la API y se conservan en SQLite para consultar sin conexión. La app busca actualizaciones cada 24 horas y ofrece una actualización manual. La importación de archivos de trabajo permanece separada en las compilaciones de desarrollo. La carga, el formato y la vista para Windows están descritos en [Desarrollo](docs/DESARROLLO.md).
+El catálogo incluido se conserva en SQLite para consultar sin conexión desde la primera apertura. Puede recibir actualizaciones desde una API configurada. La app busca actualizaciones cada 24 horas y ofrece una actualización manual. La importación de archivos de trabajo permanece separada en las compilaciones de desarrollo. La carga, el formato y la vista para Windows están descritos en [Desarrollo](docs/DESARROLLO.md).
 
 ## Requisitos
 
@@ -26,7 +26,7 @@ cd RutasTijuana
 open RutasTijuana.xcodeproj
 ```
 
-Seleccionar el esquema **RutasTijuana**, elegir un simulador de iPhone y ejecutar con `⌘R`. Para un dispositivo físico, configurar el equipo de firma en **Signing & Capabilities**.
+Para ejecutar sin un paquete local, crear `Config/Debug.local.xcconfig` con `CATALOG_FIXTURE = YES`. Seleccionar el esquema **RutasTijuana**, elegir un simulador de iPhone y ejecutar con `⌘R`. Para un dispositivo físico, configurar el equipo de firma en **Signing & Capabilities**.
 
 ## Estructura
 

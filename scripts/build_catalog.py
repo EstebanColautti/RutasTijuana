@@ -72,6 +72,8 @@ def _build(raw, output, media_root=None):
         validate_geometry(feature['geometry'])
         if feature['kind'] not in ('route', 'stop', 'area', 'reference'):
             raise ValueError('Tipo de elemento incorrecto.')
+        if (feature['kind'] == 'stop' and feature['geometry']['type'] != 'Point') or (feature['kind'] == 'route' and feature['geometry']['type'] not in ('LineString','MultiLineString')):
+            raise ValueError('La geometría no corresponde al elemento.')
         if not re.fullmatch(r'#[a-fA-F0-9]{6}', feature['color']):
             raise ValueError('Color incorrecto.')
         original = feature.get('publicFields', (feature.get('information') or {}).get('fields', []))
@@ -88,9 +90,11 @@ def _build(raw, output, media_root=None):
         item = dict(id=feature['id'], name=feature['name'], groupID=feature['groupID'], kind=feature['kind'],
                     color=feature['color'], geometry=feature['geometry'], information=dict(description='', fields=fields))
         details = feature.get('routeDetails')
-        if details:
-            item['routeDetails'] = {key: value for key, value in details.items()
-                                    if (key in ('code', 'direction') and text(value)) or (key == 'circular' and type(value) is bool)}
+        if details and feature['kind'] == 'route':
+            selected_details = {key: value for key, value in details.items()
+                                if (key in ('code', 'direction') and text(value)) or (key == 'circular' and type(value) is bool)}
+            if selected_details:
+                item['routeDetails'] = selected_details
         if feature.get('itinerary'):
             itinerary = feature['itinerary']
             item['itinerary'] = {key: itinerary[key] for key in ('stopIDs', 'circular', 'direction', 'updatedAt') if key in itinerary}
@@ -112,6 +116,8 @@ def _build(raw, output, media_root=None):
             raise ValueError('La carpeta de salida contiene archivos ajenos al paquete.')
     manifest = dict(version=version, schemaVersion=2, bytes=len(data), sha256=hashlib.sha256(data).hexdigest(),
                     downloadURL='catalog.json', assets=assets)
+    if len(data) + sum(asset['bytes'] for asset in assets) > 32 * 1024 * 1024 or len(encode(manifest)) > 64 * 1024:
+        raise ValueError('Paquete demasiado grande.')
     (output / 'manifest.json').write_bytes(encode(manifest))
     return dict(features=len(features), assets=len(assets), bytes=len(data), version=version)
 

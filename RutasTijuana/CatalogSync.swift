@@ -38,6 +38,12 @@ struct PublishedCatalog: Codable {
 
     func catalog() throws -> RouteCatalog {
         guard schemaVersion == 2, !version.isEmpty else { throw CatalogSyncError.format }
+        guard features.allSatisfy({ feature in
+            (feature.routeDetails?.code.map(CatalogPublic.text) ?? true)
+            && (feature.routeDetails?.direction.map(CatalogPublic.text) ?? true)
+            && ((feature.media?.count ?? 0) <= 6)
+            && (feature.media?.allSatisfy { $0.count == 64 && $0.allSatisfy { $0.isHexDigit && !$0.isUppercase } } ?? true)
+        }) else { throw CatalogSyncError.format }
         let converted = features.map { feature in
             CatalogFeature(id: feature.id, name: feature.name, groupID: feature.groupID, kind: feature.kind,
                 color: feature.color, verified: false, geometry: feature.geometry,
@@ -73,6 +79,7 @@ extension CatalogCache {
 extension CatalogSnapshot {
     func validated(digest: (Data) -> String) throws -> RouteCatalog {
         guard digest(data) == sha256 else { throw CatalogSyncError.integrity }
+        try CatalogPublic.validatePayload(data)
         let decoded = try JSONDecoder().decode(PublishedCatalog.self, from: data)
         guard decoded.version == version else { throw CatalogSyncError.integrity }
         return try decoded.catalog()

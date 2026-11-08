@@ -17,6 +17,7 @@ Deno.test('public endpoint rejects invalid methods and version parameters before
     equal((await catalog(new Request('https://example.test/catalog', { method: 'POST' }))).status, 405);
     equal((await catalog(new Request('https://example.test/catalog?version=invalid'))).status, 400);
     equal((await catalog(new Request('https://example.test/catalog?cached=invalid'))).status, 400);
+    equal((await catalog(new Request('https://example.test/catalog?asset=invalid'))).status, 400);
     const response = await catalog(new Request('https://example.test/catalog?version=invalid'));
     equal(response.headers.get('Cache-Control'), 'no-store');
 });

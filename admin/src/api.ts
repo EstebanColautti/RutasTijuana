@@ -13,6 +13,8 @@ export const client =
           })
         : null;
 export interface CatalogAPI {
+    imageData?(id: string): Promise<string | null>;
+    image?(image: string, width: number, height: number): Promise<string>;
     role(): Promise<'admin' | 'editor'>;
     draft(): Promise<Draft>;
     save(document: Document, revision: number): Promise<number>;
@@ -35,6 +37,14 @@ export function api(): CatalogAPI {
     if (!client) throw new Error('Configura la conexión local.');
     const c = client;
     return {
+        async imageData(id) {
+            const { data, error } = await c.rpc('catalog_image', { image: id });
+            return result(data, error);
+        },
+        async image(image, width, height) {
+            const { data, error } = await c.rpc('save_catalog_image', { image, width, height });
+            return result(data, error);
+        },
         async role() {
             const { data, error } = await c.rpc('catalog_role');
             const role = result(data, error);

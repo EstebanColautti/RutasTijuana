@@ -138,7 +138,7 @@ La sesión utiliza ubicación precisa mientras está activa, también con la pan
 
 La ubicación y el camino permanecen en memoria; no se guardan en el catálogo ni se envían al servidor del proyecto. El cálculo y recálculo consultan los servicios de Apple. Sin conexión se conserva el camino ya recibido, sin garantizar disponibilidad de las imágenes del mapa. Cerrar la app termina la sesión.
 
-El destino debe ser una parada con coordenada puntual. Las áreas y los trazados no generan paradas automáticamente. Las pruebas utilizan destinos y posiciones sintéticas; `--walking-fixture` activa el proveedor de interfaz de Debug y `--walking-error` simula una consulta fallida.
+El catálogo ofrece la guía para paradas con coordenada puntual. El planificador también utiliza accesos sugeridos sobre los recorridos; se calculan en memoria y no se guardan como paradas. Las pruebas utilizan destinos y posiciones sintéticas; `--walking-fixture` activa el proveedor de interfaz de Debug y `--walking-error` simula una consulta fallida.
 
 ## Comprobaciones en GitHub
 
@@ -157,8 +157,17 @@ En Debug, «Evaluar consulta» abre un escenario con origen fijado. También se 
 
 ## Viajes combinados
 
-Con un catálogo publicado que incluya orden de paradas, Inicio ofrece Planear viaje. El origen y el destino se eligen mediante búsqueda, mapa o ubicación actual. El planificador devuelve un itinerario y prioriza menos transbordos y menor caminata. Los valores iniciales de 800 metros por tramo y dos transbordos son preferencias ampliables. Una búsqueda pausada se reanuda con los caminos ya comprobados.
+Con un catálogo publicado, Inicio ofrece Planear viaje. El origen y el destino se eligen mediante búsqueda, mapa o ubicación actual. El planificador devuelve un itinerario y compara recorrido, caminata y transbordos mediante un coste estimado. Esa comparación no utiliza horarios ni predice la llegada del transporte. Los valores iniciales de 800 metros por tramo y dos transbordos son preferencias ampliables. Una búsqueda pausada se reanuda con los caminos ya comprobados.
 
-La consulta usa los sentidos del catálogo y caminos peatonales de MapKit. Una intersección geométrica no crea una conexión. La sesión permite confirmar subida y bajada, encadena las caminatas y ofrece avisos locales opcionales de bajada. Los datos de posición permanecen en memoria. Buscar lugares y calcular caminatas consulta servicios de Apple.
+La consulta usa los sentidos del catálogo y caminos peatonales de MapKit. Una intersección geométrica no confirma un transbordo: sus caminatas requieren un camino peatonal y los accesos calculados se identifican como sugeridos. La sesión permite confirmar subida y bajada, encadena las caminatas y ofrece avisos locales opcionales de bajada. Los datos de posición permanecen en memoria. Buscar lugares y calcular caminatas consulta servicios de Apple.
 
 El argumento Debug `--trip-fixture` abre un viaje combinado con datos sintéticos y proveedores locales. Las pruebas de lógica incluyen sentido, transbordos, ampliación de preferencias y avisos de bajada.
+
+
+## Catálogo incluido
+
+La compilación incorpora `Catalog.bundle` desde el paquete local configurado mediante `CATALOG_PACKAGE_PATH`. Sin esa variable utiliza `local-data/app/catalog`. El paquete contiene `manifest.json`, `catalog.json` e imágenes JPEG identificadas por SHA-256. La instalación inicial verifica su contenido y lo conserva en SQLite; las imágenes se guardan en el almacenamiento privado. Una versión incluida no sustituye una actualización ya guardada.
+
+`scripts/build_catalog.py` prepara un paquete desde un documento de catálogo y una carpeta de imágenes. `scripts/install_catalog.py` comprueba el paquete y lo copia a los recursos de la app. `CATALOG_FIXTURE=YES` genera datos sintéticos para compilaciones y pruebas.
+
+Los campos opcionales `routeDetails` (`code`, `direction`, `circular`) y `media` conservan compatibilidad con los catálogos anteriores. El manifiesto puede incluir `assets`, con tamaño, dimensiones, huella y dirección de cada imagen. Las descargas verifican todos los recursos antes de cambiar la versión local. Las fotografías del panel se convierten a JPEG sin metadatos; permanecen privadas hasta publicar una versión que las incluya.

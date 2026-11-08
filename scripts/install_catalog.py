@@ -42,6 +42,8 @@ def validate(source):
     for file in source.rglob('*'):
         if file.is_symlink():
             raise ValueError('El paquete contiene enlaces.')
+    if (source / 'manifest.json').stat().st_size > 64 * 1024 or (source / 'catalog.json').stat().st_size > 16 * 1024 * 1024:
+        raise ValueError('Paquete demasiado grande.')
     manifest = json.loads((source / 'manifest.json').read_text(encoding='utf-8'))
     payload = (source / 'catalog.json').read_bytes()
     if manifest['schemaVersion'] != 2 or manifest['bytes'] != len(payload) or len(payload) > 16 * 1024 * 1024 or hashlib.sha256(payload).hexdigest() != manifest['sha256']:

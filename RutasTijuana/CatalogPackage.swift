@@ -25,7 +25,9 @@ final class FileCatalogMediaCache: CatalogMediaCache {
         return directory.appendingPathComponent(id + ".jpg")
     }
     func contains(_ asset: CatalogAsset, digest: (Data) -> String) throws -> Bool {
-        guard asset.isValid, let url = url(for: asset.id), let data = try? Data(contentsOf: url) else { return false }
+        guard asset.isValid, let url = url(for: asset.id),
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size == asset.bytes,
+              let data = try? Data(contentsOf: url) else { return false }
         return data.count == asset.bytes && digest(data) == asset.sha256
     }
     func store(_ data: Data, asset: CatalogAsset, digest: (Data) -> String) throws {
@@ -58,6 +60,7 @@ struct CatalogPackage: Sendable {
     let assets: [(CatalogAsset, Data)]
 
     static func read(at directory: URL, digest: (Data) -> String) throws -> CatalogPackage {
+        guard try directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else { throw CatalogSyncError.format }
         let manifestData = try limited(directory.appendingPathComponent("manifest.json"), bytes: 64 * 1024)
         let manifest = try JSONDecoder().decode(CatalogManifest.self, from: manifestData)
         guard manifest.schemaVersion == 2, manifest.bytes > 0, manifest.bytes <= CatalogSynchronizer.maximumBytes,
@@ -91,7 +94,9 @@ struct CatalogPackage: Sendable {
         return CatalogPackage(snapshot: snapshot, assets: assets)
     }
     private static func limited(_ url: URL, bytes: Int) throws -> Data {
-        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
+        let properties = try url.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey, .isRegularFileKey])
+        guard properties.isSymbolicLink != true, properties.isRegularFile == true else { throw CatalogSyncError.format }
+        let size = properties.fileSize ?? Int.max
         guard size <= bytes else { throw CatalogSyncError.tooLarge }
         return try Data(contentsOf: url)
     }

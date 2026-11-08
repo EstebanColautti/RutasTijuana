@@ -577,3 +577,63 @@ try await testTripSearchWork()
     print("Pruebas de accesos calculados correctas")
 }
 try await testCalculatedAccess()
+
+let packageImage = Data(base64Encoded: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAYABgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAb/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCOgL5GAAAAAAP/2Q==")!
+var imageDocument = try JSONSerialization.jsonObject(with: publishedData) as! [String: Any]
+imageDocument["version"] = "images"
+var imageFeatures = imageDocument["features"] as! [[String: Any]]
+let imageKey = String(repeating: "b", count: 64)
+imageFeatures[0]["media"] = [imageKey]
+imageDocument["features"] = imageFeatures
+let imageCatalog = try JSONSerialization.data(withJSONObject: imageDocument, options: [.sortedKeys])
+func imageDigest(_ data: Data) -> String { String(repeating: data == imageCatalog ? "a" : data == packageImage ? "b" : "c", count: 64) }
+let imageDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+let mediaCache = try FileCatalogMediaCache(directory: imageDirectory)
+let asset = CatalogAsset(id: imageKey, bytes: packageImage.count, sha256: imageKey, mimeType: "image/jpeg", downloadURL: URL(string: "?asset=example")!, width: 24, height: 24)
+let imageManifest = CatalogManifest(version: "images", schemaVersion: 2, bytes: imageCatalog.count, sha256: imageDigest(imageCatalog), downloadURL: snapshotURL, assets: [asset])
+let imageTransport = FixtureCatalogTransport()
+let imageCache = MemoryCatalogCache()
+imageTransport.values[syncEndpoint] = try JSONEncoder().encode(imageManifest)
+imageTransport.values[snapshotURL] = imageCatalog
+let imageURL = URL(string: "?asset=example", relativeTo: syncEndpoint)!.absoluteURL
+imageTransport.values[imageURL] = packageImage
+let imageSync = CatalogSynchronizer(transport: imageTransport, cache: imageCache, digest: imageDigest, allowLoopbackHTTP: false, mediaCache: mediaCache)
+_ = try await imageSync.update(from: syncEndpoint, force: true)
+check(try mediaCache.contains(asset, digest: imageDigest), "Images are checked and stored before catalog replacement")
+try FileManager.default.removeItem(at: mediaCache.url(for: imageKey)!)
+let previousCalls = imageTransport.calls
+_ = try await imageSync.update(from: syncEndpoint, force: true)
+check(imageTransport.calls == previousCalls + 2, "Same-version refresh repairs missing images without downloading the catalog")
+try Data("corrupt".utf8).write(to: mediaCache.url(for: imageKey)!)
+imageTransport.values[imageURL] = Data("corrupt".utf8)
+do { _ = try await imageSync.update(from: syncEndpoint, force: true); fatalError("Corrupt image must fail") } catch CatalogSyncError.integrity { }
+check(imageCache.snapshot?.version == "images", "Image failure preserves the saved catalog")
+try mediaCache.collect(keeping: [])
+check(!FileManager.default.fileExists(atPath: mediaCache.url(for: imageKey)!.path), "Unreferenced image files are collected")
+try FileManager.default.removeItem(at: imageDirectory)
+print("Pruebas de imágenes correctas")
+
+@MainActor func testCalculatedTransfers() async throws {
+    let origin=GeoPoint(latitude:32,longitude:-117)
+    let middle=GeoPoint(latitude:32.01,longitude:-117)
+    let destination=GeoPoint(latitude:32.01,longitude:-116.99)
+    let services=[TripService(id:"north",name:"North",direction:nil,stops:[],circular:false,geometry:[[origin,middle]]),TripService(id:"east",name:"East",direction:nil,stops:[],circular:false,geometry:[[middle,destination]])]
+    let provider=SyntheticTripWalkingProvider(maximumDistance:100)
+    let planner=TripPlanner(network:.init(version:"transfer",services:services),provider:provider,preferences:.init(walkingMeters:800,transfers:2,requestsPerBatch:100))
+    var result=try await planner.search(from:origin,to:destination)
+    for _ in 0..<10 { if case .paused = result {result=try await planner.search(from:origin,to:destination)} else {break} }
+    guard case .found(let trip)=result else {fatalError("Calculated transfer must remain usable with a pedestrian route")}
+    check(trip.transfers==1,"Calculated junction supports a transfer")
+    check(trip.legs.contains { if case .walk(_,_,let route)=$0 {return route.length>2};return false },"Crossing needs an actual pedestrian connection")
+    let updated=try await planner.search(from:.init(latitude:32.001,longitude:-117),to:destination)
+    if case .found(let changed)=updated {check(changed.catalogVersion=="transfer","Changing the origin rebuilds measured edges")}
+    let loop=TripService(id:"loop",name:"Loop",direction:nil,stops:[],circular:true,geometry:[[origin,middle,destination,origin]])
+    let prepared=try RouteAccess.services([loop],origin:middle,destination:origin)[0]
+    check(prepared.circular,"Only declared closed geometry wraps")
+    let end=prepared.stops.last!, start=prepared.stops[1]
+    check(prepared.section(through:[end,start]) != nil,"Circular clip follows the declared seam")
+    let open=TripService(id:"open",name:"Open",direction:nil,stops:[],circular:true,geometry:[[origin,middle]])
+    check(!(try RouteAccess.services([open],origin:origin,destination:middle))[0].circular,"Circular declaration never invents missing geometry")
+    print("Pruebas de conexiones sugeridas correctas")
+}
+try await testCalculatedTransfers()

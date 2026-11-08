@@ -35,7 +35,7 @@ struct WalkingNavigationView: View {
                             MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.blue, lineWidth: 6)
                         }
                         Annotation(model.destination.name, coordinate: model.destination.point.walkingCoordinate) {
-                            Image(systemName: "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
+                            Image(systemName: model.destination.purpose == .destination ? "flag.fill" : "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
                         }
                         if let fix = model.fix {
                             if model.isLocationCurrent {
@@ -104,7 +104,7 @@ struct WalkingNavigationView: View {
                     .frame(maxHeight: .infinity)
                 }
             }
-            .navigationTitle("Ir a la parada").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(model.destination.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { confirmEnd = true } label: {

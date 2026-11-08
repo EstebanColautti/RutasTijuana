@@ -202,11 +202,11 @@ import Accessibility
                             status: progress.offRoute ? "Revisa el recorrido" : "En transporte", locationCurrent: true)
         }
         if progress.passedStop {
-            message = "Parece que pasaste tu parada. Puedes volver a planear desde tu ubicación."
+            message = stop.suggested ? "Parece que pasaste el punto de bajada sugerido. Puedes volver a planear desde tu ubicación." : "Parece que pasaste tu parada. Puedes volver a planear desde tu ubicación."
             return
         }
         guard !progress.offRoute else {
-            message = "Tu ubicación no coincide con el recorrido. Revisa la parada de bajada."
+            message = stop.suggested ? "Tu ubicación no coincide con el recorrido. Revisa el punto de bajada sugerido." : "Tu ubicación no coincide con el recorrido. Revisa la parada de bajada."
             return
         }
         message = stop.suggested
@@ -244,9 +244,17 @@ struct TripTravelView: View {
     private var walkingTarget: String {
         let next = model.index + 1
         if model.trip.legs.indices.contains(next), case .ride(_, let stops) = model.trip.legs[next] {
-            return stops.first?.name ?? "Parada de subida"
+            return stops.first?.suggested == true ? "el punto de subida sugerido" : stops.first?.name ?? "Parada de subida"
         }
         return destinationName
+    }
+
+    private var walkingPurpose: WalkingDestination.Purpose {
+        let next = model.index + 1
+        if model.trip.legs.indices.contains(next), case .ride(_, let stops) = model.trip.legs[next] {
+            return stops.first?.suggested == true ? .suggestedAccess : .stop
+        }
+        return .destination
     }
 
     var body: some View {
@@ -275,7 +283,7 @@ struct TripTravelView: View {
                                 MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) }).stroke(.blue, lineWidth: 5)
                             }.frame(height: 220)
                             TripActionButton("Iniciar caminata") {
-                                walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target)
+                                walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target, purpose: walkingPurpose)
                             }.buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).accessibilityIdentifier("trip-walk")
                             TripActionButton("Ya llegué") { model.advance(from: stage) }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                         case .ride(let service, let stops):
@@ -283,8 +291,11 @@ struct TripTravelView: View {
                                 .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                 .onAppear { stageFocused = true }
                             Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
-                            Text("Sube en \(stops.first?.name ?? "")")
-                            Text("Baja en \(stops.last?.name ?? "")")
+                            Text(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")")
+                            Text(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")")
+                            if stops.contains(where: \.suggested) {
+                                Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
+                            }
                             if model.ridePath.count > 1 {
                                 Map(interactionModes: []) {
                                     MapPolyline(coordinates: model.ridePath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
