@@ -131,6 +131,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -195,6 +196,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -259,7 +261,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación permite consultar paradas y guiarte a pie, incluso con la pantalla bloqueada durante la guía. No se guarda.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -299,7 +301,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación permite consultar paradas y guiarte a pie, incluso con la pantalla bloqueada durante la guía. No se guarda.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

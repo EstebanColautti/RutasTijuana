@@ -58,18 +58,32 @@ Deno.serve(async (request: Request) => {
             JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default ||
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const admin = createClient(url, secret, { auth: { persistSession: false } });
-        const { data, error } = await admin.auth.admin.inviteUserByEmail(body.email, {
-            redirectTo: origin,
-        });
-        if (error || !data.user)
-            return new Response(JSON.stringify({ error: 'No se pudo preparar la invitación.' }), {
-                status: 400,
-                headers,
+        const address = body.email.trim().toLowerCase();
+        const { data: invitation, error: requestError } = await userClient.rpc(
+            'request_catalog_invitation', { address },
+        );
+        if (requestError || !invitation) return new Response(null, { status: 403, headers });
+        if (invitation.state === 'revoked')
+            return new Response(JSON.stringify({ error: 'El acceso de este editor fue retirado.' }), {
+                status: 409, headers,
             });
-        const { error: memberError } = await admin
-            .from('catalog_members')
-            .insert({ user_id: data.user.id, role: 'editor' });
-        if (memberError) return new Response(null, { status: 409, headers });
+        const parameters = { address, proof: invitation.token, administrator: identity.user.id };
+        const existing = await admin.rpc('complete_catalog_invitation', parameters);
+        if (existing.error)
+            return new Response(JSON.stringify({ error: 'No se pudo revisar la invitación. Intenta de nuevo.' }), {
+                status: 503, headers,
+            });
+        if (!existing.data) {
+            await admin.auth.admin.inviteUserByEmail(address, {
+                redirectTo: origin,
+                data: { catalog_invitation: invitation.token },
+            });
+            const completed = await admin.rpc('complete_catalog_invitation', parameters);
+            if (completed.error || !completed.data)
+                return new Response(JSON.stringify({
+                    error: 'No se pudo completar el acceso. Puedes reintentar con el mismo correo.',
+                }), { status: 409, headers });
+        }
         return new Response(JSON.stringify({ ok: true }), { headers });
     } catch {
         return new Response(null, { status: 400, headers });

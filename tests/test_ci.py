@@ -52,9 +52,12 @@ class BundleTests(unittest.TestCase):
             extension = app / 'PlugIns' / 'Navigation.appex'
             extension.mkdir(parents=True)
             info = {'CFBundleIdentifier': 'com.estebancolautti.rutastijuana', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '1.0', 'NSSupportsLiveActivities': True, 'UIBackgroundModes': ['location'], 'NSLocationWhenInUseUsageDescription': 'Ejemplo', 'NSLocationTemporaryUsageDescriptionDictionary': {'WalkingNavigation': 'Ejemplo'}}
+            info['CFBundleIcons'] = {'CFBundlePrimaryIcon': {'CFBundleIconName': 'AppIcon'}}
             widget = {'CFBundleIdentifier': info['CFBundleIdentifier'] + '.navigation', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '1.0', 'NSExtension': {'NSExtensionPointIdentifier': 'com.apple.widgetkit-extension'}}
             (app / 'Info.plist').write_bytes(plistlib.dumps(info))
             (extension / 'Info.plist').write_bytes(plistlib.dumps(widget))
+            manifest = Path(__file__).resolve().parents[1] / 'RutasTijuana' / 'PrivacyInfo.xcprivacy'
+            (app / manifest.name).write_bytes(manifest.read_bytes())
             validate(app)
             for key in ('CFBundleVersion', 'CFBundleShortVersionString', 'NSExtension'):
                 broken = dict(widget)

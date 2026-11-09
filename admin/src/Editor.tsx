@@ -3,6 +3,7 @@ import {
     geometryPoints,
     importCatalog,
     parseDocument,
+    publicationIssues,
     validGeometry,
     type Audit,
     type Document,
@@ -83,6 +84,81 @@ export function GeometryPreview({ feature }: { feature?: Feature }) {
         </figure>
     );
 }
+function ItineraryEditor({ feature, stops, onChange }: {
+    feature: Feature;
+    stops: Feature[];
+    onChange: (fields: Feature['publicFields']) => void;
+}) {
+    const fields = feature.publicFields;
+    const shape = fields.find((field) => field.category === 'route-shape')?.value ?? '';
+    let order: string[] = [];
+    try {
+        const value: unknown = JSON.parse(fields.find((field) => field.category === 'stop-order')?.value ?? '[]');
+        if (Array.isArray(value)) order = value.filter((id): id is string => typeof id === 'string');
+    } catch {
+        order = [];
+    }
+    const available = stops.filter((stop) => stop.included && stop.kind === 'stop' && stop.geometry.type === 'Point');
+    function update(nextShape: string, nextOrder: string[]) {
+        const next = fields.filter((field) => !['route-shape', 'stop-order'].includes(field.category));
+        if (nextShape) {
+            next.push({ category: 'route-shape', label: 'Tipo de recorrido', value: nextShape });
+            next.push({ category: 'stop-order', label: 'Orden de paradas', value: JSON.stringify(nextOrder) });
+        }
+        onChange(next);
+    }
+    return (
+        <fieldset>
+            <legend>Itinerario</legend>
+            <label>Tipo de recorrido
+                <select value={shape} onChange={(event) => update(event.target.value, order)}>
+                    <option value="">Solo consulta</option>
+                    <option value="linear">Lineal</option>
+                    <option value="circular">Circular</option>
+                </select>
+            </label>
+            {shape && (
+                <>
+                    {(order.length < 2 || new Set(order).size !== order.length || order.some((id) => !available.some((stop) => stop.id === id))) &&
+                        <p role="status">Elige al menos dos paradas distintas incluidas en el catálogo.</p>}
+                    <ol>
+                        {order.map((id, index) => (
+                            <li key={index}>
+                                <label>Parada {index + 1}
+                                    <select value={id} onChange={(event) => update(shape, order.map((value, position) => position === index ? event.target.value : value))}>
+                                        {!available.some((stop) => stop.id === id) && <option value={id}>Parada no disponible</option>}
+                                        {available.filter((stop) => stop.id === id || !order.includes(stop.id)).map((stop) =>
+                                            <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+                                    </select>
+                                </label>
+                                <button type="button" className="secondary" disabled={index === 0}
+                                    aria-label={"Subir parada " + (index + 1)} onClick={() => {
+                                        const next = [...order];
+                                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                                        update(shape, next);
+                                    }}>Subir</button>
+                                <button type="button" className="secondary" disabled={index === order.length - 1}
+                                    aria-label={"Bajar parada " + (index + 1)} onClick={() => {
+                                        const next = [...order];
+                                        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                                        update(shape, next);
+                                    }}>Bajar</button>
+                                <button type="button" className="secondary" onClick={() => update(shape, order.filter((_, position) => position !== index))}>Quitar parada {index + 1}</button>
+                            </li>
+                        ))}
+                    </ol>
+                    <label>Añadir parada
+                        <select value="" onChange={(event) => update(shape, [...order, event.target.value])}>
+                            <option value="" disabled>Selecciona una parada</option>
+                            {available.filter((stop) => !order.includes(stop.id)).map((stop) =>
+                                <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+                        </select>
+                    </label>
+                </>
+            )}
+        </fieldset>
+    );
+}
 function download(name: string, data: unknown) {
     const url = URL.createObjectURL(
         new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
@@ -105,13 +181,14 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         [versions, setVersions] = useState<Version[]>([]),
         [audit, setAudit] = useState<Audit[]>([]),
         [email, setEmail] = useState('');
+    const [withdrawal, setWithdrawal] = useState({ version: "", reason: "", replacement: "" });
     const [members,setMembers]=useState<{user_id:string;role:string}[]>([]);
   const catalogInput = useRef<HTMLInputElement>(null),
         geoInput = useRef<HTMLInputElement>(null);
+    const operation = useRef(false);
     const feature = draft?.document.features.find((f) => f.id === selection);
     async function load() {
-        setBusy(true);
-        try {
+        await run(async () => {
             const r = await service.role();
             setRole(r);
             const d = await service.draft();
@@ -120,12 +197,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
             setPreview(null);
             setAudit(await service.audit());
             if (r === 'admin') { setVersions(await service.versions()); setMembers(await service.members()); }
-            setMessage('');
-        } catch (e) {
-            setMessage((e as Error).message);
-        } finally {
-            setBusy(false);
-        }
+        });
     }
     useEffect(() => {
         void load();
@@ -140,21 +212,24 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         window.addEventListener('beforeunload', leave);
         return () => window.removeEventListener('beforeunload', leave);
     }, [dirty]);
-    function updateDocument(d: Document) {
+    function updateDocument(d: Document, importing = false) {
+        if (operation.current && !importing) return;
         setDraft((v) => (v ? { ...v, document: d } : v));
         setDirty(true);
         setPreview(null);
     }
-    function patch(p: Partial<Feature>) {
+    function patch(p: Partial<Feature>, importing = false) {
         if (draft && feature)
             updateDocument({
                 ...draft.document,
                 features: draft.document.features.map((f) =>
                     f.id === feature.id ? { ...f, ...p } : f,
                 ),
-            });
+            }, importing);
     }
     async function run(action: () => Promise<void>) {
+        if (operation.current) return;
+        operation.current = true;
         setBusy(true);
         setMessage('');
         try {
@@ -162,6 +237,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         } catch (e) {
             setMessage((e as Error).message);
         } finally {
+            operation.current = false;
             setBusy(false);
         }
     }
@@ -177,27 +253,26 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
     }
     async function importFile(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (!file) return;
-        try {
+        await run(async () => {
             if (file.size > 16 * 1024 * 1024) throw Error('El archivo supera 16 MB.');
-            updateDocument(importCatalog(await file.text()));
+            updateDocument(importCatalog(await file.text()), true);
             setSelection('');
             setMessage('Archivo incorporado al borrador.');
-        } catch (e) {
-            setMessage((e as Error).message);
-        }
-        e.target.value = '';
+        });
     }
     async function importGeometry(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (!file || !draft) return;
-        try {
+        await run(async () => {
             if (file.size > 16 * 1024 * 1024) throw Error('El archivo supera 16 MB.');
             const raw = JSON.parse(await file.text());
             if (feature) {
                 const g = raw.type === 'Feature' ? raw.geometry : raw;
                 if (!validGeometry(g)) throw Error('Geometría incorrecta.');
-                patch({ geometry: g });
+                patch({ geometry: g }, true);
             } else {
                 if (raw.type !== 'FeatureCollection' || !Array.isArray(raw.features))
                     throw Error('Selecciona un elemento o importa una colección GeoJSON.');
@@ -229,14 +304,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                     }),
                 );
                 updateDocument(
-                    parseDocument({ groups, features: [...draft.document.features, ...incoming] }),
+                    parseDocument({ groups, features: [...draft.document.features, ...incoming] }), true,
                 );
             }
             setMessage('Geometría incorporada al borrador.');
-        } catch (e) {
-            setMessage((e as Error).message);
-        }
-        e.target.value = '';
+        });
     }
     const source = feature?.source as {
         description?: string;
@@ -258,6 +330,12 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
             </header>
             <main className="workspace">
                 <nav className="actions">
+                    {dirty && draft && (
+                        <button className="secondary" disabled={busy}
+                            onClick={() => download('catalog-borrador.json', draft.document)}>
+                            Descargar borrador
+                        </button>
+                    )}
                     <button disabled={busy || !dirty} onClick={() => void run(save)}>
                         Guardar cambios
                     </button>
@@ -293,7 +371,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                             <button
                                 disabled={busy || dirty || !draft}
                                 onClick={() =>
-                                    void run(async () => setPreview(await service.preview()))
+                                    void run(async () => {
+                                        const issues = draft ? publicationIssues(draft.document) : ['Abre el borrador.'];
+                                        if (issues.length) throw new Error(issues.join('\n'));
+                                        setPreview(await service.preview());
+                                    })
                                 }
                             >
                                 Preparar publicación
@@ -332,7 +414,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                         : message ||
                           (dirty ? 'Cambios sin guardar' : 'Revisión ' + (draft?.revision ?? '—'))}
                 </p>
-                <section className="editor">
+                <section className="editor" inert={busy}>
                     <aside>
                         <input
                             aria-label="Buscar elemento"
@@ -454,7 +536,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     />
                                 </label>
                                 <h3>Información pública</h3>
-                                {feature.publicFields.map((v, i) => (
+                                {feature.kind === 'route' && draft && (
+                                    <ItineraryEditor feature={feature} stops={draft.document.features}
+                                        onChange={(publicFields) => patch({ publicFields })} />
+                                )}
+                                {feature.publicFields.map((v, i) => ['stop-order', 'route-shape'].includes(v.category) ? null : (
                                     <div className="field-row" key={i}>
                                         <select
                                             aria-label="Categoría"
@@ -475,8 +561,11 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                                 fare: 'Tarifa',
                                                 places: 'Lugares',
                                                 direction: 'Sentido',
+                                                'updated-at': 'Fecha de actualización',
+                                                notice: 'Aviso',
                                                 note: 'Nota',
                                                 contact: 'Contacto',
+                                                'service-role': 'Servicio (notices o contact)',
                                                 media: 'Enlace',
                                             }).map(([c, label]) => (
                                                 <option key={c} value={c}>
@@ -614,7 +703,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                     </article>
                 </section>
                 {draft && (
-                    <section className="card">
+                    <section className="card" inert={busy}>
                         <h2>Grupos</h2>
                         {draft.document.groups.map((g) => (
                             <label key={g.id}>
@@ -686,12 +775,12 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     <span>
                                         {new Date(v.created_at).toLocaleString()}
                                         <small>
-                                            {v.version} · {v.created_by}
+                                            {v.withdrawn_at ? "Retirada · " : ""}{v.version} · {v.created_by}
                                         </small>
                                     </span>
                                     <button
                                         className="secondary"
-                                        disabled={busy}
+                                        disabled={busy || Boolean(v.withdrawn_at)}
                                         onClick={() => {
                                             if (confirm('¿Usar esta publicación en la app?'))
                                                 void run(async () => {
@@ -705,6 +794,49 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     </button>
                                 </div>
                             ))}
+                            {versions.some((version) => !version.withdrawn_at) && (
+                                <details>
+                                    <summary>Retirar publicación</summary>
+                                    <form onSubmit={(event) => {
+                                        event.preventDefault();
+                                        if (confirm('¿Retirar esta publicación del catálogo?'))
+                                            void run(async () => {
+                                                await service.withdraw(withdrawal.version, withdrawal.reason, withdrawal.replacement || null);
+                                                setVersions(await service.versions());
+                                                setAudit(await service.audit());
+                                                setWithdrawal({ version: '', reason: '', replacement: '' });
+                                                setMessage('Publicación retirada.');
+                                            });
+                                    }}>
+                                        <fieldset disabled={busy}>
+                                            <label>
+                                                Publicación
+                                                <select required value={withdrawal.version} onChange={(event) =>
+                                                    setWithdrawal({ ...withdrawal, version: event.target.value, replacement: '' })}>
+                                                    <option value="">Selecciona una publicación</option>
+                                                    {versions.filter((version) => !version.withdrawn_at).map((version) =>
+                                                        <option key={version.version} value={version.version}>{version.version}</option>)}
+                                                </select>
+                                            </label>
+                                            <label>
+                                                Motivo interno
+                                                <input required maxLength={500} value={withdrawal.reason} onChange={(event) =>
+                                                    setWithdrawal({ ...withdrawal, reason: event.target.value })} />
+                                            </label>
+                                            <label>
+                                                Reemplazo si está activa
+                                                <select value={withdrawal.replacement} onChange={(event) =>
+                                                    setWithdrawal({ ...withdrawal, replacement: event.target.value })}>
+                                                    <option value="">Sin reemplazo</option>
+                                                    {versions.filter((version) => !version.withdrawn_at && version.version !== withdrawal.version).map((version) =>
+                                                        <option key={version.version} value={version.version}>{version.version}</option>)}
+                                                </select>
+                                            </label>
+                                            <button>Confirmar retirada</button>
+                                        </fieldset>
+                                    </form>
+                                </details>
+                            )}
                         </section>
                         <section className="card">
                             <h2>Equipo</h2>{members.map(member=><div className="history" key={member.user_id}><span>{member.user_id}<small>{member.role==='admin'?'Administrador':'Editor'}</small></span>{member.role==='editor'&&<button className="secondary" disabled={busy} onClick={()=>{if(confirm('¿Quitar el acceso de este editor?'))void run(async()=>{await service.revoke(member.user_id);setMembers(await service.members());});}}>Quitar acceso</button>}</div>)}
@@ -714,6 +846,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                     e.preventDefault();
                                     void run(async () => {
                                         await service.invite(email);
+                                        setMembers(await service.members());
                                         setEmail('');
                                         setMessage('Invitación preparada.');
                                     });

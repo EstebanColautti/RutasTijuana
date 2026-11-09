@@ -94,6 +94,14 @@ if let path = ProcessInfo.processInfo.environment["CATALOG_TEST_FILE"] {
 print("Pruebas de catálogo correctas")
 
 let scenario = JourneyScenario.sample
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: 2, fechaActualizacion: "21/10/2026") == .accepted, "Evaluación P1")
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: 2, fechaActualizacion: " ") == .rejected, "Evaluación P2")
+check(validarRuta(origen: "A", destino: " A ", paradasPrincipales: 2, fechaActualizacion: nil) == .invalid, "Evaluación P3")
+check(validarRuta(origen: "", destino: "B", paradasPrincipales: 2, fechaActualizacion: nil) == .invalid, "Origen vacío")
+check(validarRuta(origen: "A", destino: "B", paradasPrincipales: -1, fechaActualizacion: nil) == .invalid, "Cantidad negativa")
+let linear = TransitRoute(name: route.name, stops: route.stops, coverageRadius: route.coverageRadius, isCircular: false)
+check(linear.journey(from: "demo-1", to: "demo-3")?.map(\.id) == ["demo-1", "demo-2", "demo-3"], "Trayecto lineal")
+check(linear.journey(from: "demo-3", to: "demo-1") == nil, "Trayecto lineal no cierra el circuito")
 let scenarioData = try JSONEncoder().encode(scenario)
 let decodedScenario = try JourneyScenario.decode(scenarioData, allowEvaluation: true)
 check(decodedScenario.stops.count == 6, "Escenario de evaluación")
@@ -130,17 +138,39 @@ let informationRoundTrip = try RouteCatalog.decode(JSONEncoder().encode(enriched
 check(informationRoundTrip.features[0].information == enrichedFeature.information, "Información completa de ida y vuelta")
 check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descripción y campos")
 
+let geometryA = GeoPoint(latitude: 0, longitude: 0)
+let geometryB = GeoPoint(latitude: 0.001, longitude: 0.001)
+let geometryC = GeoPoint(latitude: 0.001, longitude: 0.002)
+let geometryStops = [geometryA, geometryB, geometryC].enumerated().map {
+    TransitStop(id: String($0.offset), name: String($0.offset), point: $0.element)
+}
+var geometryScenario = JourneyScenario(schemaVersion: 1, name: "Synthetic", coverageRadius: 100,
+    stops: geometryStops, places: [], circular: false, routeGeometry: [[geometryA, geometryB, geometryC]])
+check(geometryScenario.mappedSection(for: geometryStops) == [geometryA, geometryB, geometryC], "Published section preserves the bend")
+check(geometryScenario.mappedSection(for: Array(geometryStops.reversed())) == nil, "Reverse travel does not fabricate a segment")
+geometryScenario.routeGeometry = [[geometryA, geometryB], [geometryC, geometryB]]
+check(geometryScenario.mappedSection(for: geometryStops) == nil, "Disconnected parts do not create a link")
+geometryScenario.circular = true
+geometryScenario.routeGeometry = [[geometryA, geometryB, geometryC, geometryA]]
+check(geometryScenario.mappedSection(for: [geometryStops[2], geometryStops[0], geometryStops[1]]) == [geometryC, geometryA, geometryB], "Circular section crosses its origin")
+
 final class MemoryCatalogCache: CatalogCache {
     var snapshot: CatalogSnapshot?
     var attempted: Date?
+    var succeeded: Date?
     var failWrites = false
-    func current() throws -> CatalogSnapshot? { snapshot }
+    func snapshots() throws -> [CatalogSnapshot] { snapshot.map { [$0] } ?? [] }
     func replace(_ snapshot: CatalogSnapshot) throws {
         if failWrites { throw CatalogSyncError.storage }
         self.snapshot = snapshot
     }
+    func remove(versions: Set<String>) throws {
+        if let snapshot, versions.contains(snapshot.version) { self.snapshot = nil }
+    }
     func lastAttempt() throws -> Date? { attempted }
     func recordAttempt(_ date: Date) throws { attempted = date }
+    func lastSuccess() throws -> Date? { succeeded }
+    func recordSuccess(_ date: Date) throws { succeeded = date }
 }
 final class FixtureCatalogTransport: CatalogTransport {
     var values: [URL: Data] = [:]
@@ -175,6 +205,9 @@ _ = try await synchronizer.update(from:syncEndpoint,force:false,now:Date(timeInt
 check(syncTransport.calls == 2, "Intervalo de actualización")
 _ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1200))
 check(syncTransport.calls == 3, "La misma versión no se vuelve a descargar")
+syncCache.snapshot = .init(version: "one", sha256: fixtureDigest(publishedData), data: Data("broken".utf8))
+_ = try await synchronizer.update(from:syncEndpoint,force:true,now:Date(timeIntervalSince1970:1300))
+check(syncTransport.calls == 5 && syncCache.snapshot?.data == publishedData, "Same version repairs a corrupt cache")
 let hostileManifest = CatalogManifest(version:"two",schemaVersion:2,bytes:publishedData.count,sha256:fixtureDigest(publishedData),downloadURL:URL(string:"https://other.test/catalog")!)
 syncTransport.values[syncEndpoint] = try JSONEncoder().encode(hostileManifest)
 do { _ = try await synchronizer.update(from:syncEndpoint,force:true); fatalError("Debe rechazar otro origen") } catch CatalogSyncError.address { }
@@ -265,6 +298,11 @@ func testWalkingNavigation() {
     var parallel = WalkingProgressEngine(route: loop, destination: target)
     _ = parallel.update(fix(0, 0, east: 10), now: start)
     assert(parallel.progress.traveled < 50)
+    var resumed = WalkingProgressEngine(route: route, destination: target)
+    _ = resumed.update(fix(0, 0), now: start)
+    _ = resumed.update(fix(160, 80), now: start.addingTimeInterval(80))
+    check(resumed.progress.traveled > 150, "Recovery after a long GPS pause advances along the path")
+    check(!resumed.progress.offRoute, "A pause on the path does not create a deviation")
     print("Pruebas de navegación correctas")
 }
 testWalkingNavigation()
@@ -343,3 +381,172 @@ func testWalkingTurns() {
     print("Pruebas de giros correctas")
 }
 testWalkingTurns()
+
+
+var civilScenario = JourneyScenario.sample
+civilScenario.routeID = "published"
+civilScenario.updatedAt = "2026-02-30"
+check(civilScenario.updateDate == nil, "Invalid published date is unavailable")
+civilScenario.updatedAt = "2026-11-06"
+check(civilScenario.updateDate == "06/11/2026", "Published date is localized")
+civilScenario.routeID = nil
+civilScenario.updatedAt = "example"
+check(civilScenario.updateDate == "example", "Evaluation preserves its presence rule")
+
+
+@MainActor
+final class SyntheticTripWalkingProvider: TripWalkingProvider {
+    var calls = 0
+    let maximumDistance: Double
+    init(maximumDistance: Double = 30) { self.maximumDistance = maximumDistance }
+    func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
+        calls += 1
+        guard from.distance(to: to) < maximumDistance else { return nil }
+        return WalkingRoute(points: [from, to], steps: [], duration: 0)
+    }
+}
+
+@MainActor
+func testTripPlanning() async throws {
+    let stops = (0..<3).map { TransitStop(id: "trip-\($0)", name: "Stop \($0)",
+        point: GeoPoint(latitude: 32 + Double($0) * 0.01, longitude: -117)) }
+    let network = TripNetwork(version: "synthetic", services: [
+        TripService(id: "one", name: "One", direction: nil, stops: Array(stops[0...1]), circular: false),
+        TripService(id: "two", name: "Two", direction: nil, stops: Array(stops[1...2]), circular: false),
+    ])
+    let provider = SyntheticTripWalkingProvider()
+    let planner = TripPlanner(network: network, provider: provider,
+                              preferences: .init(walkingMeters: 800, transfers: 0, requestsPerBatch: 1))
+    var result = try await planner.search(from: stops[0].point, to: stops[2].point)
+    var batches = 1
+    while case .paused = result {
+        batches += 1
+        check(batches < 30, "Walking cache makes each resumed batch advance")
+        result = try await planner.search(from: stops[0].point, to: stops[2].point)
+    }
+    guard case .found(let trip) = result else { fatalError("A transfer must connect the two services") }
+    check(trip.transfers == 1 && trip.exceedsPreferences, "Transfer preferences are soft")
+    check(trip.catalogVersion == "synthetic", "Trip captures its catalog version")
+    result = try await planner.search(from: stops[2].point, to: stops[0].point)
+    batches = 0
+    while case .paused = result {
+        batches += 1
+        check(batches < 30, "Reverse search completes its batches")
+        result = try await planner.search(from: stops[2].point, to: stops[0].point)
+    }
+    guard case .unavailable = result else {
+        fatalError("A linear service must not run in reverse")
+    }
+    let direct = TripService(id: "direct", name: "Direct", direction: nil, stops: [stops[0], stops[2]], circular: false)
+    let directPlanner = TripPlanner(network: .init(version: "synthetic", services: network.services + [direct]),
+                                    provider: SyntheticTripWalkingProvider())
+    guard case .found(let directTrip) = try await directPlanner.search(from: stops[0].point, to: stops[2].point) else {
+        fatalError("Direct service must be available")
+    }
+    check(directTrip.transfers == 0, "A direct service wins over a transfer")
+    let farOrigin = GeoPoint(latitude: stops[0].point.latitude - 0.009, longitude: -117)
+    let expanded = TripPlanner(network: .init(version: "synthetic", services: [direct]),
+                               provider: SyntheticTripWalkingProvider(maximumDistance: 1500))
+    guard case .found(let expandedTrip) = try await expanded.search(from: farOrigin, to: stops[2].point) else {
+        fatalError("Walking preferences must not block the only connection")
+    }
+    check(expandedTrip.walkingMeters > 800 && expandedTrip.exceedsPreferences, "Walking preference expands automatically")
+    do {
+        _ = try await directPlanner.search(from: .init(latitude: .nan, longitude: 0), to: stops[2].point)
+        fatalError("Invalid coordinates must be rejected")
+    } catch TripPlanningError.invalidInput { }
+    print("Pruebas de planificación correctas")
+}
+try await testTripPlanning()
+
+
+func testTransitProgress() {
+    let base = Date(timeIntervalSince1970: 5000)
+    func point(_ meters: Double) -> GeoPoint { .init(latitude: 32 + meters / 111195, longitude: -117) }
+    var engine = TransitProgressEngine(path: [point(0), point(1000)], destination: point(1000))
+    var notifications = 0
+    for index in 0...20 {
+        let time = base.addingTimeInterval(Double(index * 3))
+        let value = engine.update(.init(point: point(Double(index * 50)), accuracy: 5, timestamp: time), now: time)
+        if value?.notifyAlighting == true { notifications += 1 }
+    }
+    check(notifications == 1, "Alighting notification is emitted once")
+    let later = base.addingTimeInterval(70)
+    let passed = engine.update(.init(point: point(1200), accuracy: 5, timestamp: later), now: later)
+    check(passed?.passedStop == true, "Passing the end of the path offers replanning")
+    let stale = engine.update(.init(point: point(1000), accuracy: 100, timestamp: later), now: later)
+    check(stale == nil, "Imprecise GPS cannot advance a ride")
+    print("Pruebas de seguimiento de transporte correctas")
+}
+testTransitProgress()
+
+
+@MainActor final class DeferredTripWalkingProvider: TripWalkingProvider {
+    private var pending: CheckedContinuation<WalkingRoute?, Error>?
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var endpoints: (GeoPoint, GeoPoint)?
+
+    func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
+        endpoints = (from, to)
+        return try await withCheckedThrowingContinuation { continuation in
+            pending = continuation
+            waiter?.resume()
+            waiter = nil
+        }
+    }
+    func waitForRequest() async {
+        if pending != nil { return }
+        await withCheckedContinuation { waiter = $0 }
+    }
+    func complete() {
+        guard let endpoints else { return }
+        pending?.resume(returning: .init(points: [endpoints.0, endpoints.1], steps: [], duration: 60))
+        pending = nil
+    }
+}
+
+@MainActor func testTripCancellationAndExpansion() async throws {
+    let stops = (0..<5).map { TransitStop(id: "chain-\($0)", name: "Stop \($0)",
+        point: GeoPoint(latitude: 32 + Double($0) * 0.01, longitude: -117)) }
+    let services = (0..<4).map { TripService(id: "service-\($0)", name: "Service \($0)", direction: nil,
+        stops: [stops[$0], stops[$0 + 1]], circular: false) }
+    let network = TripNetwork(version: "chain", services: services)
+    let planner = TripPlanner(network: network, provider: SyntheticTripWalkingProvider())
+    guard case .found(let trip) = try await planner.search(from: stops[0].point, to: stops[4].point) else {
+        fatalError("Three transfers must remain possible")
+    }
+    check(trip.transfers == 3 && trip.exceedsPreferences, "Two transfers is a preference, not a hard cap")
+    let provider = DeferredTripWalkingProvider()
+    let cancellable = TripPlanner(network: network, provider: provider)
+    let request = Task {
+        try await cancellable.search(from: GeoPoint(latitude: 31.999, longitude: -117), to: stops[4].point)
+    }
+    await provider.waitForRequest()
+    await cancellable.cancel()
+    provider.complete()
+    do {
+        _ = try await request.value
+        fatalError("A cancelled search must ignore its late route")
+    } catch is CancellationError { }
+    check(TripNetwork(catalog: .sample).services.isEmpty, "Unordered catalog lines cannot become transport connections")
+    print("Pruebas de cancelación y ampliación correctas")
+}
+try await testTripCancellationAndExpansion()
+
+
+@MainActor func testTripSearchWork() async throws {
+    let services = (0..<100).map { service in
+        TripService(id: "grid-\(service)", name: "Synthetic", direction: nil,
+            stops: (0..<10).map { stop in
+                TransitStop(id: "grid-\(service)-\(stop)", name: "Synthetic",
+                    point: .init(latitude: 32 + Double(stop) * 0.001, longitude: -117 + Double(service) * 0.01))
+            }, circular: false)
+    }
+    let provider = SyntheticTripWalkingProvider()
+    let planner = TripPlanner(network: .init(version: "large", services: services), provider: provider)
+    let result = try await planner.search(from: services[0].stops.first!.point, to: services[0].stops.last!.point)
+    guard case .found(let trip) = result else { fatalError("Large catalogs must retain a direct connection") }
+    check(provider.calls == 0 && trip.transfers == 0, "Lazy walking search does not request every possible stop pair")
+    print("Pruebas de búsqueda progresiva correctas")
+}
+try await testTripSearchWork()

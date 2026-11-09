@@ -147,3 +147,18 @@ El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pru
 La ejecución manual ofrece `full` y `native`. Desde una ejecución de Actions se pueden repetir únicamente los trabajos fallidos. Una actualización de la rama cancela su ejecución anterior. Las pruebas de iPhone conservan resultados, capturas y diagnósticos durante siete días.
 
 La caché contiene solo el almacén de dependencias de pnpm. Las pruebas nativas compilan app y extensión, comprueban sus versiones y permisos, y ejecutan la suite completa del simulador sobre los mismos productos compilados.
+
+## Datos de consulta
+
+En el panel, un recorrido puede publicar un campo `stop-order` con un arreglo JSON de identificadores de paradas incluidas y un campo `route-shape` con `linear` o `circular`. Los campos `direction`, `updated-at` y `schedule` aportan sentido, fecha y horarios. Las referencias de servicio usan `service-role` con `notices` para avisos o `contact` para atención. Publican `notice` o un único enlace HTTPS `contact`, respectivamente. El catálogo admite un solo contacto oficial. Incluye únicamente información apta para publicación.
+
+En Debug, «Evaluar consulta» abre un escenario con origen fijado. También se pueden abrir escenarios JSON de evaluación con los campos opcionales `fixedOriginID`, `updatedAt`, `circular` y `direction`.
+
+
+## Viajes combinados
+
+Con un catálogo publicado que incluya orden de paradas, Inicio ofrece Planear viaje. El origen y el destino se eligen mediante búsqueda, mapa o ubicación actual. El planificador devuelve un itinerario y prioriza menos transbordos y menor caminata. Los valores iniciales de 800 metros por tramo y dos transbordos son preferencias ampliables. Una búsqueda pausada se reanuda con los caminos ya comprobados.
+
+La consulta usa los sentidos del catálogo y caminos peatonales de MapKit. Una intersección geométrica no crea una conexión. La sesión permite confirmar subida y bajada, encadena las caminatas y ofrece avisos locales opcionales de bajada. Los datos de posición permanecen en memoria. Buscar lugares y calcular caminatas consulta servicios de Apple.
+
+El argumento Debug `--trip-fixture` abre un viaje combinado con datos sintéticos y proveedores locales. Las pruebas de lógica incluyen sentido, transbordos, ampliación de preferencias y avisos de bajada.

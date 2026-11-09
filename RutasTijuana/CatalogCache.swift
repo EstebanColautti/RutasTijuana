@@ -33,12 +33,19 @@ final class SQLiteCatalogCache: CatalogCache {
         guard sqlite3_step(s) == SQLITE_ROW else { throw CatalogSyncError.storage }
         return Int(sqlite3_column_int64(s, 0))
     }
-    func current() throws -> CatalogSnapshot? {
-        let s = try statement("SELECT version,hash,payload FROM snapshots ORDER BY sequence DESC LIMIT 1"); defer { sqlite3_finalize(s) }
-        let result = sqlite3_step(s)
-        if result == SQLITE_DONE { return nil }
-        guard result == SQLITE_ROW, let version = sqlite3_column_text(s,0), let hash = sqlite3_column_text(s,1), let bytes = sqlite3_column_blob(s,2) else { throw CatalogSyncError.storage }
-        return CatalogSnapshot(version: String(cString: version), sha256: String(cString: hash), data: Data(bytes: bytes, count: Int(sqlite3_column_bytes(s,2))))
+    func snapshots() throws -> [CatalogSnapshot] {
+        let s = try statement("SELECT version,hash,payload FROM snapshots ORDER BY sequence DESC LIMIT 2")
+        defer { sqlite3_finalize(s) }
+        var snapshots: [CatalogSnapshot] = []
+        while true {
+            let result = sqlite3_step(s)
+            if result == SQLITE_DONE { return snapshots }
+            guard result == SQLITE_ROW else { throw CatalogSyncError.storage }
+            guard let version = sqlite3_column_text(s,0), let hash = sqlite3_column_text(s,1),
+                  let bytes = sqlite3_column_blob(s,2) else { continue }
+            snapshots.append(CatalogSnapshot(version: String(cString: version), sha256: String(cString: hash),
+                data: Data(bytes: bytes, count: Int(sqlite3_column_bytes(s,2)))))
+        }
     }
     func replace(_ snapshot: CatalogSnapshot) throws {
         guard snapshot.data.count <= CatalogSynchronizer.maximumBytes else { throw CatalogSyncError.tooLarge }
@@ -56,15 +63,39 @@ final class SQLiteCatalogCache: CatalogCache {
             try execute("COMMIT")
         } catch { try? execute("ROLLBACK"); throw error }
     }
-    func lastAttempt() throws -> Date? {
-        let s = try statement("SELECT value FROM metadata WHERE key='lastAttempt'"); defer { sqlite3_finalize(s) }
-        guard sqlite3_step(s) == SQLITE_ROW, let text = sqlite3_column_text(s,0), let value = Double(String(cString:text)) else { return nil }
+    func remove(versions: Set<String>) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let s = try statement("DELETE FROM snapshots WHERE version=?")
+            defer { sqlite3_finalize(s) }
+            for version in versions {
+                guard sqlite3_bind_text(s,1,version,-1,transient) == SQLITE_OK,
+                      sqlite3_step(s) == SQLITE_DONE, sqlite3_reset(s) == SQLITE_OK else { throw CatalogSyncError.storage }
+            }
+            try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+    }
+    func lastAttempt() throws -> Date? { try date(for: "lastAttempt") }
+    func lastSuccess() throws -> Date? { try date(for: "lastSuccess") }
+    func recordAttempt(_ date: Date) throws { try record(date, for: "lastAttempt") }
+    func recordSuccess(_ date: Date) throws { try record(date, for: "lastSuccess") }
+
+    private func date(for key: String) throws -> Date? {
+        let s = try statement("SELECT value FROM metadata WHERE key=?")
+        defer { sqlite3_finalize(s) }
+        guard sqlite3_bind_text(s,1,key,-1,transient) == SQLITE_OK else { throw CatalogSyncError.storage }
+        let result = sqlite3_step(s)
+        if result == SQLITE_DONE { return nil }
+        guard result == SQLITE_ROW, let text = sqlite3_column_text(s,0),
+              let value = Double(String(cString:text)) else { throw CatalogSyncError.storage }
         return Date(timeIntervalSince1970: value)
     }
-    func recordAttempt(_ date: Date) throws {
-        let s = try statement("INSERT OR REPLACE INTO metadata(key,value) VALUES('lastAttempt',?)"); defer { sqlite3_finalize(s) }
-        sqlite3_bind_text(s,1,String(date.timeIntervalSince1970),-1,transient)
-        guard sqlite3_step(s) == SQLITE_DONE else { throw CatalogSyncError.storage }
+    private func record(_ date: Date, for key: String) throws {
+        let s = try statement("INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)")
+        defer { sqlite3_finalize(s) }
+        guard sqlite3_bind_text(s,1,key,-1,transient) == SQLITE_OK,
+              sqlite3_bind_text(s,2,String(date.timeIntervalSince1970),-1,transient) == SQLITE_OK,
+              sqlite3_step(s) == SQLITE_DONE else { throw CatalogSyncError.storage }
     }
 }
 #endif
