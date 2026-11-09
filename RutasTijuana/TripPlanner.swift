@@ -168,6 +168,23 @@ actor TripPlanner {
         var radius = 800.0
         init(label: Label) { self.label = label; if let service = label.service { excludedServices.insert(service) } }
     }
+    private typealias Entry = (label: Label, priority: [Double])
+
+    private struct PreparedGraph {
+        let stops: [TransitStop]
+        let points: [GeoPoint]
+        let pointIndex: TripPointIndex
+        let unitVectors: [SIMD3<Double>]
+        let distanceToDestination: [Double]
+        let indices: [String: Int]
+        let departures: [Int: [(service: TripService, position: Int)]]
+    }
+
+    private struct SearchProgress {
+        var frontier: [Entry]
+        var best: [String: Double]
+    }
+
     private enum CachedWalk { case route(WalkingRoute), unavailable }
     private let network: TripNetwork
     private let provider: any TripWalkingProvider
@@ -178,7 +195,8 @@ actor TripPlanner {
     private var generation = UUID()
     private var queryOrigin: GeoPoint?
     private var queryDestination: GeoPoint?
-    private var preparedServices: [TripService] = []
+    private var preparedGraph: PreparedGraph?
+    private var progress: SearchProgress?
 
     init(network: TripNetwork, provider: any TripWalkingProvider, preferences: TripPreferences = .init(),
          transferCache: TripTransferCache? = nil) {
@@ -190,6 +208,7 @@ actor TripPlanner {
 
     func cancel() async {
         generation = UUID()
+        progress = nil
         await provider.cancel()
     }
 
@@ -203,39 +222,30 @@ actor TripPlanner {
             rideDistances.removeAll()
             queryOrigin = origin
             queryDestination = destination
-            preparedServices = []
+            preparedGraph = nil
+            progress = nil
         }
         let token = UUID()
         generation = token
-        if preparedServices.isEmpty {
+        if preparedGraph == nil {
             let source = network.services
             let preparation = Task.detached(priority: .userInitiated) {
-                try RouteAccess.services(source, origin: origin, destination: destination)
+                let services = try RouteAccess.services(source, origin: origin, destination: destination)
+                return Self.prepareGraph(services, origin: origin, destination: destination)
             }
             let prepared = try await withTaskCancellationHandler(operation: { try await preparation.value }, onCancel: { preparation.cancel() })
             guard generation == token else { throw CancellationError() }
-            preparedServices = prepared
+            preparedGraph = prepared
         }
-        let stops = preparedServices.flatMap(\.stops).reduce(into: [String: TransitStop]()) { $0[$1.id] = $1 }
-            .values.sorted { $0.id < $1.id }
-        let points = [origin] + stops.map(\.point) + [destination]
+        guard let graph = preparedGraph else { return .unavailable }
+        let stops = graph.stops
+        let points = graph.points
         let final = points.count - 1
-        let pointIndex = TripPointIndex(points)
-        let unitVectors = points.map { point -> SIMD3<Double> in
-            let latitude = point.latitude * .pi / 180
-            let longitude = point.longitude * .pi / 180
-            return SIMD3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude))
-        }
-        let distanceToDestination = points.map { $0.distance(to: destination) }
-        let indices = Dictionary(uniqueKeysWithValues: stops.enumerated().map { ($0.element.id, $0.offset + 1) })
-        var departures: [Int: [(service: TripService, position: Int)]] = [:]
-        for service in preparedServices {
-            for position in service.stops.indices {
-                if let index = indices[service.stops[position].id] {
-                    departures[index, default: []].append((service, position))
-                }
-            }
-        }
+        let pointIndex = graph.pointIndex
+        let unitVectors = graph.unitVectors
+        let distanceToDestination = graph.distanceToDestination
+        let indices = graph.indices
+        let departures = graph.departures
         func walkKey(_ from: GeoPoint, _ to: GeoPoint) -> String {
             func coordinate(_ point: GeoPoint) -> String {
                 "\(point.latitude.bitPattern):\(point.longitude.bitPattern)"
@@ -248,11 +258,20 @@ actor TripPlanner {
                 && route.points.first!.distance(to: from) <= 25 && route.points.last!.distance(to: to) <= 25
         }
         var requests = 0
-        var best: [String: Double] = [:]
+        let previousProgress = progress
+        progress = nil
+        var best = previousProgress?.best ?? [:]
         let initial = Label(stop: 0, service: nil, legs: [], boardings: 0, walking: 0,
                             riding: 0, excessWalking: 0, visited: [Visit(stop: 0, service: nil)], tie: "", pendingWalk: nil)
-        typealias Entry = (label: Label, priority: [Double])
-        var frontier: [Entry] = []
+        var frontier = previousProgress?.frontier ?? []
+        var finished = false
+        defer {
+            if generation == token && !finished && !Task.isCancelled {
+                progress = SearchProgress(frontier: frontier, best: best)
+            }
+        }
+        let clock = ContinuousClock()
+        var deadline = clock.now.advanced(by: .seconds(1))
         func score(_ label: Label) -> [Double] {
             let transfers = max(0, label.boardings - (label.service != nil || label.stop == final ? 1 : 0))
             let remaining = max(0, distanceToDestination[label.stop] - 50) / TripCost.ridingSpeed
@@ -343,8 +362,9 @@ actor TripPlanner {
             next.pendingWalk = PendingWalk(from: current.stop, estimate: estimate, source: source)
             push(next)
         }
-        push(initial)
+        if previousProgress == nil { push(initial) }
         while !frontier.isEmpty {
+            if clock.now >= deadline { return .paused }
             try Task.checkCancellation()
             guard generation == token else { throw CancellationError() }
             let entry = pop()
@@ -388,12 +408,21 @@ actor TripPlanner {
             if let previous = best[stateKey], previous <= cost + 0.000001 { continue }
             best[stateKey] = cost
             if current.stop == final && current.boardings > 0 {
-                var legs: [TripLeg] = []
+                var candidateResolved = false
+                defer {
+                    if !candidateResolved {
+                        best.removeValue(forKey: stateKey)
+                        push(current)
+                    }
+                }
+                var legs: [(index: Int, leg: TripLeg)] = []
                 var meters = 0.0
                 var exceeded = max(0, current.boardings - 1) > preferences.transfers
                 var unavailable = false
-                for leg in current.legs {
-                    guard case .walk(let from, let to, _) = leg else { legs.append(leg); continue }
+                let validationOrder = Self.validationOrder(current.legs, origin: origin, destination: destination)
+                for item in validationOrder {
+                    let leg = current.legs[item.index]
+                    guard case .walk(let from, let to, _) = leg else { legs.append((item.index, leg)); continue }
                     let key = walkKey(from, to)
                     if walking[key] == nil {
                         let reusable = from != origin && to != destination ? transferCache : nil
@@ -404,12 +433,15 @@ actor TripPlanner {
                         if let cached {
                             walking[key] = .route(cached)
                         } else {
-                            guard requests < preferences.requestsPerBatch else { return .paused }
+                            guard requests < preferences.requestsPerBatch, clock.now < deadline else { return .paused }
                             requests += 1
+                            let started = clock.now
                             let response = try await provider.route(from: from, to: to)
+                            deadline = deadline.advanced(by: started.duration(to: clock.now))
                             try Task.checkCancellation()
                             guard generation == token else { throw CancellationError() }
-                            if let response, valid(response, from: from, to: to) {
+                            if let response {
+                                guard valid(response, from: from, to: to) else { throw TripPlanningError.tryAgainLater }
                                 walking[key] = .route(response)
                                 await reusable?.store(response, for: cacheKey)
                                 try Task.checkCancellation()
@@ -422,15 +454,17 @@ actor TripPlanner {
                     guard case .route(let route) = walking[key] else { unavailable = true; break }
                     meters += route.length
                     exceeded = exceeded || route.length > preferences.walkingMeters
-                    if route.length > 1 { legs.append(.walk(from: from, to: to, route: route)) }
+                    if route.length > 1 { legs.append((item.index, .walk(from: from, to: to, route: route))) }
                 }
+                candidateResolved = true
                 if unavailable {
                     best.removeAll()
                     frontier.removeAll()
                     push(initial)
                     continue
                 }
-                return .found(PlannedTrip(catalogVersion: network.version, legs: legs,
+                finished = true
+                return .found(PlannedTrip(catalogVersion: network.version, legs: legs.sorted { $0.index < $1.index }.map(\.leg),
                     transfers: max(0, current.boardings - 1), walkingMeters: meters, exceedsPreferences: exceeded))
             }
             for departure in departures[current.stop] ?? [] {
@@ -472,6 +506,46 @@ actor TripPlanner {
             guard current.service != nil || current.stop == 0 else { continue }
             enqueueWalk(from: WalkSource(label: current))
         }
+        finished = true
         return .unavailable
+    }
+
+    private static func validationOrder(_ legs: [TripLeg], origin: GeoPoint, destination: GeoPoint) -> [(index: Int, transferDistance: Double)] {
+        var ranked: [(index: Int, transferDistance: Double)] = []
+        for (index, leg) in legs.enumerated() {
+            var distance = -1.0
+            if case .walk(let from, let to, _) = leg, from != origin, to != destination {
+                distance = from.distance(to: to)
+            }
+            ranked.append((index, distance))
+        }
+        return ranked.sorted {
+            if $0.transferDistance == $1.transferDistance { return $0.index < $1.index }
+            return $0.transferDistance > $1.transferDistance
+        }
+    }
+
+    private static func prepareGraph(_ services: [TripService], origin: GeoPoint, destination: GeoPoint) -> PreparedGraph {
+        let stops = services.flatMap(\.stops).reduce(into: [String: TransitStop]()) { $0[$1.id] = $1 }
+            .values.sorted { $0.id < $1.id }
+        let points = [origin] + stops.map(\.point) + [destination]
+        let pointIndex = TripPointIndex(points)
+        let unitVectors = points.map { point -> SIMD3<Double> in
+            let latitude = point.latitude * .pi / 180
+            let longitude = point.longitude * .pi / 180
+            return SIMD3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude))
+        }
+        let distanceToDestination = points.map { $0.distance(to: destination) }
+        let indices = Dictionary(uniqueKeysWithValues: stops.enumerated().map { ($0.element.id, $0.offset + 1) })
+        var departures: [Int: [(service: TripService, position: Int)]] = [:]
+        for service in services {
+            for position in service.stops.indices {
+                if let index = indices[service.stops[position].id] {
+                    departures[index, default: []].append((service, position))
+                }
+            }
+        }
+        return PreparedGraph(stops: stops, points: points, pointIndex: pointIndex, unitVectors: unitVectors,
+                             distanceToDestination: distanceToDestination, indices: indices, departures: departures)
     }
 }

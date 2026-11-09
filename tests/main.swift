@@ -397,10 +397,12 @@ check(civilScenario.updateDate == "example", "Evaluation preserves its presence 
 @MainActor
 final class SyntheticTripWalkingProvider: TripWalkingProvider {
     var calls = 0
+    var failOnCall: Int?
     let maximumDistance: Double
     init(maximumDistance: Double = 30) { self.maximumDistance = maximumDistance }
     func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
         calls += 1
+        if calls == failOnCall { throw TripPlanningError.tryAgainLater }
         guard from.distance(to: to) < maximumDistance else { return nil }
         return WalkingRoute(points: [from, to], steps: [], duration: 0)
     }
@@ -639,6 +641,26 @@ print("Pruebas de imágenes correctas")
     }
     check(repeated.transfers == 1 && warmProvider.calls > 0 && warmProvider.calls < coldProvider.calls,
           "Reuse confirmed transfer walks across planners while checking access and egress again")
+    let recoveringProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    recoveringProvider.failOnCall = 2
+    let recovering = TripPlanner(network: fixture, provider: recoveringProvider,
+                                 preferences: .init(requestsPerBatch: 1))
+    guard case .paused = try await recovering.search(from: origin, to: destination) else {
+        fatalError("A single-call batch must pause")
+    }
+    do {
+        _ = try await recovering.search(from: origin, to: destination)
+        fatalError("The temporary provider error must reach the caller")
+    } catch TripPlanningError.tryAgainLater {}
+    var resumed = try await recovering.search(from: origin, to: destination)
+    for _ in 0..<20 {
+        guard case .paused = resumed else { break }
+        resumed = try await recovering.search(from: origin, to: destination)
+    }
+    guard case .found(let recovered) = resumed else { fatalError("The query must resume after a temporary error") }
+    check(recovered.transfers == trip.transfers && abs(recovered.walkingMeters - trip.walkingMeters) < 0.01,
+          "Resuming must preserve the itinerary")
+    check(recoveringProvider.calls == coldProvider.calls + 1, "Only the failed request should be repeated")
     let updated=try await planner.search(from:.init(latitude:32.001,longitude:-117),to:destination)
     if case .found(let changed)=updated {check(changed.catalogVersion=="transfer","Changing the origin rebuilds measured edges")}
     let loop=TripService(id:"loop",name:"Loop",direction:nil,stops:[],circular:true,geometry:[[origin,middle,destination,origin]])
