@@ -13,9 +13,10 @@ Deno.serve(async (request: Request) => {
     if (request.method !== 'GET') return new Response(null, { status: 405, headers });
     const url = new URL(request.url);
     const version = url.searchParams.get('version');
+    const asset = url.searchParams.get('asset');
     const cached = url.searchParams.getAll('cached');
     const isUUID = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-    if ((version !== null && !isUUID(version)) || cached.length > 2 || !cached.every(isUUID))
+    if ((asset !== null && (!version || !/^[0-9a-f]{64}$/.test(asset))) || (version !== null && !isUUID(version)) || cached.length > 2 || !cached.every(isUUID))
         return new Response(null, { status: 400, headers });
     const key =
         JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || '{}').default ||
@@ -23,6 +24,15 @@ Deno.serve(async (request: Request) => {
     const client = createClient(Deno.env.get('SUPABASE_URL')!, key!, {
         auth: { persistSession: false },
     });
+    if (asset && version) {
+        const { data, error } = await client.rpc('public_catalog_image', { v: version, image: asset });
+        if (error) return new Response(null, { status: 503, headers });
+        if (!data) return new Response(null, { status: 404, headers });
+        const binary = atob(data.replace(/\s/g, ''));
+        return new Response(Uint8Array.from(binary, c => c.charCodeAt(0)), {
+            headers: { ...headers, 'Content-Type': 'image/jpeg' },
+        });
+    }
     const { data, error } = version
         ? await client.rpc('public_catalog_content', { v: version })
         : await client.rpc('public_catalog_status', { cached });

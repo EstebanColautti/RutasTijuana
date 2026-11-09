@@ -76,6 +76,8 @@ beforeAll(async () => {
     await db.exec(await readFile('supabase/migrations/20261106000001_invites.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261106000002_withdrawal.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261106000003_services.sql', 'utf8'));
+    await db.exec((await readFile('supabase/migrations/20261108000000_media.sql', 'utf8')).replace(/^\uFEFF/,''));
+    await db.query('insert into auth.users(id,email) values($1,$2),($3,$4)', [admin,'admin@example.test',editor,'member@example.test']);
     await db.query("insert into catalog_members(user_id,role) values ($1,'admin'),($2,'editor')", [
         admin,
         editor,
@@ -252,4 +254,41 @@ test('publication rejects invalid civil dates', async () => {
     const next = (await call('select preview_catalog() as p'))[0].p;
     await expect(call('select publish_catalog($1,$2)', [next.revision, next.sha256])).rejects.toThrow();
     await call('select save_catalog($1,$2)', [document, next.revision]);
+});
+
+test('images remain private until an administrator publishes their references', async () => {
+    const fixture = await readFile('scripts/install_catalog.py', 'utf8');
+    const image = fixture.match(/JPEG = '([^']+)'/)![1];
+    await expect(call('select save_catalog_image($1,24,24)', [image], outsider, 'aal1', 'anon')).rejects.toThrow();
+    await expect(call('select save_catalog_image($1,10,24)', [image])).rejects.toThrow();
+    const original=Buffer.from(image,'base64');
+    const note=Buffer.from('PRIVATE_LOCATION');
+    const segment=Buffer.concat([Buffer.from([255,225,0,note.length+2]),note]);
+    const metadataImage=Buffer.concat([original.subarray(0,2),segment,original.subarray(2)]).toString('base64');
+    const key = (await call('select save_catalog_image($1,24,24) as id', [metadataImage]))[0].id;
+    await expect(call('select * from catalog_media', [], outsider, 'aal1', 'anon')).rejects.toThrow();
+    const canonical=(await call('select catalog_image($1) as image',[key]))[0].image.replace(/\s/g,'');
+    expect(Buffer.from(canonical,'base64').includes(note)).toBe(false);
+    expect((await call('select save_catalog_image($1,24,24) as id',[image]))[0].id).toBe(key);
+    const old = (await call('select public_catalog_manifest() as m'))[0].m;
+    expect((await call('select public_catalog_image($1,$2) as image', [old.version,key], outsider,'aal1','anon'))[0].image).toBeNull();
+    const draft = (await call('select revision,document from catalog_drafts'))[0];
+    const changed = structuredClone(document) as typeof document & {features:any[]};
+    Object.assign(changed.features[0], {routeDetails:{code:'E1',direction:'Example',circular:false,secret:'PRIVATE'},media:[key]});
+    await call('select save_catalog($1::jsonb,$2)', [JSON.stringify(changed),draft.revision]);
+    const preview = (await call('select preview_catalog() as p'))[0].p;
+    expect(preview.payload).not.toContain('PRIVATE');
+    const version = (await call('select publish_catalog($1,$2) as v',[preview.revision,preview.sha256]))[0].v;
+    const manifest=(await call('select public_catalog_manifest() as m',[],outsider,'aal1','anon'))[0].m;
+    expect(manifest.assets).toHaveLength(1);
+    expect(manifest.assets[0].id).toBe(key);
+    const backup=(await call('select catalog_backup() as b'))[0].b;
+    expect(backup.images[0].id).toBe(key);
+    expect((await call('select catalog_image($1) as image',[key]))[0].image.replace(/\s/g,'')).toBe(canonical);
+    await expect(call('select catalog_image($1)',[key],outsider,'aal1','anon')).rejects.toThrow();
+    expect(backup.images[0].image.replace(/\s/g,'')).toBe(canonical);
+    const published=(await call('select public_catalog_image($1,$2) as image',[version,key],outsider,'aal1','anon'))[0].image;
+    expect(published.replace(/\s/g,'')).toBe(canonical);
+    await call('select withdraw_catalog($1,$2,$3)',[version,'Retirada',old.version]);
+    expect((await call('select public_catalog_image($1,$2) as image',[version,key],outsider,'aal1','anon'))[0].image).toBeNull();
 });

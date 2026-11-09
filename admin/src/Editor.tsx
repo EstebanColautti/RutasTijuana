@@ -13,6 +13,8 @@ import {
     type Version,
 } from '../../shared/catalog';
 import type { CatalogAPI } from './api';
+import { prepareImage } from './image';
+import { Photo } from './Photo';
 export function GeometryPreview({ feature }: { feature?: Feature }) {
     if (!feature) return <div className="map empty">Selecciona un elemento</div>;
     const p = geometryPoints(feature.geometry),
@@ -256,8 +258,19 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
         e.target.value = '';
         if (!file) return;
         await run(async () => {
-            if (file.size > 16 * 1024 * 1024) throw Error('El archivo supera 16 MB.');
-            updateDocument(importCatalog(await file.text()), true);
+            if (file.size > 48 * 1024 * 1024) throw Error('El archivo supera 48 MB.');
+            const text = await file.text();
+            const document = importCatalog(text);
+            const backup = JSON.parse(text);
+            if (backup.backupVersion === 1 && backup.images?.length) {
+                if (!service.image || !Array.isArray(backup.images) || backup.images.length > 10000) throw Error('No se pudieron recuperar las imágenes.');
+                for (const image of backup.images) {
+                    if (typeof image.image !== 'string' || image.image.length > 2900000) throw Error('Imagen incorrecta.');
+                    const id = await service.image(image.image, image.width, image.height);
+                    if (id !== image.id) throw Error('La imagen del respaldo está dañada.');
+                }
+            }
+            updateDocument(document, true);
             setSelection('');
             setMessage('Archivo incorporado al borrador.');
         });
@@ -535,10 +548,45 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                                         }
                                     />
                                 </label>
+                                {service.image && <fieldset>
+                                    <legend>Fotografías</legend>
+                                    <label>Agregar fotografía
+                                        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={(feature.media?.length ?? 0) >= 6} onChange={event => {
+                                            const file = event.target.files?.[0]; event.target.value = '';
+                                            if (!file) return;
+                                            void run(async () => {
+                                                const prepared = await prepareImage(file);
+                                                const id = await service.image!(prepared.image, prepared.width, prepared.height);
+                                                patch({ media: [...new Set([...(feature.media ?? []), id])] });
+                                            });
+                                        }} />
+                                    </label>
+                                    {(feature.media ?? []).map((id, index) => <div key={id}><Photo id={id} load={service.imageData} /><button type="button" onClick={() => patch({ media: feature.media?.filter(key => key !== id) })}>Quitar fotografía {index + 1}</button></div>)}
+                                </fieldset>}
                                 <h3>Información pública</h3>
                                 {feature.kind === 'route' && draft && (
+                                    <>
+                                    <fieldset>
+                                        <legend>Recorrido</legend>
+                                        <label>Código
+                                            <input maxLength={100} value={feature.routeDetails?.code ?? ''} onChange={event => patch({ routeDetails: { ...feature.routeDetails, code: event.target.value } })} />
+                                        </label>
+                                        <label>Sentido
+                                            <input maxLength={4000} value={feature.routeDetails?.direction ?? ''} onChange={event => patch({ routeDetails: { ...feature.routeDetails, direction: event.target.value } })} />
+                                        </label>
+                                        <label>Forma del recorrido
+                                            <select value={feature.routeDetails?.circular === undefined ? '' : feature.routeDetails.circular ? 'circular' : 'linear'} onChange={event => {
+                                                const details = { ...feature.routeDetails };
+                                                if (event.target.value) details.circular = event.target.value === 'circular'; else delete details.circular;
+                                                patch({ routeDetails: details });
+                                            }}>
+                                                <option value="">Sin especificar</option><option value="linear">Lineal</option><option value="circular">Circular</option>
+                                            </select>
+                                        </label>
+                                    </fieldset>
                                     <ItineraryEditor feature={feature} stops={draft.document.features}
                                         onChange={(publicFields) => patch({ publicFields })} />
+                                    </>
                                 )}
                                 {feature.publicFields.map((v, i) => ['stop-order', 'route-shape'].includes(v.category) ? null : (
                                     <div className="field-row" key={i}>
@@ -745,6 +793,7 @@ export function Editor({ service, onSignOut }: { service: CatalogAPI; onSignOut:
                             archivos de trabajo.
                         </p>
                         <pre>{JSON.stringify(JSON.parse(preview.payload), null, 2)}</pre>
+                        {draft?.document.features.filter(feature => feature.included).flatMap(feature => (feature.media ?? []).map(id => <Photo key={feature.id + id} id={id} load={service.imageData} />))}
                         <div className="actions">
                             <button
                                 disabled={busy || dirty}

@@ -4,6 +4,11 @@ struct WalkingDestination: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let point: GeoPoint
+    var purpose: Purpose = .stop
+    enum Purpose: Sendable { case stop, suggestedAccess, destination }
+    var title: String { purpose == .stop ? "Ir a la parada" : purpose == .suggestedAccess ? "Ir al punto sugerido" : "Ir al destino" }
+    var endpointDescription: String { purpose == .stop ? "de la parada" : purpose == .suggestedAccess ? "del punto sugerido" : "del destino" }
+    var arrival: String { purpose == .stop ? "Llegaste a la parada" : purpose == .suggestedAccess ? "Llegaste al punto sugerido" : "Llegaste al destino" }
 }
 
 struct WalkingStep: Sendable {
@@ -158,7 +163,7 @@ struct WalkingSessionStatus {
     var terminal: String?
     var waitingToStart = false
 
-    func messages(hasRoute: Bool) -> [String] {
+    func messages(hasRoute: Bool, endpoint: String = "de la parada") -> [String] {
         if let terminal { return [terminal] }
         var result: [String] = []
         if location == .acquiring { result.append("Actualizando ubicación…") }
@@ -173,7 +178,7 @@ struct WalkingSessionStatus {
         }
         if calculating { result.append(hasRoute ? "Recalculando…" : "Calculando camino…") }
         else if waitingToStart { result.append("Actualizando el punto de inicio…") }
-        if endpointGap > 25 { result.append("El camino termina a \(WalkingFormat.distance(endpointGap)) de la parada.") }
+        if endpointGap > 25 { result.append("El camino termina a \(WalkingFormat.distance(endpointGap)) \(endpoint).") }
         return result
     }
     func offersStart(phase: WalkingPhase) -> Bool { phase == .preview && error == nil }

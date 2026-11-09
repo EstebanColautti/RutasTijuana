@@ -4,6 +4,8 @@
 	};
 	objectVersion = 77;
 	objects = {
+000000000000000000000710 = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Catalog"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "set -eu\nif [ \"${CATALOG_FIXTURE:-NO}\" = YES ]; then\npython3 \"$SRCROOT/scripts/install_catalog.py\" --fixture --destination \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Catalog.bundle\"\nelse\npython3 \"$SRCROOT/scripts/install_catalog.py\" --source \"${CATALOG_PACKAGE_PATH:-$SRCROOT/local-data/app/catalog}\" --destination \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Catalog.bundle\"\nfi\n"; };
+
 
 000000000000000000000385 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RutasTijuana/NavigationAttributes.swift; sourceTree = "<group>"; };
 000000000000000000000386 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationWidget/NavigationWidget.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 				000000000000000120000000,
 				000000000000000130000000,
 				000000000000000140000000,
+000000000000000000000710,
 00000000000000000000038E,
 			);
 			dependencies = (000000000000000000000393, );
@@ -166,7 +169,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -231,7 +234,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -261,7 +264,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicaciÃ³n permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -301,7 +304,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicaciÃ³n permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

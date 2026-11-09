@@ -79,7 +79,8 @@ final class JourneyTests: XCTestCase {
             .withOffset(CGVector(dx: 0, dy: -20)).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         search.typeText("\n")
-        app.swipeDown()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 5)
         tap("catalog-sample-route")
         tap("catalog-information")
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
@@ -414,6 +415,20 @@ final class JourneyTests: XCTestCase {
         tap("catalog-sample-route")
         XCTAssertTrue(app.staticTexts["Recorrido de ejemplo"].firstMatch.waitForExistence(timeout: 5))
         capture("Catálogo guardado")
+    }
+
+    func testBundledCatalogAndPhotoOffline() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--offline"]
+        for _ in 0..<2 {
+            app.launch()
+            tap("Explorar recorridos")
+            tap("catalog-sample-route")
+            tap("catalog-information")
+            XCTAssertTrue(app.images["catalog-photo"].waitForExistence(timeout: 10))
+            capture("Catálogo incluido sin conexión")
+            app.terminate()
+        }
     }
 
     private func tap(_ identifier: String) {

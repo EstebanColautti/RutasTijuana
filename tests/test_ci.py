@@ -58,6 +58,8 @@ class BundleTests(unittest.TestCase):
             (extension / 'Info.plist').write_bytes(plistlib.dumps(widget))
             manifest = Path(__file__).resolve().parents[1] / 'RutasTijuana' / 'PrivacyInfo.xcprivacy'
             (app / manifest.name).write_bytes(manifest.read_bytes())
+            from scripts.install_catalog import fixture
+            fixture(app / 'Catalog.bundle')
             validate(app)
             for key in ('CFBundleVersion', 'CFBundleShortVersionString', 'NSExtension'):
                 broken = dict(widget)

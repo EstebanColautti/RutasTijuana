@@ -397,10 +397,12 @@ check(civilScenario.updateDate == "example", "Evaluation preserves its presence 
 @MainActor
 final class SyntheticTripWalkingProvider: TripWalkingProvider {
     var calls = 0
+    var failOnCall: Int?
     let maximumDistance: Double
     init(maximumDistance: Double = 30) { self.maximumDistance = maximumDistance }
     func route(from: GeoPoint, to: GeoPoint) async throws -> WalkingRoute? {
         calls += 1
+        if calls == failOnCall { throw TripPlanningError.tryAgainLater }
         guard from.distance(to: to) < maximumDistance else { return nil }
         return WalkingRoute(points: [from, to], steps: [], duration: 0)
     }
@@ -528,7 +530,8 @@ testTransitProgress()
         _ = try await request.value
         fatalError("A cancelled search must ignore its late route")
     } catch is CancellationError { }
-    check(TripNetwork(catalog: .sample).services.isEmpty, "Unordered catalog lines cannot become transport connections")
+    let geometryServices = TripNetwork(catalog: .sample).services
+    check(!geometryServices.isEmpty && geometryServices.allSatisfy { $0.stops.isEmpty }, "Geometry services keep calculated access separate from confirmed stops")
     print("Pruebas de cancelación y ampliación correctas")
 }
 try await testTripCancellationAndExpansion()
@@ -550,3 +553,123 @@ try await testTripCancellationAndExpansion()
     print("Pruebas de búsqueda progresiva correctas")
 }
 try await testTripSearchWork()
+
+@MainActor func testCalculatedAccess() async throws {
+    let a = GeoPoint(latitude: 32, longitude: -117)
+    let b = GeoPoint(latitude: 32.02, longitude: -117)
+    let service = TripService(id: "line", name: "Example", direction: nil, stops: [], circular: false, geometry: [[a,b]])
+    let services = try RouteAccess.services([service], origin: a, destination: b)
+    check(services.count == 1 && services[0].stops.count > 2, "Calculated access generated per query")
+    check(services[0].stops.allSatisfy(\.suggested), "Calculated access is always suggested")
+    let encoded = try JSONEncoder().encode(services[0].stops[0])
+    check(!(try JSONDecoder().decode(TransitStop.self, from: encoded)).suggested, "Suggested access cannot enter the permanent stop schema")
+    let path = services[0].section(through: [services[0].stops[1], services[0].stops[services[0].stops.count-2]])
+    check(path != nil && path!.first != a && path!.last != b, "Ride geometry clips at measured access positions")
+    check(services[0].section(through: [services[0].stops.last!,services[0].stops.first!]) == nil, "Linear geometry is not reversed")
+    let split = TripService(id: "split", name: "Example", direction: nil, stops: [], circular: false, geometry: [[a,b],[.init(latitude:33,longitude:-117),.init(latitude:33.01,longitude:-117)]])
+    let parts = try RouteAccess.services([split], origin:a,destination:b)
+    check(parts.count == 2 && parts.allSatisfy { $0.geometry.count == 1 }, "Disconnected geometry remains disconnected")
+    let planner = TripPlanner(network:.init(version:"access",services:[service]),provider:SyntheticTripWalkingProvider())
+    var result = try await planner.search(from:a,to:b)
+    for _ in 0..<20 {
+        if case .paused = result { result = try await planner.search(from:a,to:b) } else { break }
+    }
+    guard case .found(let trip) = result else { fatalError("Geometry-only route must support a journey") }
+    check(trip.legs.contains { if case .ride(_,let stops) = $0 { return stops.first!.suggested && stops.last!.suggested }; return false }, "Single journey flow includes suggested boarding and alighting")
+    print("Pruebas de accesos calculados correctas")
+}
+try await testCalculatedAccess()
+
+let packageImage = Data(base64Encoded: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAYABgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAb/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCOgL5GAAAAAAP/2Q==")!
+var imageDocument = try JSONSerialization.jsonObject(with: publishedData) as! [String: Any]
+imageDocument["version"] = "images"
+var imageFeatures = imageDocument["features"] as! [[String: Any]]
+let imageKey = String(repeating: "b", count: 64)
+imageFeatures[0]["media"] = [imageKey]
+imageDocument["features"] = imageFeatures
+let imageCatalog = try JSONSerialization.data(withJSONObject: imageDocument, options: [.sortedKeys])
+func imageDigest(_ data: Data) -> String { String(repeating: data == imageCatalog ? "a" : data == packageImage ? "b" : "c", count: 64) }
+let imageDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+let mediaCache = try FileCatalogMediaCache(directory: imageDirectory)
+let asset = CatalogAsset(id: imageKey, bytes: packageImage.count, sha256: imageKey, mimeType: "image/jpeg", downloadURL: URL(string: "?asset=example")!, width: 24, height: 24)
+let imageManifest = CatalogManifest(version: "images", schemaVersion: 2, bytes: imageCatalog.count, sha256: imageDigest(imageCatalog), downloadURL: snapshotURL, assets: [asset])
+let imageTransport = FixtureCatalogTransport()
+let imageCache = MemoryCatalogCache()
+imageTransport.values[syncEndpoint] = try JSONEncoder().encode(imageManifest)
+imageTransport.values[snapshotURL] = imageCatalog
+let imageURL = URL(string: "?asset=example", relativeTo: syncEndpoint)!.absoluteURL
+imageTransport.values[imageURL] = packageImage
+let imageSync = CatalogSynchronizer(transport: imageTransport, cache: imageCache, digest: imageDigest, allowLoopbackHTTP: false, mediaCache: mediaCache)
+_ = try await imageSync.update(from: syncEndpoint, force: true)
+check(try mediaCache.contains(asset, digest: imageDigest), "Images are checked and stored before catalog replacement")
+try FileManager.default.removeItem(at: mediaCache.url(for: imageKey)!)
+let previousCalls = imageTransport.calls
+_ = try await imageSync.update(from: syncEndpoint, force: true)
+check(imageTransport.calls == previousCalls + 2, "Same-version refresh repairs missing images without downloading the catalog")
+try Data("corrupt".utf8).write(to: mediaCache.url(for: imageKey)!)
+imageTransport.values[imageURL] = Data("corrupt".utf8)
+do { _ = try await imageSync.update(from: syncEndpoint, force: true); fatalError("Corrupt image must fail") } catch CatalogSyncError.integrity { }
+check(imageCache.snapshot?.version == "images", "Image failure preserves the saved catalog")
+try mediaCache.collect(keeping: [])
+check(!FileManager.default.fileExists(atPath: mediaCache.url(for: imageKey)!.path), "Unreferenced image files are collected")
+try FileManager.default.removeItem(at: imageDirectory)
+print("Pruebas de imágenes correctas")
+
+@MainActor func testCalculatedTransfers() async throws {
+    let origin=GeoPoint(latitude:32,longitude:-117)
+    let middle=GeoPoint(latitude:32.01,longitude:-117)
+    let destination=GeoPoint(latitude:32.01,longitude:-116.99)
+    let services=[TripService(id:"north",name:"North",direction:nil,stops:[],circular:false,geometry:[[origin,middle]]),TripService(id:"east",name:"East",direction:nil,stops:[],circular:false,geometry:[[middle,destination]])]
+    let provider=SyntheticTripWalkingProvider(maximumDistance:100)
+    let planner=TripPlanner(network:.init(version:"transfer",services:services),provider:provider,preferences:.init(walkingMeters:800,transfers:2,requestsPerBatch:100))
+    var result=try await planner.search(from:origin,to:destination)
+    for _ in 0..<10 { if case .paused = result {result=try await planner.search(from:origin,to:destination)} else {break} }
+    guard case .found(let trip)=result else {fatalError("Calculated transfer must remain usable with a pedestrian route")}
+    check(trip.transfers==1,"Calculated junction supports a transfer")
+    check(trip.legs.contains { if case .walk(_,_,let route)=$0 {return route.length>2};return false },"Crossing needs an actual pedestrian connection")
+    let cache = TripTransferCache()
+    let fixture = TripNetwork(version: "transfer", services: services)
+    let coldProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    let cold = TripPlanner(network: fixture, provider: coldProvider, transferCache: cache)
+    guard case .found = try await cold.search(from: origin, to: destination) else {
+        fatalError("Initial transfer search must succeed")
+    }
+    let warmProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    let warm = TripPlanner(network: fixture, provider: warmProvider, transferCache: cache)
+    guard case .found(let repeated) = try await warm.search(from: origin, to: destination) else {
+        fatalError("Repeated transfer search must succeed")
+    }
+    check(repeated.transfers == 1 && warmProvider.calls > 0 && warmProvider.calls < coldProvider.calls,
+          "Reuse confirmed transfer walks across planners while checking access and egress again")
+    let recoveringProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    recoveringProvider.failOnCall = 2
+    let recovering = TripPlanner(network: fixture, provider: recoveringProvider,
+                                 preferences: .init(requestsPerBatch: 1))
+    guard case .paused = try await recovering.search(from: origin, to: destination) else {
+        fatalError("A single-call batch must pause")
+    }
+    do {
+        _ = try await recovering.search(from: origin, to: destination)
+        fatalError("The temporary provider error must reach the caller")
+    } catch TripPlanningError.tryAgainLater {}
+    var resumed = try await recovering.search(from: origin, to: destination)
+    for _ in 0..<20 {
+        guard case .paused = resumed else { break }
+        resumed = try await recovering.search(from: origin, to: destination)
+    }
+    guard case .found(let recovered) = resumed else { fatalError("The query must resume after a temporary error") }
+    check(recovered.transfers == trip.transfers && abs(recovered.walkingMeters - trip.walkingMeters) < 0.01,
+          "Resuming must preserve the itinerary")
+    check(recoveringProvider.calls == coldProvider.calls + 1, "Only the failed request should be repeated")
+    let updated=try await planner.search(from:.init(latitude:32.001,longitude:-117),to:destination)
+    if case .found(let changed)=updated {check(changed.catalogVersion=="transfer","Changing the origin rebuilds measured edges")}
+    let loop=TripService(id:"loop",name:"Loop",direction:nil,stops:[],circular:true,geometry:[[origin,middle,destination,origin]])
+    let prepared=try RouteAccess.services([loop],origin:middle,destination:origin)[0]
+    check(prepared.circular,"Only declared closed geometry wraps")
+    let end=prepared.stops.last!, start=prepared.stops[1]
+    check(prepared.section(through:[end,start]) != nil,"Circular clip follows the declared seam")
+    let open=TripService(id:"open",name:"Open",direction:nil,stops:[],circular:true,geometry:[[origin,middle]])
+    check(!(try RouteAccess.services([open],origin:origin,destination:middle))[0].circular,"Circular declaration never invents missing geometry")
+    print("Pruebas de conexiones sugeridas correctas")
+}
+try await testCalculatedTransfers()

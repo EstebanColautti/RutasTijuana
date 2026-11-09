@@ -131,6 +131,8 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     let geometry: CatalogGeometry
     var information: CatalogInformation? = nil
     var itinerary: Itinerary?
+    var routeDetails: CatalogRouteDetails? = nil
+    var media: [String]? = nil
 
     func publishedValues(for category: String) -> [String] {
         information?.fields.compactMap { field in

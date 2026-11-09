@@ -149,6 +149,7 @@ struct CatalogView: View {
     private var featureList: some View {
         List(matches) { row($0) }
             .listStyle(.plain)
+            .scrollDismissesKeyboard(.interactively)
             .overlay {
                 if matches.isEmpty { emptySearch }
             }
@@ -165,6 +166,7 @@ struct CatalogView: View {
 
     private func row(_ feature: CatalogFeature) -> some View {
         Button {
+            searchFocused = false
             selectedID = feature.id
             fit(feature)
         } label: {
@@ -194,6 +196,8 @@ struct CatalogView: View {
                 Text("Buscar nombre, grupo o información").font(.subheadline)
                 TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
                     .focused($searchFocused)
+                    .submitLabel(.search)
+                    .onSubmit { searchFocused = false }
                     .accessibilityLabel("Buscar nombre, grupo o información")
                     .accessibilityIdentifier("catalog-search")
                     .padding(.horizontal, 12)
@@ -292,7 +296,7 @@ struct CatalogView: View {
                 Text("Distancia al trazado en línea recta.")
                     .font(.caption).foregroundStyle(.primary)
             }
-            if feature.information != nil {
+            if feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
                 Button("Ver información disponible") { showingInformation = true }
                     .accessibilityIdentifier("catalog-information")
             }
@@ -307,24 +311,21 @@ struct CatalogView: View {
                     Text("Información del catálogo y detalles geométricos.")
                         .font(.footnote).foregroundStyle(.primary)
                 }
-                if let information = feature.information {
+                ForEach(feature.media ?? [], id: \.self) { media in
+                    Section("Fotografía") { CatalogPhoto(id: media) }
+                }
+                if let details = feature.routeDetails {
+                    if let code = details.code, !code.isEmpty { Section("Código") { Text(code) } }
+                    if let direction = details.direction, !direction.isEmpty { Section("Sentido") { Text(direction) } }
+                    if let circular = details.circular { Section("Recorrido") { Text(circular ? "Circular" : "Lineal") } }
+                }
+                if let information = CatalogPublic.information(feature.information, description: true) {
                     if !information.description.isEmpty {
                         Section("Descripción disponible") { Text(information.description).textSelection(.enabled) }
                     }
                     ForEach(Array(information.fields.enumerated()), id: \.offset) { item in
                         Section {
                             Text(item.element.value).textSelection(.enabled)
-                            if item.element.inferred {
-                                Text("Cálculo o referencia deducida").font(.caption).foregroundStyle(.primary)
-                            } else {
-                                Text("Texto disponible").font(.caption).foregroundStyle(.primary)
-                            }
-                            if !item.element.evidence.isEmpty && item.element.evidence != item.element.value {
-                                Text("Texto: \(item.element.evidence)")
-                                    .font(.caption)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .textSelection(.enabled)
-                            }
                         } header: {
                             Text(item.element.label)
                                 .textCase(nil)
@@ -357,7 +358,7 @@ struct CatalogView: View {
                 let decoded = try await Task.detached(priority: .userInitiated) {
                     try RouteCatalog.decode(data, allowPrivate: allowPrivate)
                 }.value
-                privateCatalog = decoded; selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
+                privateCatalog = CatalogPublic.catalog(decoded); selectedID = nil; query = ""; groupID = nil; reference = nil; camera = .automatic
             } catch let error as CatalogError { errorMessage = error.localizedDescription }
             catch is DecodingError { errorMessage = "El archivo no tiene un formato de catálogo válido." }
             catch { errorMessage = "No se pudo leer el archivo seleccionado." }

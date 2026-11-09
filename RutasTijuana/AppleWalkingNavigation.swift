@@ -26,7 +26,7 @@ import Combine
         }
         let length = zip(points, points.dropFirst()).reduce(0.0) { $0 + $1.0.distance(to: $1.1) }
         let ratio = distance > 0 ? length / distance : 1
-        return WalkingRoute(points: points, steps: steps.enumerated().map { index, step in WalkingStep(instruction: index + 1 < steps.count ? steps[index + 1].instruction : "Continúa hasta la parada", endDistance: step.endDistance * ratio) }, duration: route.expectedTravelTime)
+        return WalkingRoute(points: points, steps: steps.enumerated().map { index, step in WalkingStep(instruction: index + 1 < steps.count ? steps[index + 1].instruction : "Continúa hasta el destino", endDistance: step.endDistance * ratio) }, duration: route.expectedTravelTime)
     }
 }
 
@@ -160,7 +160,7 @@ extension MKPolyline {
             status.endpointGap = endpoint.distance(to: destination.point)
         }
     }
-    var message: String { status.messages(hasRoute: route != nil).joined(separator: "\n") }
+    var message: String { status.messages(hasRoute: route != nil, endpoint: destination.endpointDescription).joined(separator: "\n") }
     var isLocationCurrent: Bool { status.location == .ready && fix?.isReliable(at: now()) == true }
     var offersRetry: Bool { status.offersRetry(phase: phase) }
     var instruction: String {
@@ -225,7 +225,7 @@ extension MKPolyline {
         locations.stop(); ticker?.cancel(); ticker = nil
         phase = arrived ? .arrived : .ended
         status.waitingToStart = false
-        status.terminal = arrived ? "Llegaste a la parada" : "Guía finalizada"
+        status.terminal = arrived ? destination.arrival : "Guía finalizada"
         activity.end(message: status.terminal!)
     }
     func connectivityChanged(_ connected: Bool) {

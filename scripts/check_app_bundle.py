@@ -32,6 +32,11 @@ def validate(app):
     for key in ('CFBundleVersion', 'CFBundleShortVersionString'):
         assert info.get(key) and extension.get(key) == info[key], key
     assert extension.get('NSExtension', {}).get('NSExtensionPointIdentifier') == 'com.apple.widgetkit-extension'
+    try:
+        from scripts.install_catalog import validate as validate_catalog
+    except ModuleNotFoundError:
+        from install_catalog import validate as validate_catalog
+    validate_catalog(app / 'Catalog.bundle')
     print('Paquetes de iPhone correctos.')
 
 

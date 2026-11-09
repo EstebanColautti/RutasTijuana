@@ -15,6 +15,8 @@ export type Feature = {
     publicFields: Field[];
     privateNotes?: string;
     source?: unknown;
+    routeDetails?: { code?: string; direction?: string; circular?: boolean };
+    media?: string[];
 };
 export type Document = { groups: { id: string; name: string }[]; features: Feature[] };
 export type Draft = {
@@ -118,14 +120,20 @@ export function parseDocument(value: unknown): Document {
             (f.kind === 'stop' && f.geometry.type !== 'Point')
         )
             throw new Error('La geometría no corresponde al tipo de elemento.');
+        if (f.routeDetails !== undefined && (!f.routeDetails || typeof f.routeDetails !== 'object' || Array.isArray(f.routeDetails) || f.kind !== 'route' ||
+            Object.entries(f.routeDetails).some(([key, value]) => key === 'circular' ? typeof value !== 'boolean' :
+                !['code', 'direction'].includes(key) || typeof value !== 'string' || value.length > 4000 || /https?:|www\.|[<>]|file:\/\/|source_id|xml_path/i.test(value))))
+            throw new Error('Revisa los datos del recorrido.');
+        if (f.media !== undefined && (!Array.isArray(f.media) || f.media.length > 6 || new Set(f.media).size !== f.media.length || f.media.some(id => typeof id !== 'string' || !/^[0-9a-f]{64}$/.test(id))))
+            throw new Error('Revisa las imágenes.');
         ids.add(f.id);
     }
     return d;
 }
 export function importCatalog(text: string): Document {
-    if (new TextEncoder().encode(text).length > 16 * 1024 * 1024)
-        throw new Error('El archivo supera 16 MB.');
+    if (new TextEncoder().encode(text).length > 48 * 1024 * 1024) throw new Error('El archivo supera 48 MB.');
     const raw = JSON.parse(text);
+    if (raw.backupVersion !== 1 && new TextEncoder().encode(text).length > 16 * 1024 * 1024) throw new Error('El archivo supera 16 MB.');
     if (raw.backupVersion === 1) return parseDocument(raw.document);
     if (raw.schemaVersion === 1 || raw.schemaVersion === 2) {
         return parseDocument({
@@ -141,7 +149,7 @@ export function importCatalog(text: string): Document {
                 publicDescription: '',
                 publicFields: [],
                 privateNotes: '',
-                source: f.information ?? null,
+                source: f.routeDetails || f.media ? { ...(f.information as object ?? {}), routeDetails: f.routeDetails, media: f.media } : f.information ?? null,
             })),
         });
     }
