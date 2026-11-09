@@ -104,6 +104,7 @@ struct TripPlannerView: View {
     @State private var selectingOrigin = false
     @State private var places: [MKMapItem] = []
     @State private var message = ""
+    @State private var transferCache = TripTransferCache()
     @State private var planner: TripPlanner?
     @State private var plannedVersion: String?
     @State private var trip: PlannedTrip?
@@ -423,10 +424,10 @@ struct TripPlannerView: View {
             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                 planner = TripPlanner(network: .init(catalog: catalog), provider: FixtureTripWalkingProvider())
             } else {
-                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider())
+                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), transferCache: transferCache)
             }
             #else
-            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider())
+            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), transferCache: transferCache)
             #endif
             plannedVersion = catalog.version
         }

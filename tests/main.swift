@@ -625,6 +625,20 @@ print("Pruebas de imágenes correctas")
     guard case .found(let trip)=result else {fatalError("Calculated transfer must remain usable with a pedestrian route")}
     check(trip.transfers==1,"Calculated junction supports a transfer")
     check(trip.legs.contains { if case .walk(_,_,let route)=$0 {return route.length>2};return false },"Crossing needs an actual pedestrian connection")
+    let cache = TripTransferCache()
+    let fixture = TripNetwork(version: "transfer", services: services)
+    let coldProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    let cold = TripPlanner(network: fixture, provider: coldProvider, transferCache: cache)
+    guard case .found = try await cold.search(from: origin, to: destination) else {
+        fatalError("Initial transfer search must succeed")
+    }
+    let warmProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    let warm = TripPlanner(network: fixture, provider: warmProvider, transferCache: cache)
+    guard case .found(let repeated) = try await warm.search(from: origin, to: destination) else {
+        fatalError("Repeated transfer search must succeed")
+    }
+    check(repeated.transfers == 1 && warmProvider.calls > 0 && warmProvider.calls < coldProvider.calls,
+          "Reuse confirmed transfer walks across planners while checking access and egress again")
     let updated=try await planner.search(from:.init(latitude:32.001,longitude:-117),to:destination)
     if case .found(let changed)=updated {check(changed.catalogVersion=="transfer","Changing the origin rebuilds measured edges")}
     let loop=TripService(id:"loop",name:"Loop",direction:nil,stops:[],circular:true,geometry:[[origin,middle,destination,origin]])
