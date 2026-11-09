@@ -115,6 +115,12 @@ struct CatalogInformation: Codable, Equatable, Sendable {
 }
 
 struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
+    struct Itinerary: Codable, Equatable, Sendable {
+        let stopIDs: [String]
+        let circular: Bool
+        let direction: String?
+        let updatedAt: String?
+    }
     enum Kind: String, Codable, Sendable { case route, area, reference, stop }
     let id: String
     let name: String
@@ -124,10 +130,34 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     let verified: Bool
     let geometry: CatalogGeometry
     var information: CatalogInformation? = nil
+    var itinerary: Itinerary?
+
+    func publishedValues(for category: String) -> [String] {
+        information?.fields.compactMap { field in
+            guard field.category == category, !field.inferred else { return nil }
+            let value = field.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        } ?? []
+    }
+
+    var orderedItinerary: Itinerary? {
+        if let itinerary { return itinerary }
+        let order = publishedValues(for: "stop-order")
+        let shape = publishedValues(for: "route-shape")
+        guard order.count == 1, shape.count == 1, ["linear", "circular"].contains(shape[0]),
+              let ids = try? JSONDecoder().decode([String].self, from: Data(order[0].utf8)) else { return nil }
+        return Itinerary(stopIDs: ids, circular: shape[0] == "circular",
+                         direction: publishedValues(for: "direction").first,
+                         updatedAt: publishedValues(for: "updated-at").first)
+    }
 
     func distance(to point: GeoPoint) -> Double? {
-        guard kind == .route, point.latitude.isFinite, point.longitude.isFinite,
+        guard point.latitude.isFinite, point.longitude.isFinite,
               (-90...90).contains(point.latitude), (-180...180).contains(point.longitude) else { return nil }
+        if kind == .stop, case .point(let position) = geometry {
+            return position.point.distance(to: point)
+        }
+        guard kind == .route else { return nil }
         return geometry.lines.flatMap { line in
             zip(line, line.dropFirst()).map { Self.segmentDistance(point, $0.point, $1.point) }
         }.min()
@@ -152,13 +182,77 @@ struct CatalogFeature: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+enum CatalogFilter: String, CaseIterable, Identifiable {
+    case all, routes, stops, areas
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "Todos"
+        case .routes: return "Recorridos"
+        case .stops: return "Paradas"
+        case .areas: return "Áreas y referencias"
+        }
+    }
+    var supportsProximity: Bool { self == .routes || self == .stops }
+    func includes(_ kind: CatalogFeature.Kind) -> Bool {
+        switch self {
+        case .all: return true
+        case .routes: return kind == .route
+        case .stops: return kind == .stop
+        case .areas: return kind == .area || kind == .reference
+        }
+    }
+}
+
 struct RouteCatalog: Codable, Sendable {
+    struct ServiceInformation: Codable, Sendable {
+        let notices: [String]?
+        let contact: URL?
+    }
     let schemaVersion: Int
     let version: String
     let publishable: Bool
     let licenseStatus: String
     let groups: [CatalogGroup]
     let features: [CatalogFeature]
+    var serviceInformation: ServiceInformation?
+
+    var serviceNotices: [String] {
+        guard readyForDistribution else { return [] }
+        return serviceInformation?.notices
+            ?? features.filter { $0.kind == .reference && $0.publishedValues(for: "service-role") == ["notices"] }.flatMap { $0.publishedValues(for: "notice") }
+    }
+
+    var serviceContact: URL? {
+        guard readyForDistribution else { return nil }
+        let links = features.filter { $0.kind == .reference && $0.publishedValues(for: "service-role") == ["contact"] }.flatMap { $0.publishedValues(for: "contact") }
+            .compactMap { URL(string: $0) }
+        let configured = serviceInformation?.contact.map { [$0] } ?? []
+        let candidates = configured + links
+        guard candidates.count == 1, let contact = candidates.first,
+              contact.scheme?.lowercased() == "https", contact.host?.isEmpty == false,
+              contact.user == nil, contact.password == nil else { return nil }
+        return contact
+    }
+
+    func journeyScenario(for feature: CatalogFeature) -> JourneyScenario? {
+        guard readyForDistribution, feature.kind == .route, let itinerary = feature.orderedItinerary,
+              itinerary.stopIDs.count >= 2,
+              Set(itinerary.stopIDs).count == itinerary.stopIDs.count else { return nil }
+        let byID = Dictionary(features.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let stops = itinerary.stopIDs.compactMap { id -> TransitStop? in
+            guard let stop = byID[id], stop.kind == .stop,
+                  case .point(let location) = stop.geometry else { return nil }
+            return TransitStop(id: id, name: stop.name, point: location.point)
+        }
+        guard stops.count == itinerary.stopIDs.count else { return nil }
+        let schedule = feature.publishedValues(for: "schedule")
+        return JourneyScenario(schemaVersion: 1, name: feature.name, coverageRadius: 2_000,
+                               stops: stops, places: [], updatedAt: itinerary.updatedAt,
+                               circular: itinerary.circular, direction: itinerary.direction,
+                               routeID: feature.id, schedules: schedule,
+                               routeGeometry: feature.geometry.lines.map { $0.map(\.point) })
+    }
 
     var readyForDistribution: Bool { publishable && ["verified", "published"].contains(licenseStatus) }
 
@@ -178,11 +272,15 @@ struct RouteCatalog: Codable, Sendable {
     }
 
     func matching(_ query: String, groupID: String? = nil, routesOnly: Bool = true) -> [CatalogFeature] {
+        matching(query, groupID: groupID, filter: routesOnly ? .routes : .all)
+    }
+
+    func matching(_ query: String, groupID: String? = nil, filter: CatalogFilter) -> [CatalogFeature] {
         let terms = Self.fold(query).split(whereSeparator: \.isWhitespace)
         let names = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
         return features.filter { feature in
             let text = Self.fold(feature.name + " " + (names[feature.groupID] ?? "") + " " + (feature.information?.searchableText ?? ""))
-            return (!routesOnly || feature.kind == .route) && (groupID == nil || feature.groupID == groupID)
+            return filter.includes(feature.kind) && (groupID == nil || feature.groupID == groupID)
                 && terms.allSatisfy { text.contains($0) }
         }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

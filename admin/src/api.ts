@@ -1,4 +1,4 @@
-import { createClient, type Session } from '@supabase/supabase-js';
+import { createClient, FunctionsHttpError, type Session } from '@supabase/supabase-js';
 import type { Audit, Document, Draft, Preview, Version } from '../../shared/catalog';
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -21,6 +21,7 @@ export interface CatalogAPI {
     versions(): Promise<Version[]>;
     audit(): Promise<Audit[]>;
     restore(version: string): Promise<void>;
+    withdraw(version: string, reason: string, replacement: string | null): Promise<void>;
     backup(): Promise<unknown>;
     invite(email: string): Promise<void>;
   members(): Promise<{user_id:string;role:string}[]>;
@@ -70,7 +71,7 @@ export function api(): CatalogAPI {
         async versions() {
             const { data, error } = await c
                 .from('catalog_versions')
-                .select('version,sha256,bytes,created_at,created_by')
+                .select('version,sha256,bytes,created_at,created_by,withdrawn_at')
                 .order('created_at', { ascending: false })
                 .limit(100);
             return result(data, error) ?? [];
@@ -87,6 +88,10 @@ export function api(): CatalogAPI {
             const { error } = await c.rpc('restore_catalog', { target: version });
             result(null, error);
         },
+        async withdraw(version, reason, replacement) {
+            const { error } = await c.rpc('withdraw_catalog', { target: version, reason, replacement });
+            result(null, error);
+        },
         async backup() {
             const { data, error } = await c.rpc('catalog_backup');
             return result(data, error);
@@ -100,6 +105,10 @@ export function api(): CatalogAPI {
     },
     async invite(email) {
             const { error } = await c.functions.invoke('team', { body: { email } });
+            if (error instanceof FunctionsHttpError) {
+                const response = await error.context.json().catch(() => null);
+                if (typeof response?.error === 'string') throw new Error(response.error);
+            }
             result(null, error);
         },
     };
