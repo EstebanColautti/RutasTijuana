@@ -124,6 +124,110 @@ final class JourneyTests: XCTestCase {
         }
     }
 
+    func testCatalogLineVisibility() {
+        for dark in [false, true] {
+            app.terminate()
+            app.launchArguments = ["--ui-testing", "--catalog-pale-sample"] + (dark ? ["--catalog-dark"] : [])
+            app.launch()
+            tap("Explorar recorridos")
+            XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 5))
+            capture(dark ? "Recorrido claro en mapa oscuro" : "Recorrido claro en mapa claro")
+            tap("catalog-sample-route")
+            XCTAssertTrue(app.staticTexts["Distancia al trazado en línea recta."].waitForExistence(timeout: 5))
+            capture(dark ? "Selección en mapa oscuro" : "Selección en mapa claro")
+        }
+    }
+
+    func testCombinedTrip() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture"]
+        app.launch()
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts.matching(identifier: "trip-result").count, 1)
+        for _ in 0..<8 {
+            if app.buttons["trip-begin"].isHittable { break }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        capture("Itinerario combinado")
+        tap("trip-begin")
+        capture("Caminata inicial del viaje")
+        tap("trip-walk")
+        tap("Iniciar guía")
+        XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 5))
+        tap("walking-finish")
+        app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
+        tap("trip-walk-arrived")
+        tap("trip-board")
+        capture("Seguimiento de transporte")
+        tap("trip-alight")
+        tap("trip-board")
+        tap("trip-alight")
+        tap("trip-walk-arrived")
+        XCTAssertTrue(app.staticTexts["Llegaste al destino"].waitForExistence(timeout: 5))
+        capture("Viaje combinado")
+        tap("Terminar")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+    }
+
+    func testCombinedTripLargeText() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture", "--trip-dark",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        for _ in 0..<8 {
+            if app.buttons["trip-begin"].isHittable { break }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(app.buttons["trip-begin"].isHittable)
+        capture("Itinerario con texto grande")
+        tap("trip-begin")
+        tap("trip-walk-arrived")
+        tap("trip-board")
+        capture("Transporte con texto grande")
+        tap("trip-finish")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+    }
+
+    func testTripManualSearch() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture"]
+        app.launch()
+        let originToggle = app.switches["Buscar un origen"]
+        XCTAssertTrue(originToggle.waitForExistence(timeout: 5))
+        originToggle.tap()
+        let search = app.textFields["trip-place-search"]
+        for _ in 0..<8 {
+            if search.isHittable { break }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        search.tap()
+        search.typeText("Parada 1\n")
+        tap("trip-place-0")
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        capture("Consulta con origen manual")
+    }
+
+    func testTripImpreciseLocation() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture", "--trip-imprecise"]
+        app.launch()
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
+        tap("trip-begin")
+        tap("trip-walk-arrived")
+        tap("trip-board")
+        let status = app.staticTexts["trip-travel-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        XCTAssertTrue(status.label.contains("Ubicación sin actualizar"))
+        XCTAssertTrue(app.buttons["trip-alight"].isEnabled)
+        capture("Transporte sin ubicación precisa")
+        tap("trip-finish")
+    }
+
     private func checkAccessibleControl(_ element: XCUIElement, label: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)
@@ -315,10 +419,11 @@ final class JourneyTests: XCTestCase {
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
-        for _ in 0..<5 {
+        for _ in 0..<8 {
             if button.isHittable { break }
             app.scrollViews.firstMatch.swipeUp()
         }
+        XCTAssertTrue(button.isHittable, identifier)
         button.tap()
     }
 

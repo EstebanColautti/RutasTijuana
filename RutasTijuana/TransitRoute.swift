@@ -1,6 +1,6 @@
 import Foundation
 
-struct GeoPoint: Equatable, Codable {
+struct GeoPoint: Equatable, Codable, Sendable {
     let latitude: Double
     let longitude: Double
 
@@ -13,7 +13,7 @@ struct GeoPoint: Equatable, Codable {
     }
 }
 
-struct TransitStop: Identifiable, Equatable, Codable {
+struct TransitStop: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let name: String
     let point: GeoPoint

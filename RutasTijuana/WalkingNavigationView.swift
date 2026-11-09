@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 
 struct WalkingNavigationView: View {
+    private let onArrival: (() -> Void)?
     @StateObject private var model: WalkingNavigationCoordinator
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var textSize
@@ -13,15 +14,16 @@ struct WalkingNavigationView: View {
     @StateObject private var connectivity = ConnectivityMonitor()
     @State private var showingSteps = false
     @State private var confirmEnd = false
-    init(destination: WalkingDestination) {
+    init(destination: WalkingDestination, preparedRoute: WalkingRoute? = nil, onArrival: (() -> Void)? = nil) {
+        self.onArrival = onArrival
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--walking-fixture") {
-            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: FixtureWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination)))
+        if ProcessInfo.processInfo.arguments.contains("--walking-fixture") || ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: FixtureWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination), preparedRoute: preparedRoute))
         } else {
-            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination))
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, preparedRoute: preparedRoute))
         }
         #else
-        _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination))
+        _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, preparedRoute: preparedRoute))
         #endif
     }
     var body: some View {
@@ -54,6 +56,7 @@ struct WalkingNavigationView: View {
                     .onChange(of: model.phase) { _, phase in
                         if phase == .preview { follow = false; camera = .automatic }
                         if phase == .navigating { follow = true; recenter() }
+                        if phase == .arrived, let onArrival { onArrival(); dismiss() }
                     }
                     .overlay(alignment: .topTrailing) {
                         Button {
@@ -109,7 +112,7 @@ struct WalkingNavigationView: View {
                             .foregroundStyle(colorScheme == .dark ? .white : .primary)
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
-                    }
+                    }.accessibilityIdentifier("walking-finish")
                 }
             }
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {

@@ -64,6 +64,10 @@ extension MKPolyline {
         manager.distanceFilter = 5
         manager.activityType = .fitness
     }
+    func transportMode() {
+        manager.activityType = .otherNavigation
+        manager.distanceFilter = 10
+    }
     func start() {
         active = true
         if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
@@ -130,7 +134,7 @@ extension MKPolyline {
     private var failures = 0
     private let activity = NavigationActivityController()
 
-    init(destination: WalkingDestination, provider: WalkingRouteProvider? = nil, locations: NavigationLocationProvider? = nil, now: @escaping () -> Date = Date.init) {
+    init(destination: WalkingDestination, provider: WalkingRouteProvider? = nil, locations: NavigationLocationProvider? = nil, now: @escaping () -> Date = Date.init, preparedRoute: WalkingRoute? = nil) {
         self.destination = destination
         self.provider = provider ?? AppleWalkingRouteProvider()
         self.locations = locations ?? AppleNavigationLocationProvider()
@@ -144,6 +148,16 @@ extension MKPolyline {
         self.locations.onError = { [weak self] _ in
             self?.status.location = .acquiring
             self?.activityUpdate()
+        }
+        if let preparedRoute, preparedRoute.points.count >= 2, preparedRoute.length.isFinite, preparedRoute.length > 0,
+           preparedRoute.duration.isFinite, preparedRoute.duration >= 0,
+           let endpoint = preparedRoute.points.last, endpoint.distance(to: destination.point) <= 25 {
+            route = preparedRoute
+            routeOrigin = preparedRoute.points.first
+            engine = WalkingProgressEngine(route: preparedRoute, destination: destination)
+            progress = engine!.progress
+            phase = .preview
+            status.endpointGap = endpoint.distance(to: destination.point)
         }
     }
     var message: String { status.messages(hasRoute: route != nil).joined(separator: "\n") }
@@ -346,7 +360,7 @@ extension MKPolyline {
     private var updates: Task<Void, Never>?
     init(destination: WalkingDestination) { self.destination = destination }
     private func emit() {
-        onFix?(WalkingFix(point: GeoPoint(latitude: destination.point.latitude - 0.001, longitude: destination.point.longitude), accuracy: 5, timestamp: Date()))
+        onFix?(WalkingFix(point: GeoPoint(latitude: destination.point.latitude - 0.001, longitude: destination.point.longitude), accuracy: ProcessInfo.processInfo.arguments.contains("--trip-imprecise") ? 100 : 5, timestamp: Date()))
     }
     func start() {
         emit()
