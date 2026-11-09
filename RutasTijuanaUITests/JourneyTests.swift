@@ -124,6 +124,20 @@ final class JourneyTests: XCTestCase {
         }
     }
 
+    func testCatalogLineVisibility() {
+        for dark in [false, true] {
+            app.terminate()
+            app.launchArguments = ["--ui-testing", "--catalog-pale-sample"] + (dark ? ["--catalog-dark"] : [])
+            app.launch()
+            tap("Explorar recorridos")
+            XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 5))
+            capture(dark ? "Recorrido claro en mapa oscuro" : "Recorrido claro en mapa claro")
+            tap("catalog-sample-route")
+            XCTAssertTrue(app.staticTexts["Distancia al trazado en línea recta."].waitForExistence(timeout: 5))
+            capture(dark ? "Selección en mapa oscuro" : "Selección en mapa claro")
+        }
+    }
+
     func testCombinedTrip() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
