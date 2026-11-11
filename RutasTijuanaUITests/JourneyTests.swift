@@ -461,7 +461,9 @@ final class JourneyTests: XCTestCase {
         }
         XCTAssertTrue(result.exists, "No se obtuvo un itinerario")
         if result.exists {
-            for _ in 0..<8 where !result.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            for _ in 0..<8 where !result.isHittable || result.frame.minY > app.frame.height * 0.65 {
+                app.scrollViews.firstMatch.swipeUp()
+            }
             capture("Resultado de viaje - puntos de prueba")
             let begin = app.buttons["trip-begin"]
             for _ in 0..<8 where !begin.isHittable { app.scrollViews.firstMatch.swipeUp() }
