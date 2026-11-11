@@ -249,6 +249,7 @@ struct TripPlannerView: View {
                         }
                     }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .id(trip != nil)
                 .scrollDismissesKeyboard(.interactively)
                 .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
             }
