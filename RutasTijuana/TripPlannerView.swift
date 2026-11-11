@@ -244,8 +244,6 @@ struct TripPlannerView: View {
                                 .accessibilityIdentifier("trip-begin")
                                 .disabled(working)
                                 .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).frame(minHeight: 44)
-                            Button("Cambiar origen o destino") { invalidate() }
-                                .frame(minHeight: 44)
                         }
                     }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -258,6 +256,16 @@ struct TripPlannerView: View {
         .preferredColorScheme(testColorScheme)
         .navigationTitle("Planear viaje")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if trip != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Editar") { invalidate() }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel("Cambiar origen o destino")
+                        .accessibilityIdentifier("Cambiar origen o destino")
+                }
+            }
+        }
         .sheet(isPresented: $selectingOnMap) { mapSelection }
         .fullScreenCover(isPresented: $travelling) {
             if let trip {
