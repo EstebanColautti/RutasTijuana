@@ -314,6 +314,16 @@ struct TripTravelView: View {
         .id(model.index)
     }
 
+    private var stageProgress: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
+                .font(.subheadline.weight(.semibold))
+            ProgressView(value: Double(model.index), total: Double(max(1, model.trip.legs.count)))
+                .accessibilityLabel("Progreso por etapas del viaje")
+                .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
+        }
+    }
+
     var body: some View {
         let stage = model.index
         return NavigationStack {
@@ -329,15 +339,6 @@ struct TripTravelView: View {
                                 Text("Datos de evaluación").font(.footnote)
                             }
                             #endif
-                            if !model.finished {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
-                                        .font(.subheadline.weight(.semibold))
-                                    ProgressView(value: Double(model.index), total: Double(max(1, model.trip.legs.count)))
-                                        .accessibilityLabel("Progreso por etapas del viaje")
-                                        .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
-                                }
-                            }
                             if model.finished {
                                 Label("Llegaste al destino", systemImage: "checkmark.circle")
                                     .font(.title2.bold())
@@ -347,6 +348,7 @@ struct TripTravelView: View {
                             } else if let leg = model.leg {
                                 switch leg {
                                 case .walk(_, let target, let route):
+                                    stageProgress
                                     Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(.title2)
                                         .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                         .onAppear { stageFocused = true }
@@ -356,13 +358,16 @@ struct TripTravelView: View {
                                     }.buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).accessibilityIdentifier("trip-walk")
                                     TripActionButton("Ya llegué") { model.advance(from: stage) }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
                                 case .ride(let service, let stops):
-                                    Label(service.name, systemImage: "bus").font(.title2)
+                                    Text(service.name).font(.title2.bold())
                                         .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                         .onAppear { stageFocused = true }
-                                    Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
+                                    Text(service.direction ?? "Sigue el sentido indicado en el recorrido").font(.subheadline)
+                                    stageProgress
                                     VStack(alignment: .leading, spacing: 12) {
-                                        Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "a.circle.fill")
-                                        Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "b.circle.fill")
+                                        Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
+                                            .font(.headline)
+                                        Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "bus.fill")
+                                            .font(.subheadline)
                                     }
                                     .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                                     .background(.background, in: RoundedRectangle(cornerRadius: 16))

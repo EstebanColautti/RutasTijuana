@@ -4,6 +4,7 @@ import Combine
 
 final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var point: GeoPoint?
+    @Published private(set) var horizontalAccuracy: CLLocationAccuracy?
     @Published private(set) var message: String?
     @Published private(set) var isRequesting = false
     private let manager = CLLocationManager()
@@ -17,6 +18,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     func request() {
         cancel()
+        horizontalAccuracy = nil
         point = nil
         message = nil
         isRequesting = true
@@ -59,6 +61,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
               location.horizontalAccuracy >= 0,
               abs(location.timestamp.timeIntervalSinceNow) < 60 else { return }
         cancel()
+        horizontalAccuracy = location.horizontalAccuracy
         point = GeoPoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
     }
 

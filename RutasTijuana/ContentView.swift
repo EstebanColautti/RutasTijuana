@@ -35,6 +35,13 @@ struct ContentView: View {
     @AccessibilityFocusState private var resultFocused: Bool
     private var evaluation: Bool { scenario.fixedOriginID != nil }
     private var isDemo: Bool { scenario.routeID == nil }
+    private var journeyFixture: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--journey-fixture")
+        #else
+        return false
+        #endif
+    }
 
     init(scenario: JourneyScenario = .sample, recent: RecentJourney? = nil) {
         _scenario = State(initialValue: scenario)
@@ -163,7 +170,7 @@ struct ContentView: View {
                 .accessibilityAddTraits(.isHeader)
             Text("Consulta cómo llegar de un punto A a un punto B en transporte público.")
                 .foregroundStyle(.primary)
-            demoNotice
+            if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
             #if DEBUG
             if isDemo {
                 Button { importing = true } label: {
@@ -191,7 +198,7 @@ struct ContentView: View {
                 .foregroundStyle(actionTint)
                 .accessibilityIdentifier("Explorar recorridos")
             }
-            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+            if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                 NavigationLink {
                     TripPlannerView(catalog: catalog)
                 } label: {
@@ -201,9 +208,33 @@ struct ContentView: View {
             NavigationLink { recentView } label: {
                 Text("Consultas recientes").frame(minHeight: 44)
             }
+            if isDemo && !evaluation && !journeyFixture {
+                Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
+            }
             Text("Puedes elegir tu ubicación manualmente. No se guarda.")
                 .font(.footnote).foregroundStyle(.primary)
-            primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
+            if !evaluation && scenario.routeID == nil && !journeyFixture {
+                if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                    NavigationLink {
+                        TripPlannerView(catalog: catalog)
+                    } label: {
+                        Text("Elegir ubicación inicial").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .controlSize(.large)
+                    .accessibilityIdentifier("Elegir ubicación inicial")
+                } else {
+                    NavigationLink { CatalogView() } label: {
+                        Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .controlSize(.large)
+                }
+            } else {
+                primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
+            }
         }
         .padding(24)
     }
