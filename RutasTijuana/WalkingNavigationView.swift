@@ -17,7 +17,9 @@ struct WalkingNavigationView: View {
     init(destination: WalkingDestination, preparedRoute: WalkingRoute? = nil, onArrival: (() -> Void)? = nil) {
         self.onArrival = onArrival
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--walking-fixture") || ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+        if ProcessInfo.processInfo.arguments.contains("--walking-live-directions") {
+            _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: AppleWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination)))
+        } else if ProcessInfo.processInfo.arguments.contains("--walking-fixture") || ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
             _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, provider: FixtureWalkingRouteProvider(), locations: FixtureNavigationLocationProvider(destination: destination), preparedRoute: preparedRoute))
         } else {
             _model = StateObject(wrappedValue: WalkingNavigationCoordinator(destination: destination, preparedRoute: preparedRoute))
@@ -50,6 +52,14 @@ struct WalkingNavigationView: View {
                         }
                     }
                     .accessibilityLabel("Mapa de la guía a pie")
+                    #if DEBUG
+                    .overlay(alignment: .topLeading) {
+                        if ProcessInfo.processInfo.arguments.contains("--walking-live-directions") {
+                            Text("Ubicación simulada · Camino calculado por Apple")
+                                .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).padding(8)
+                        }
+                    }
+                    #endif
                     .accessibilityHint("Consulta la indicación actual y la lista de pasos debajo del mapa.")
                     .onChange(of: camera.positionedByUser) { _, value in if value { follow = false } }
                     .onChange(of: model.fix?.timestamp) { _, _ in recenter() }

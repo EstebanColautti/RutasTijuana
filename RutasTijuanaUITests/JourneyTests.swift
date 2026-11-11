@@ -431,6 +431,28 @@ final class JourneyTests: XCTestCase {
         }
     }
 
+    #if LIVE_MAP_CAPTURE
+    func testWalkingLiveRoute() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--walking-live-directions"]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        tap("walking-start")
+        XCTAssertTrue(app.buttons["Iniciar guía"].waitForExistence(timeout: 90))
+        capture("Recorrido peatonal")
+        tap("Iniciar guía")
+        XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 15))
+        capture("Guía peatonal")
+        tap("Ver pasos")
+        XCTAssertTrue(app.navigationBars["Indicaciones"].waitForExistence(timeout: 5))
+        capture("Indicaciones peatonales")
+    }
+    #endif
+
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)

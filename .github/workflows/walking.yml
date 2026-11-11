@@ -1,0 +1,57 @@
+name: Recorrido peatonal
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_key:
+        description: Clave pública para los resultados
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  walking:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Preparar
+        env:
+          PUBLIC_KEY: ${{ inputs.public_key }}
+        run: |
+          printf '%s' "$PUBLIC_KEY" > "$RUNNER_TEMP/public.pem"
+          openssl pkey -pubin -in "$RUNNER_TEMP/public.pem" -noout
+          mkdir -p "$RUNNER_TEMP/results" "$RUNNER_TEMP/encrypted"
+          simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+          echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
+      - name: Compilar
+        run: |
+          xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/Build" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG LIVE_MAP_CAPTURE' > "$RUNNER_TEMP/results/build.log" 2>&1
+      - name: Comprobar
+        run: |
+          xcodebuild test-without-building -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/Build" -parallel-testing-enabled NO -only-testing:RutasTijuanaUITests/JourneyTests/testWalkingLiveRoute -resultBundlePath "$RUNNER_TEMP/results/Walking.xcresult" CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/results/test.log" 2>&1
+      - name: Conservar resultados
+        if: always()
+        run: |
+          if [ ! -d "$RUNNER_TEMP/results" ]; then exit 0; fi
+          if [ -d "$RUNNER_TEMP/results/Walking.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/results/Walking.xcresult" --output-path "$RUNNER_TEMP/results/captures"
+          fi
+          tar -czf "$RUNNER_TEMP/results.tar.gz" -C "$RUNNER_TEMP/results" .
+          openssl rand -hex 32 > "$RUNNER_TEMP/password"
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in "$RUNNER_TEMP/results.tar.gz" -out "$RUNNER_TEMP/encrypted/results.enc" -pass file:"$RUNNER_TEMP/password"
+          openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/public.pem" -in "$RUNNER_TEMP/password" -out "$RUNNER_TEMP/encrypted/key.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: walking-results
+          path: ${{ runner.temp }}/encrypted/
+          retention-days: 7
