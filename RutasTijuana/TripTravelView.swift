@@ -269,14 +269,6 @@ struct TripTravelView: View {
         }
     }
 
-    private var mapTitle: String {
-        switch model.leg {
-        case .walk: return "Camino a pie"
-        case .ride: return model.aboard ? "Recorrido en transporte" : "Próximo recorrido"
-        case nil: return "Tu trayecto"
-        }
-    }
-
     private var finalDestination: GeoPoint? {
         switch model.trip.legs.last {
         case .walk(_, let target, _): return target
@@ -316,10 +308,6 @@ struct TripTravelView: View {
                         .tint(model.locationIsCurrent ? .blue : .gray)
                 }
             }
-        }
-        .overlay(alignment: .topLeading) {
-            Text(mapTitle).font(.caption.weight(.semibold)).padding(10)
-                .background(.regularMaterial, in: Capsule()).padding(12)
         }
         .accessibilityLabel("Mapa de la etapa actual del viaje")
         .accessibilityHint("La etapa y las paradas también aparecen en el panel inferior.")
