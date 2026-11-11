@@ -110,7 +110,7 @@ struct ContentView: View {
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .tint(actionTint)
-                .presentationBackground(.background)
+                .presentationBackground(Color(uiColor: .secondarySystemBackground))
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -128,7 +128,7 @@ struct ContentView: View {
                 Button("Aceptar", role: .cancel) { importError = nil }
             } message: { Text(importError ?? "") }
             .tint(actionTint)
-            .navigationTitle(stage == .home ? "" : title)
+            .navigationTitle("")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -155,12 +155,12 @@ struct ContentView: View {
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Spacer()
             Image(systemName: "bus.fill")
                 .font(.system(size: 44)).foregroundStyle(.blue).padding(20)
-                .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+                .background(.blue.opacity(0.08), in: Circle())
                 .accessibilityHidden(true)
             Text("Rutas Tijuana").font(.largeTitle.bold())
+                .accessibilityAddTraits(.isHeader)
             Text("Consulta cómo llegar de un punto A a un punto B en transporte público.")
                 .foregroundStyle(.primary)
             demoNotice
@@ -187,7 +187,8 @@ struct ContentView: View {
                 NavigationLink { CatalogView() } label: {
                     Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered).controlSize(.large)
+                .buttonStyle(.plain)
+                .foregroundStyle(actionTint)
                 .accessibilityIdentifier("Explorar recorridos")
             }
             if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
@@ -271,7 +272,7 @@ struct ContentView: View {
             }
             .padding(16)
         }
-        .frame(maxWidth: .infinity).background(.background)
+        .frame(maxWidth: .infinity).background(Color(uiColor: .secondarySystemBackground))
     }
 
     private var originPanel: some View {
@@ -307,7 +308,7 @@ struct ContentView: View {
             if let stop = route.stops.first(where: { $0.id == originID }) {
                 Label("Origen: \(stop.name)", systemImage: "a.circle")
             }
-            Text("Dónde te bajas").font(.title3.bold())
+            Text("Bájate en").font(.title3.bold())
             Text("Toca el mapa o elige una parada para marcar el destino.")
                 .font(.subheadline).foregroundStyle(.primary)
             searchField
@@ -450,8 +451,9 @@ struct ContentView: View {
         Button { selectStop(stop, isOrigin: isOrigin) } label: {
             Text(stop.name)
                 .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(.background)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .padding(.horizontal, 12)
+                .background(.background, in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
         }
         .accessibilityIdentifier("stop-\(stop.id)")

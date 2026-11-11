@@ -394,7 +394,7 @@ struct TripTravelView: View {
                         .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .id(model.index)
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 }
             }
             .navigationTitle(model.finished ? "Viaje finalizado" : "Trayecto en curso")

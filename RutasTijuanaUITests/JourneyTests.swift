@@ -169,6 +169,11 @@ final class JourneyTests: XCTestCase {
         capture("Viaje combinado")
         tap("Terminar")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+        tap("Cambiar origen o destino")
+        XCTAssertTrue(app.staticTexts["Origen de ejemplo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Destino de ejemplo"].exists)
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
     }
 
     func testCombinedTripLargeText() {

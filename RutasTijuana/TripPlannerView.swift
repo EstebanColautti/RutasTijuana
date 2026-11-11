@@ -159,6 +159,7 @@ struct TripPlannerView: View {
                             Text("Datos de evaluación").font(.footnote)
                         }
                         #endif
+                        if trip == nil {
                         Text("Origen").font(.headline).accessibilityAddTraits(.isHeader)
                         Text(originName.isEmpty ? "Elige desde dónde sales" : originName)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(12)
@@ -217,6 +218,7 @@ struct TripPlannerView: View {
                                 .disabled(origin == nil || destination == nil)
                                 .frame(minHeight: 44)
                         }
+                        }
                         if let trip {
                             Text("Ruta recomendada").font(.title2.bold())
                                 .accessibilityAddTraits(.isHeader)
@@ -240,6 +242,8 @@ struct TripPlannerView: View {
                                 .accessibilityIdentifier("trip-begin")
                                 .disabled(working)
                                 .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).frame(minHeight: 44)
+                            Button("Cambiar origen o destino") { invalidate() }
+                                .frame(minHeight: 44)
                         }
                     }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                 }
