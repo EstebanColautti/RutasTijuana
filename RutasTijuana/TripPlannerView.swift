@@ -220,6 +220,8 @@ struct TripPlannerView: View {
                         }
                         }
                         if let trip {
+                            if let error = location.message { Text(error) }
+                            if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
                             Text("Ruta recomendada").font(.title2.bold())
                                 .accessibilityAddTraits(.isHeader)
                                 .accessibilityFocused($resultFocused)
