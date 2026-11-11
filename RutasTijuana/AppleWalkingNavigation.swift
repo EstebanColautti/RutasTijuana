@@ -26,7 +26,9 @@ import Combine
         }
         let length = zip(points, points.dropFirst()).reduce(0.0) { $0 + $1.0.distance(to: $1.1) }
         let ratio = distance > 0 ? length / distance : 1
-        return WalkingRoute(points: points, steps: steps.enumerated().map { index, step in WalkingStep(instruction: index + 1 < steps.count ? steps[index + 1].instruction : "Continúa hasta el destino", endDistance: step.endDistance * ratio) }, duration: route.expectedTravelTime)
+        return WalkingRoute(points: points, steps: steps.map { step in
+            WalkingStep(instruction: step.instruction, endDistance: step.endDistance * ratio)
+        }, duration: route.expectedTravelTime)
     }
 }
 
