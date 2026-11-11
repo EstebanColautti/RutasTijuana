@@ -1,6 +1,11 @@
 name: Recorrido peatonal
 
 on:
+  workflow_call:
+    inputs:
+      public_key:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       public_key:
