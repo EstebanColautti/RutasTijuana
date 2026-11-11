@@ -6,11 +6,18 @@ on:
       public_key:
         required: true
         type: string
+      catalog_package:
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       public_key:
         description: Clave pública para los resultados
         required: true
+        type: string
+      catalog_package:
+        description: Catálogo en ZIP codificado en base64 (opcional)
+        required: false
         type: string
 
 permissions:
@@ -26,6 +33,56 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Preparar catálogo
+        run: |
+          python3 - <<'PY'
+          import base64
+          import io
+          import json
+          import os
+          from pathlib import Path
+          import stat
+          import zipfile
+
+          from scripts.install_catalog import validate
+
+          try:
+              event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
+              encoded = (event.get('inputs') or {}).get('catalog_package') or ''
+              fixture = 'YES'
+              capture = 'testWalkingLiveRoute'
+              package = ''
+              if encoded:
+                  if not isinstance(encoded, str) or len(encoded) > ((2 * 1024 * 1024 + 2) // 3) * 4:
+                      raise ValueError('Tamaño incorrecto')
+                  data = base64.b64decode(encoded, validate=True)
+                  if len(data) > 2 * 1024 * 1024:
+                      raise ValueError('Tamaño incorrecto')
+                  destination = Path(os.environ['RUNNER_TEMP']) / 'catalog'
+                  destination.mkdir(mode=0o700)
+                  limits = {'manifest.json': 64 * 1024, 'catalog.json': 16 * 1024 * 1024}
+                  with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                      members = archive.infolist()
+                      if len(members) != 2 or {item.filename for item in members} != set(limits):
+                          raise ValueError('Contenido incorrecto')
+                      for item in members:
+                          mode = item.external_attr >> 16
+                          if item.is_dir() or stat.S_ISLNK(mode) or item.file_size > limits[item.filename]:
+                              raise ValueError('Archivo incorrecto')
+                          with archive.open(item) as source:
+                              content = source.read(limits[item.filename] + 1)
+                          if len(content) > limits[item.filename]:
+                              raise ValueError('Archivo demasiado grande')
+                          (destination / item.filename).write_bytes(content)
+                  validate(destination)
+                  fixture = 'NO'
+                  capture = 'testAppScreensWithCatalog'
+                  package = str(destination)
+              with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+                  env.write(f'CATALOG_FIXTURE={fixture}\nCATALOG_PACKAGE_PATH={package}\nCAPTURE_TEST={capture}\n')
+          except Exception:
+              raise SystemExit('No se pudo validar el paquete de catálogo.') from None
+          PY
       - name: Preparar
         env:
           PUBLIC_KEY: ${{ inputs.public_key }}
@@ -39,10 +96,10 @@ jobs:
           xcrun simctl bootstatus "$simulator" -b
       - name: Compilar
         run: |
-          xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/Build" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG LIVE_MAP_CAPTURE' > "$RUNNER_TEMP/results/build.log" 2>&1
+          xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/Build" CATALOG_FIXTURE="$CATALOG_FIXTURE" CATALOG_PACKAGE_PATH="$CATALOG_PACKAGE_PATH" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG LIVE_MAP_CAPTURE' > "$RUNNER_TEMP/results/build.log" 2>&1
       - name: Comprobar
         run: |
-          xcodebuild test-without-building -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/Build" -parallel-testing-enabled NO -only-testing:RutasTijuanaUITests/JourneyTests/testWalkingLiveRoute -resultBundlePath "$RUNNER_TEMP/results/Walking.xcresult" CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/results/test.log" 2>&1
+          xcodebuild test-without-building -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/Build" -parallel-testing-enabled NO -only-testing:RutasTijuanaUITests/JourneyTests/"$CAPTURE_TEST" -resultBundlePath "$RUNNER_TEMP/results/Walking.xcresult" CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/results/test.log" 2>&1
       - name: Conservar resultados
         if: always()
         run: |

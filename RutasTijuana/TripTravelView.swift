@@ -228,6 +228,7 @@ struct TripTravelView: View {
     @StateObject private var model: TripTravelController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var walking: WalkingDestination?
     @AccessibilityFocusState private var stageFocused: Bool
     init(trip: PlannedTrip, destinationName: String = "Destino", onReplan: ((GeoPoint) -> Void)? = nil) {
@@ -257,82 +258,159 @@ struct TripTravelView: View {
         return .destination
     }
 
+    private var mapPath: [GeoPoint] {
+        switch model.leg ?? model.trip.legs.last {
+        case .walk(_, _, let route):
+            return route.points
+        case .ride(let service, let stops):
+            return model.aboard ? model.ridePath : service.section(through: stops) ?? []
+        case nil:
+            return []
+        }
+    }
+
+    private var mapTitle: String {
+        switch model.leg {
+        case .walk: return "Camino a pie"
+        case .ride: return model.aboard ? "Recorrido en transporte" : "Próximo recorrido"
+        case nil: return "Tu trayecto"
+        }
+    }
+
+    private var finalDestination: GeoPoint? {
+        switch model.trip.legs.last {
+        case .walk(_, let target, _): return target
+        case .ride(_, let stops): return stops.last?.point
+        case nil: return nil
+        }
+    }
+
+    private var travelMap: some View {
+        Map(interactionModes: [.pan, .zoom]) {
+            MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                .stroke(.blue, lineWidth: 6)
+            if model.finished, let destination = finalDestination {
+                Marker(destinationName, systemImage: "flag.fill",
+                       coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
+                    .tint(.blue)
+            }
+            if case .walk(_, let target, _) = model.leg {
+                Marker(walkingTarget, systemImage: walkingPurpose == .destination ? "flag.fill" : "bus.fill",
+                       coordinate: .init(latitude: target.latitude, longitude: target.longitude))
+                    .tint(.blue)
+            }
+            if case .ride(_, let stops) = model.leg {
+                if let first = stops.first {
+                    Marker("Sube en " + first.name, systemImage: "a.circle.fill",
+                           coordinate: .init(latitude: first.point.latitude, longitude: first.point.longitude))
+                        .tint(.blue)
+                }
+                if let last = stops.last {
+                    Marker("Baja en " + last.name, systemImage: "b.circle.fill",
+                           coordinate: .init(latitude: last.point.latitude, longitude: last.point.longitude))
+                        .tint(.indigo)
+                }
+                if model.aboard, let point = model.point {
+                    Marker(model.locationIsCurrent ? "Tu ubicación" : "Última ubicación",
+                           coordinate: .init(latitude: point.latitude, longitude: point.longitude))
+                        .tint(model.locationIsCurrent ? .blue : .gray)
+                }
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            Text(mapTitle).font(.caption.weight(.semibold)).padding(10)
+                .background(.regularMaterial, in: Capsule()).padding(12)
+        }
+        .accessibilityLabel("Mapa de la etapa actual del viaje")
+        .accessibilityHint("La etapa y las paradas también aparecen en el panel inferior.")
+        .id(model.index)
+    }
+
     var body: some View {
         let stage = model.index
         return NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
-                        Text("Datos de evaluación").font(.footnote)
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    if mapPath.count > 1 {
+                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.28 : 0.42))
                     }
-                    #endif
-                    if model.finished {
-                        Label("Llegaste al destino", systemImage: "checkmark.circle")
-                            .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
-                            .onAppear { stageFocused = true }
-                        TripActionButton("Terminar") { model.finish(); dismiss() }
-                    } else if let leg = model.leg {
-                        switch leg {
-                        case .walk(_, let target, let route):
-                            Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(.title2)
-                                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
-                                .onAppear { stageFocused = true }
-                            Text(WalkingFormat.distance(route.length))
-                            Map(interactionModes: []) {
-                                MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) }).stroke(.blue, lineWidth: 5)
-                            }.frame(height: 220)
-                            TripActionButton("Iniciar caminata") {
-                                walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target, purpose: walkingPurpose)
-                            }.buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).accessibilityIdentifier("trip-walk")
-                            TripActionButton("Ya llegué") { model.advance(from: stage) }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
-                        case .ride(let service, let stops):
-                            Label(service.name, systemImage: "bus").font(.title2)
-                                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
-                                .onAppear { stageFocused = true }
-                            Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
-                            Text(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")")
-                            Text(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")")
-                            if stops.contains(where: \.suggested) {
-                                Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            #if DEBUG
+                            if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
+                                Text("Datos de evaluación").font(.footnote)
                             }
-                            if model.ridePath.count > 1 {
-                                Map(interactionModes: []) {
-                                    MapPolyline(coordinates: model.ridePath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                                        .stroke(.indigo, lineWidth: 5)
-                                    if let point = model.point {
-                                        Marker(model.locationIsCurrent ? "Tu ubicación" : "Última ubicación",
-                                               coordinate: .init(latitude: point.latitude, longitude: point.longitude))
-                                            .tint(model.locationIsCurrent ? .blue : .gray)
+                            #endif
+                            if !model.finished {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
+                                        .font(.subheadline.weight(.semibold))
+                                    ProgressView(value: Double(model.index), total: Double(max(1, model.trip.legs.count)))
+                                        .accessibilityLabel("Progreso por etapas del viaje")
+                                        .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
+                                }
+                            }
+                            if model.finished {
+                                Label("Llegaste al destino", systemImage: "checkmark.circle")
+                                    .font(.title2.bold())
+                                    .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+                                    .onAppear { stageFocused = true }
+                                TripActionButton("Terminar") { model.finish(); dismiss() }
+                            } else if let leg = model.leg {
+                                switch leg {
+                                case .walk(_, let target, let route):
+                                    Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(.title2)
+                                        .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+                                        .onAppear { stageFocused = true }
+                                    Text(WalkingFormat.distance(route.length))
+                                    TripActionButton("Iniciar caminata") {
+                                        walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target, purpose: walkingPurpose)
+                                    }.buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).accessibilityIdentifier("trip-walk")
+                                    TripActionButton("Ya llegué") { model.advance(from: stage) }.accessibilityIdentifier("trip-walk-arrived").frame(minHeight: 44)
+                                case .ride(let service, let stops):
+                                    Label(service.name, systemImage: "bus").font(.title2)
+                                        .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+                                        .onAppear { stageFocused = true }
+                                    Text(service.direction ?? "Sigue el sentido indicado en el recorrido")
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "a.circle.fill")
+                                        Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "b.circle.fill")
                                     }
-                                }.frame(height: 220)
-                                .accessibilityLabel("Recorrido hasta la parada de bajada")
+                                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(.background, in: RoundedRectangle(cornerRadius: 16))
+                                    if stops.contains(where: \.suggested) {
+                                        Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
+                                    }
+                                    if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
+                                    if model.aboard {
+                                        if model.paused { TripActionButton("Continuar seguimiento") { model.resume() } }
+                                        TripActionButton("Ya bajé") { model.advance(from: stage) }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                                    } else {
+                                        TripActionButton("Ya subí") { model.board(from: stage) }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                                    }
+                                }
                             }
-                            if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
-                            if model.aboard {
-                                if model.paused { TripActionButton("Continuar seguimiento") { model.resume() } }
-                                TripActionButton("Ya bajé") { model.advance(from: stage) }.accessibilityIdentifier("trip-alight").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                            } else {
-                                TripActionButton("Ya subí") { model.board(from: stage) }.accessibilityIdentifier("trip-board").buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                            if !model.finished, model.index > 0 {
+                                TripActionButton("Volver a la etapa anterior") { model.previousLeg(from: stage) }.frame(minHeight: 44)
+                            }
+                            if !model.message.isEmpty { Text(model.message).accessibilityIdentifier("trip-travel-status") }
+                            if model.missedStop, model.point != nil, let onReplan {
+                                TripActionButton("Recalcular desde aquí") {
+                                    guard model.missedStop, model.locationIsCurrent, let point = model.point else { return }
+                                    model.finish()
+                                    onReplan(point)
+                                    dismiss()
+                                }.frame(minHeight: 44).disabled(!model.locationIsCurrent)
                             }
                         }
+                        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if !model.finished, model.index > 0 {
-                        TripActionButton("Volver a la etapa anterior") { model.previousLeg(from: stage) }.frame(minHeight: 44)
-                    }
-                    if !model.message.isEmpty { Text(model.message).accessibilityIdentifier("trip-travel-status") }
-                    if model.missedStop, model.point != nil, let onReplan {
-                        TripActionButton("Recalcular desde aquí") {
-                            guard model.missedStop, model.locationIsCurrent, let point = model.point else { return }
-                            model.finish()
-                            onReplan(point)
-                            dismiss()
-                        }.frame(minHeight: 44).disabled(!model.locationIsCurrent)
-                    }
-                }.padding()
+                    .id(model.index)
+                    .background(Color(uiColor: .systemGroupedBackground))
+                }
             }
-            .id(model.index)
-            .navigationTitle("Tu viaje")
+            .navigationTitle(model.finished ? "Viaje finalizado" : "Trayecto en curso")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { TripActionButton("Finalizar") { model.finish(); dismiss() }.accessibilityIdentifier("trip-finish") }
             .fullScreenCover(item: $walking) { destination in
                 WalkingNavigationView(destination: destination, preparedRoute: walkingRoute, onArrival: {

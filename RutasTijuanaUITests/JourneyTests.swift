@@ -432,6 +432,48 @@ final class JourneyTests: XCTestCase {
     }
 
     #if LIVE_MAP_CAPTURE
+    func testAppScreensWithCatalog() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--capture-catalog"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
+        capture("Inicio")
+        tap("Explorar recorridos")
+        let route = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@", "catalog-", "catalog-filter", "catalog-information")).firstMatch
+        XCTAssertTrue(route.waitForExistence(timeout: 10))
+        capture("Catálogo")
+        route.tap()
+        capture("Recorrido")
+        app.navigationBars.buttons.firstMatch.tap()
+        tap("Planear viaje")
+        XCTAssertTrue(app.navigationBars["Planear viaje"].waitForExistence(timeout: 10))
+        capture("Planear viaje - puntos de prueba")
+        tap("trip-calculate")
+        capture("Cálculo de viaje - puntos de prueba")
+        let result = app.staticTexts["trip-result"]
+        for _ in 0..<8 {
+            if result.waitForExistence(timeout: 15) { break }
+            let resume = app.buttons["trip-calculate"]
+            if resume.label == "Continuar búsqueda", resume.isEnabled {
+                for _ in 0..<8 where !resume.isHittable { app.scrollViews.firstMatch.swipeUp() }
+                if resume.isHittable { resume.tap() }
+            }
+        }
+        XCTAssertTrue(result.exists, "No se obtuvo un itinerario")
+        if result.exists {
+            for _ in 0..<8 where !result.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            capture("Resultado de viaje - puntos de prueba")
+            let begin = app.buttons["trip-begin"]
+            for _ in 0..<8 where !begin.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            if begin.isHittable {
+                begin.tap()
+                if app.buttons["trip-finish"].waitForExistence(timeout: 10) {
+                    capture("Etapa de viaje - puntos de prueba")
+                }
+            }
+        }
+    }
+
     func testWalkingLiveRoute() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--walking-live-directions"]
