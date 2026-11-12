@@ -172,7 +172,7 @@ struct ContentView: View {
                 .foregroundStyle(.primary)
             if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
             #if DEBUG
-            if isDemo {
+            if isDemo && !ProcessInfo.processInfo.arguments.contains("--capture-catalog") {
                 Button { importing = true } label: {
                     Text("Abrir datos de evaluación").frame(minHeight: 44)
                 }

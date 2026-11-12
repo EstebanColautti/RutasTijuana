@@ -217,27 +217,6 @@ struct TripPlannerView: View {
                         }
                         if let error = location.message { Text(error) }
                         if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
-                        if selectingOrigin {
-                            Button { selectingOrigin = false } label: {
-                                Text("Continuar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                            }
-                                .buttonStyle(.borderedProminent)
-                                .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                                .accessibilityIdentifier("trip-continue")
-                                .disabled(origin == nil || working)
-                        } else if working {
-                            ProgressView("Calculando itinerario")
-                            TripActionButton("Cancelar") { invalidate() }.frame(minHeight: 44)
-                        } else {
-                            Button(action: calculate) {
-                                Text(paused ? "Continuar búsqueda" : "Ver trayecto")
-                                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                            }
-                                .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                                .accessibilityIdentifier("trip-calculate")
-                                .disabled(origin == nil || destination == nil)
-                                .frame(minHeight: 44)
-                        }
                         }
                         if let trip {
                             if let error = location.message { Text(error) }
@@ -261,18 +240,18 @@ struct TripPlannerView: View {
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
-                            Button { travelling = true } label: {
-                                Text("Iniciar ruta").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                            }
-                                .accessibilityIdentifier("trip-begin")
-                                .disabled(working)
-                                .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).frame(minHeight: 44)
                         }
                     }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .id("\(trip != nil)-\(selectingOrigin)")
                 .scrollDismissesKeyboard(.interactively)
                 .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    primaryAction
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                }
             }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
@@ -337,6 +316,38 @@ struct TripPlannerView: View {
             Task { await cancelledPlanner?.cancel() }
             search?.cancel()
             location.cancel()
+        }
+    }
+
+    @ViewBuilder private var primaryAction: some View {
+        if trip != nil {
+            Button { travelling = true } label: {
+                Text("Iniciar ruta").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("trip-begin")
+            .disabled(working)
+            .buttonStyle(.borderedProminent)
+        } else if selectingOrigin {
+            Button { selectingOrigin = false } label: {
+                Text("Continuar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("trip-continue")
+            .disabled(origin == nil || working)
+            .buttonStyle(.borderedProminent)
+        } else if working {
+            HStack {
+                ProgressView("Calculando itinerario")
+                Spacer()
+                TripActionButton("Cancelar") { invalidate() }.frame(minHeight: 44)
+            }
+        } else {
+            Button(action: calculate) {
+                Text(paused ? "Continuar búsqueda" : "Ver trayecto")
+                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("trip-calculate")
+            .disabled(origin == nil || destination == nil)
+            .buttonStyle(.borderedProminent)
         }
     }
 
