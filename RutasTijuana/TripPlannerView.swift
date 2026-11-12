@@ -107,6 +107,7 @@ struct TripPlannerView: View {
     @State private var requestingOriginLocation = false
     @State private var query = ""
     @State private var searchExpanded = false
+    @State private var searchMessage = ""
     @State private var selectingOrigin = true
     @State private var places: [MKMapItem] = []
     @State private var message = ""
@@ -184,48 +185,14 @@ struct TripPlannerView: View {
                                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
                         }
                         Button {
-                            searchExpanded.toggle()
+                            searchExpanded = true
                         } label: {
                             Label(selectingOrigin ? "Buscar origen" : "Buscar destino", systemImage: "magnifyingglass")
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
                         .accessibilityIdentifier("trip-search-toggle")
-                        .accessibilityValue(searchExpanded ? "Abierto" : "Cerrado")
                         .disabled(working)
-                        if searchExpanded {
-                        TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query, prompt: Text(""))
-                            .focused($searchFocused)
-                            .accessibilityIdentifier("trip-place-search")
-                            .padding(.horizontal, 12).frame(minHeight: 44)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-                            .contentShape(Rectangle())
-                            .onTapGesture { searchFocused = true }
-                            .submitLabel(.search).onSubmit { findPlaces() }
-                            .disabled(working)
-                        TripActionButton("Buscar lugar") { findPlaces() }.frame(minHeight: 44).disabled(working)
-                        ForEach(Array(places.enumerated()), id: \.offset) { row in
-                            Button {
-                                guard let coordinate = row.element.placemark.location?.coordinate else { return }
-                                requestingOriginLocation = false
-                                location.cancel()
-                                invalidate()
-                                let point = GeoPoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                                if selectingOrigin { origin = point; originName = row.element.name ?? "Origen"; originReference = point; originReferenceUsesLocation = false }
-                                else { destination = point; destinationName = row.element.name ?? "Destino"; destinationReference = point }
-                                places = []
-                                query = ""
-                                searchExpanded = false
-                                camera = .automatic
-                            } label: {
-                                VStack(alignment: .leading) {
-                                    Text(row.element.name ?? "Lugar")
-                                    Text(row.element.placemark.title ?? "").font(.caption)
-                                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                            }.accessibilityIdentifier("trip-place-\(row.offset)")
-                        }
-                        }
                         selectionMap
                         stopSuggestions
                         if let error = location.message { Text(error) }
@@ -295,6 +262,14 @@ struct TripPlannerView: View {
         }
         .tint(.white)
         .sheet(isPresented: $selectingOnMap) { mapSelection }
+        .sheet(isPresented: $searchExpanded, onDismiss: {
+            search?.cancel()
+            searchGeneration = UUID()
+            places = []
+            query = ""
+            searchFocused = false
+            searchMessage = ""
+        }) { searchSheet }
         .fullScreenCover(isPresented: $travelling) {
             if let trip {
                 TripTravelView(trip: trip, destinationName: destinationName, onReplan: { point in
@@ -527,6 +502,53 @@ struct TripPlannerView: View {
         }.disabled(working)
     }
 
+    private var searchSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
+                    .focused($searchFocused)
+                    .accessibilityIdentifier("trip-place-search")
+                    .padding(.horizontal, 12).frame(minHeight: 44)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .submitLabel(.search).onSubmit { findPlaces() }
+                TripActionButton("Buscar lugar") { findPlaces() }.frame(minHeight: 44)
+                if !searchMessage.isEmpty { Text(searchMessage).accessibilityIdentifier("trip-search-status") }
+                List(Array(places.enumerated()), id: \.offset) { row in
+                    Button {
+                        guard let coordinate = row.element.placemark.location?.coordinate else { return }
+                        requestingOriginLocation = false
+                        location.cancel()
+                        invalidate()
+                        let point = GeoPoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                        if selectingOrigin { origin = point; originName = row.element.name ?? "Origen"; originReference = point; originReferenceUsesLocation = false }
+                        else { destination = point; destinationName = row.element.name ?? "Destino"; destinationReference = point }
+                        places = []
+                        query = ""
+                        searchExpanded = false
+                        camera = .automatic
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(row.element.name ?? "Lugar")
+                            Text(row.element.placemark.title ?? "").font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .accessibilityIdentifier("trip-place-\(row.offset)")
+                }
+                .listStyle(.plain)
+            }
+            .padding(16)
+            .navigationTitle(selectingOrigin ? "Buscar origen" : "Buscar destino")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { searchExpanded = false } } }
+        }
+        .tint(.blue)
+        .onChange(of: searchMessage) { _, text in
+            if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
+        }
+    }
+
     private var mapSelection: some View {
         NavigationStack {
             MapReader { proxy in
@@ -620,7 +642,9 @@ struct TripPlannerView: View {
         searchGeneration = token
         let request = MKLocalSearch.Request()
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { places = []; message = "Escribe el nombre de un lugar."; return }
+        guard !text.isEmpty else { places = []; searchMessage = "Escribe el nombre de un lugar."; return }
+        places = []
+        searchMessage = ""
         searchFocused = false
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
@@ -631,7 +655,7 @@ struct TripPlannerView: View {
                 item.name = feature.name
                 return item
             }
-            message = places.isEmpty ? "No se encontraron lugares." : ""
+            searchMessage = places.isEmpty ? "No se encontraron lugares." : ""
             return
         }
         #endif
@@ -643,7 +667,7 @@ struct TripPlannerView: View {
         operation.start { response, error in
             guard searchGeneration == token else { return }
             places = response?.mapItems ?? []
-            message = error == nil ? (places.isEmpty ? "No se encontraron lugares." : "") : "No se pudo buscar. Intenta de nuevo."
+            searchMessage = error == nil ? (places.isEmpty ? "No se encontraron lugares." : "") : "No se pudo buscar. Intenta de nuevo."
         }
     }
 

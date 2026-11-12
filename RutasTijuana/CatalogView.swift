@@ -3,6 +3,7 @@ import MapKit
 import UniformTypeIdentifiers
 
 struct CatalogView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchFocused: Bool
     @ObservedObject private var repository = CatalogRepository.shared
     @State private var privateCatalog: RouteCatalog?
@@ -72,11 +73,12 @@ struct CatalogView: View {
             if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
             if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
         }
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
         .sheet(isPresented: $showingInformation) {
-            if let selection { informationSheet(selection) }
+            if let selection { informationSheet(selection).tint(.blue) }
         }
         .sheet(isPresented: $showingServices) {
-            NavigationStack { services }
+            NavigationStack { services }.tint(.blue)
         }
         .fullScreenCover(item: $plannedRoute) { route in
             ContentView(scenario: route.scenario)
@@ -84,6 +86,10 @@ struct CatalogView: View {
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle(filter == .stops ? "Paradas" : "Recorridos")
         .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .tint(.white)
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             ToolbarItem {

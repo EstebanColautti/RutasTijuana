@@ -202,6 +202,15 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
     }
 
+    func testHomeMapWithoutCatalog() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        tap("Abrir catálogo de recorridos")
+        XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Descargar catálogo"].waitForExistence(timeout: 10))
+    }
+
     func testMainNavigation() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
@@ -211,6 +220,9 @@ final class JourneyTests: XCTestCase {
         tabs.buttons["Mapa"].tap()
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
         tabs.buttons["Inicio"].tap()
+        tap("Abrir mapa para planear viaje")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons.firstMatch.tap()
         tap("Avisos")
         XCTAssertTrue(app.staticTexts["No hay avisos disponibles."].waitForExistence(timeout: 10))
         app.navigationBars.buttons.firstMatch.tap()
@@ -227,7 +239,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(search.isHittable)
         search.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        app.navigationBars.buttons.firstMatch.tap()
+        tap("Cerrar")
         tabs.buttons["Inicio"].tap()
         XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
     }
@@ -309,6 +321,12 @@ final class JourneyTests: XCTestCase {
                 print("[\(screen)] \(issue.auditType): \(element.label), \(element.identifier), \(element.frame)")
                 if issue.auditType == .hitRegion && element.identifier.isEmpty && element.label == "Aviso legal" {
                     return true
+                }
+                if issue.auditType == .contrast {
+                    let tabBar = app.tabBars.firstMatch
+                    let bottom = tabBar.isHittable ? tabBar.frame.minY : app.frame.maxY
+                    if element.frame.minY >= bottom || element.frame.maxY <= app.frame.minY ||
+                        element.frame.minX >= app.frame.maxX || element.frame.maxX <= app.frame.minX { return true }
                 }
             } else {
                 print("[\(screen)] \(issue.auditType): \(issue.compactDescription)")
@@ -399,7 +417,9 @@ final class JourneyTests: XCTestCase {
         let filter = app.buttons["catalog-filter"]
         XCTAssertTrue(filter.waitForExistence(timeout: 5))
         filter.tap()
-        tap("Paradas")
+        let stopOption = app.buttons.matching(identifier: "Paradas").allElementsBoundByIndex.first { $0.isHittable }
+        XCTAssertNotNil(stopOption)
+        stopOption?.tap()
         XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
         XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
         capture("Filtro de paradas")
@@ -524,6 +544,10 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(continueButton.isHittable)
         XCTAssertLessThanOrEqual(continueButton.frame.maxY, app.frame.maxY - 20)
         capture("Origen - puntos de prueba")
+        tap("trip-search-toggle")
+        XCTAssertTrue(app.textFields["trip-place-search"].waitForExistence(timeout: 10))
+        capture("Buscar origen")
+        tap("Cerrar")
         tap("trip-continue")
         XCTAssertTrue(app.navigationBars["A dónde vas"].waitForExistence(timeout: 10))
         let calculateButton = app.buttons["trip-calculate"]
@@ -552,6 +576,8 @@ final class JourneyTests: XCTestCase {
             if begin.isHittable {
                 begin.tap()
                 if app.buttons["trip-finish"].waitForExistence(timeout: 10) {
+                    let map = app.maps.firstMatch
+                    if map.exists { map.pinch(withScale: 0.8, velocity: -1) }
                     capture("Etapa de viaje - puntos de prueba")
                 }
             }

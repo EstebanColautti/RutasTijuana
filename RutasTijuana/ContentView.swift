@@ -193,15 +193,25 @@ struct ContentView: View {
                     .font(.title2.bold())
                     .accessibilityAddTraits(.isHeader)
 
-                Map(initialPosition: .region(MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                    span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                )))
-                .mapStyle(.standard(elevation: .flat))
-                .frame(height: textSize.isAccessibilitySize ? 240 : 340)
-                .clipShape(RoundedRectangle(cornerRadius: 24))
-                .accessibilityLabel("Mapa de Tijuana")
-                .accessibilityHint("Puedes consultar recorridos y elegir una ubicación con las opciones siguientes.")
+                NavigationLink {
+                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                        TripPlannerView(catalog: catalog)
+                    } else {
+                        CatalogView()
+                    }
+                } label: {
+                    Map(initialPosition: .region(MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
+                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                    )))
+                    .mapStyle(.standard(elevation: .flat))
+                    .frame(height: textSize.isAccessibilitySize ? 220 : 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
 
                 if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
                 #if DEBUG
