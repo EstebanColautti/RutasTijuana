@@ -154,7 +154,7 @@ struct TripPlannerView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 Map(position: $camera) { mapContents }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : 0.42))
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : trip == nil ? 0.52 : 0.42))
                     .accessibilityLabel("Mapa de origen, destino e itinerario")
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -373,7 +373,7 @@ struct TripPlannerView: View {
             Marker("Origen", systemImage: "a.circle.fill", coordinate: .init(latitude: origin.latitude, longitude: origin.longitude))
                 .tint(.blue)
         }
-        if let destination {
+        if let destination, !selectingOrigin || trip != nil {
             Marker("Destino", systemImage: "b.circle.fill", coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
                 .tint(colorScheme == .dark ? .indigo : .black)
         }
@@ -394,10 +394,12 @@ struct TripPlannerView: View {
                         }
                     }
                     if let stop = stops.first {
-                        Marker("Sube en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                        Marker("Sube en " + stop.name, systemImage: "a.circle.fill", coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                            .tint(.blue)
                     }
                     if let stop = stops.last {
-                        Marker("Baja en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                        Marker("Baja en " + stop.name, systemImage: "b.circle.fill", coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                            .tint(colorScheme == .dark ? .indigo : .black)
                     }
                 }
             }

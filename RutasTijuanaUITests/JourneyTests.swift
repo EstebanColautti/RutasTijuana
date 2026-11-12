@@ -479,9 +479,15 @@ final class JourneyTests: XCTestCase {
         app.navigationBars.buttons.firstMatch.tap()
         tap("Elegir ubicación inicial")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        let continueButton = app.buttons["trip-continue"]
+        XCTAssertTrue(continueButton.isHittable)
+        XCTAssertLessThanOrEqual(continueButton.frame.maxY, app.frame.maxY - 20)
         capture("Origen - puntos de prueba")
         tap("trip-continue")
         XCTAssertTrue(app.navigationBars["A dónde vas"].waitForExistence(timeout: 10))
+        let calculateButton = app.buttons["trip-calculate"]
+        XCTAssertTrue(calculateButton.isHittable)
+        XCTAssertLessThanOrEqual(calculateButton.frame.maxY, app.frame.maxY - 20)
         capture("Destino - puntos de prueba")
         tap("trip-calculate")
         capture("Cálculo de viaje - puntos de prueba")
