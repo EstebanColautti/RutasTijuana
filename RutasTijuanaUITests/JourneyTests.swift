@@ -323,10 +323,10 @@ final class JourneyTests: XCTestCase {
                     return true
                 }
                 if issue.auditType == .contrast {
-                    let tabBar = app.tabBars.firstMatch
-                    let bottom = tabBar.isHittable ? tabBar.frame.minY : app.frame.maxY
-                    if element.frame.minY >= bottom || element.frame.maxY <= app.frame.minY ||
-                        element.frame.minX >= app.frame.maxX || element.frame.maxX <= app.frame.minX { return true }
+                    let tabBar = self.app.tabBars.firstMatch
+                    let bottom = tabBar.isHittable ? tabBar.frame.minY : self.app.frame.maxY
+                    if element.frame.minY >= bottom || element.frame.maxY <= self.app.frame.minY ||
+                        element.frame.minX >= self.app.frame.maxX || element.frame.maxX <= self.app.frame.minX { return true }
                 }
             } else {
                 print("[\(screen)] \(issue.auditType): \(issue.compactDescription)")
