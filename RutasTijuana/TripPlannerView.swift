@@ -106,6 +106,7 @@ struct TripPlannerView: View {
     @State private var originReferenceUsesLocation = false
     @State private var requestingOriginLocation = false
     @State private var query = ""
+    @State private var searchExpanded = false
     @State private var selectingOrigin = true
     @State private var places: [MKMapItem] = []
     @State private var message = ""
@@ -184,7 +185,17 @@ struct TripPlannerView: View {
                         }
                         selectionMap
                         stopSuggestions
-                        Text(selectingOrigin ? "Buscar origen" : "Buscar destino").font(.subheadline)
+                        Button {
+                            searchExpanded.toggle()
+                        } label: {
+                            Label(selectingOrigin ? "Buscar origen" : "Buscar destino", systemImage: "magnifyingglass")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("trip-search-toggle")
+                        .accessibilityValue(searchExpanded ? "Abierto" : "Cerrado")
+                        .disabled(working)
+                        if searchExpanded {
                         TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query, prompt: Text(""))
                             .focused($searchFocused)
                             .accessibilityIdentifier("trip-place-search")
@@ -207,6 +218,7 @@ struct TripPlannerView: View {
                                 else { destination = point; destinationName = row.element.name ?? "Destino"; destinationReference = point }
                                 places = []
                                 query = ""
+                                searchExpanded = false
                                 camera = .automatic
                             } label: {
                                 VStack(alignment: .leading) {
@@ -214,6 +226,7 @@ struct TripPlannerView: View {
                                     Text(row.element.placemark.title ?? "").font(.caption)
                                 }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
                             }.accessibilityIdentifier("trip-place-\(row.offset)")
+                        }
                         }
                         if let error = location.message { Text(error) }
                         if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
@@ -307,6 +320,7 @@ struct TripPlannerView: View {
             searchGeneration = UUID()
             places = []
             query = ""
+            searchExpanded = false
             message = ""
         }
         .onDisappear {
@@ -599,6 +613,26 @@ struct TripPlannerView: View {
         }
     }
 
+    private func showTrip(_ trip: PlannedTrip, origin: GeoPoint, destination: GeoPoint) {
+        var points = [origin, destination]
+        for leg in trip.legs {
+            switch leg {
+            case .walk(_, _, let route):
+                points.append(contentsOf: route.points)
+            case .ride(let service, let stops):
+                points.append(contentsOf: service.section(through: stops) ?? service.geometry.flatMap { $0 })
+                points.append(contentsOf: stops.map(\.point))
+            }
+        }
+        let valid = points.filter { $0.latitude.isFinite && $0.longitude.isFinite }
+        guard let minLat = valid.map(\.latitude).min(), let maxLat = valid.map(\.latitude).max(),
+              let minLon = valid.map(\.longitude).min(), let maxLon = valid.map(\.longitude).max() else { return }
+        camera = .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: max(0.008, (maxLat - minLat) * 2),
+                                   longitudeDelta: max(0.008, (maxLon - minLon) * 2))))
+    }
+
     private func calculate() {
         guard !working else { return }
         guard let origin, let destination, origin != destination else {
@@ -627,7 +661,10 @@ struct TripPlannerView: View {
                 let result = try await activePlanner.search(from: origin, to: destination)
                 guard !Task.isCancelled else { return }
                 switch result {
-                case .found(let result): trip = result; paused = false; camera = .automatic
+                case .found(let result):
+                    trip = result
+                    paused = false
+                    showTrip(result, origin: origin, destination: destination)
                 case .paused: paused = true; message = "La búsqueda necesita continuar."
                 case .unavailable:
                     trip = nil

@@ -206,6 +206,7 @@ final class JourneyTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
         app.launch()
+        tap("trip-search-toggle")
         let search = app.textFields["trip-place-search"]
         for _ in 0..<8 {
             if search.isHittable { break }
@@ -224,6 +225,7 @@ final class JourneyTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
         app.launch()
+        tap("trip-search-toggle")
         let search = app.textFields["trip-place-search"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         for _ in 0..<8 where !search.isHittable { app.scrollViews.firstMatch.swipeUp() }
