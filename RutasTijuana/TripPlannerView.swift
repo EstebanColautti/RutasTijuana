@@ -155,10 +155,10 @@ struct TripPlannerView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 Map(position: $camera) { mapContents }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : trip == nil ? 0.52 : 0.42))
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : geometry.size.height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42))
                     .accessibilityLabel("Mapa de origen, destino e itinerario")
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                             Text("Datos de evaluación").font(.footnote)
@@ -249,7 +249,7 @@ struct TripPlannerView: View {
                             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
                                 legSummary(row.element)
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                                    .background(.background, in: RoundedRectangle(cornerRadius: 14))
+                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
@@ -258,12 +258,12 @@ struct TripPlannerView: View {
                 }
                 .id("\(trip != nil)-\(selectingOrigin)")
                 .scrollDismissesKeyboard(.interactively)
-                .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                .background(Color(uiColor: .systemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     primaryAction
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
-                        .background(Color(uiColor: .secondarySystemBackground))
+                        .background(Color(uiColor: .systemBackground))
                 }
             }
         }
@@ -271,10 +271,16 @@ struct TripPlannerView: View {
         .preferredColorScheme(testColorScheme)
         .navigationTitle(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .principal) { Text(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas").foregroundStyle(.white).accessibilityAddTraits(.isHeader) } }
         .toolbar {
             if trip != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Editar") { invalidate() }
+                        .foregroundStyle(.white)
                         .frame(minWidth: 44, minHeight: 44)
                         .accessibilityLabel("Cambiar origen o destino")
                         .accessibilityIdentifier("Cambiar origen o destino")
@@ -282,10 +288,12 @@ struct TripPlannerView: View {
             } else if !selectingOrigin {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Cambiar origen") { selectingOrigin = true }
+                        .foregroundStyle(.white)
                         .frame(minHeight: 44).disabled(working)
                 }
             }
         }
+        .tint(.white)
         .sheet(isPresented: $selectingOnMap) { mapSelection }
         .fullScreenCover(isPresented: $travelling) {
             if let trip {
@@ -335,12 +343,20 @@ struct TripPlannerView: View {
 
     @ViewBuilder private var primaryAction: some View {
         if trip != nil {
-            Button { travelling = true } label: {
-                Text("Iniciar ruta").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+            layout {
+                Button { invalidate() } label: {
+                    Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
+                Button { travelling = true } label: {
+                    Text("Empezar viaje").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("trip-begin")
+                .disabled(working)
+                .buttonStyle(.borderedProminent)
             }
-            .accessibilityIdentifier("trip-begin")
-            .disabled(working)
-            .buttonStyle(.borderedProminent)
         } else if selectingOrigin {
             Button { selectingOrigin = false } label: {
                 Text("Continuar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
@@ -546,6 +562,7 @@ struct TripPlannerView: View {
                 }
             }
         }
+        .tint(.blue)
     }
 
     @ViewBuilder private func legSummary(_ leg: TripLeg) -> some View {
@@ -553,11 +570,20 @@ struct TripPlannerView: View {
         case .walk(_, _, let route):
             Label("Camina \(WalkingFormat.distance(route.length)) · \(WalkingFormat.duration(route.duration, arrived: false))", systemImage: "figure.walk")
         case .ride(let service, let stops):
-            VStack(alignment: .leading) {
-                Label(service.name, systemImage: "bus")
-                Text(service.direction ?? "Sentido del recorrido")
-                Text(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")")
-                Text(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")")
+            VStack(alignment: .leading, spacing: 12) {
+                Label(service.name, systemImage: "bus").font(.headline)
+                Text(service.direction ?? "Sentido del recorrido").font(.subheadline)
+                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+                layout {
+                    boardingPoint(
+                        stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")",
+                        symbol: "arrow.up.circle.fill", color: .blue
+                    )
+                    boardingPoint(
+                        stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")",
+                        symbol: "arrow.down.circle.fill", color: .orange
+                    )
+                }
                 if stops.contains(where: \.suggested) {
                     Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
                 }
@@ -566,6 +592,14 @@ struct TripPlannerView: View {
                 }
             }
         }
+    }
+
+    private func boardingPoint(_ title: String, symbol: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: symbol).foregroundStyle(color).accessibilityHidden(true)
+            Text(title).fontWeight(.semibold)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func invalidate() {

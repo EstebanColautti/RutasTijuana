@@ -314,6 +314,15 @@ struct TripTravelView: View {
         .id(model.index)
     }
 
+    private var currentStatus: String {
+        if model.finished { return "Viaje finalizado" }
+        switch model.leg {
+        case .walk: return "Caminata"
+        case .ride: return model.paused ? "Seguimiento pausado" : (model.aboard ? "En transporte" : "Esperando para subir")
+        case nil: return "Trayecto en curso"
+        }
+    }
+
     private var stageProgress: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
@@ -330,10 +339,14 @@ struct TripTravelView: View {
             GeometryReader { geometry in
                 VStack(spacing: 0) {
                     if mapPath.count > 1 {
-                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.28 : 0.42))
+                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.28 : geometry.size.height < 700 ? 0.40 : 0.55))
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Estado actual").font(.headline)
+                                Text(currentStatus).font(.subheadline)
+                            }
                             #if DEBUG
                             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                                 Text("Datos de evaluación").font(.footnote)
@@ -399,12 +412,19 @@ struct TripTravelView: View {
                         .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .id(model.index)
-                    .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                    .background(Color(uiColor: .systemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 }
             }
             .navigationTitle(model.finished ? "Viaje finalizado" : "Trayecto en curso")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { TripActionButton("Finalizar") { model.finish(); dismiss() }.accessibilityIdentifier("trip-finish") }
+            .toolbar {
+                TripActionButton("Finalizar viaje") { model.finish(); dismiss() }
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("trip-finish")
+            }
+            .toolbarBackground(.black, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .fullScreenCover(item: $walking) { destination in
                 WalkingNavigationView(destination: destination, preparedRoute: walkingRoute, onArrival: {
                     walking = nil

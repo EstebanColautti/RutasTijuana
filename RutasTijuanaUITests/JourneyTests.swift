@@ -202,11 +202,42 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
     }
 
+    func testMainNavigation() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
+        app.launch()
+        let tabs = app.tabBars.firstMatch
+        XCTAssertTrue(tabs.buttons["Inicio"].waitForExistence(timeout: 10))
+        tabs.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
+        tabs.buttons["Inicio"].tap()
+        tap("Avisos")
+        XCTAssertTrue(app.staticTexts["No hay avisos disponibles."].waitForExistence(timeout: 10))
+        app.navigationBars.buttons.firstMatch.tap()
+        tabs.buttons["Paradas"].tap()
+        XCTAssertTrue(app.navigationBars["Paradas"].waitForExistence(timeout: 10))
+        tabs.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
+        tap("map-start")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        tap("trip-search-toggle")
+        let search = app.textFields["trip-place-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !search.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(search.isHittable)
+        search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        tabs.buttons["Inicio"].tap()
+        XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
+    }
+
     func testTripManualSearch() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
         app.launch()
         tap("trip-search-toggle")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].exists)
         let search = app.textFields["trip-place-search"]
         for _ in 0..<8 {
             if search.isHittable { break }
@@ -226,6 +257,7 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
         app.launch()
         tap("trip-search-toggle")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].exists)
         let search = app.textFields["trip-place-search"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         for _ in 0..<8 where !search.isHittable { app.scrollViews.firstMatch.swipeUp() }
@@ -471,6 +503,10 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--capture-catalog"]
         app.launch()
         XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
+        tap("Avisos")
+        XCTAssertTrue(app.navigationBars["Avisos"].waitForExistence(timeout: 10))
+        capture("Avisos")
+        app.navigationBars.buttons.firstMatch.tap()
         capture("Inicio")
         tap("Explorar recorridos")
         let route = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@", "catalog-", "catalog-filter", "catalog-information")).firstMatch
@@ -479,7 +515,10 @@ final class JourneyTests: XCTestCase {
         route.tap()
         capture("Recorrido")
         app.navigationBars.buttons.firstMatch.tap()
-        tap("Elegir ubicación inicial")
+        app.tabBars.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 10))
+        capture("Mapa")
+        tap("map-start")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
         let continueButton = app.buttons["trip-continue"]
         XCTAssertTrue(continueButton.isHittable)

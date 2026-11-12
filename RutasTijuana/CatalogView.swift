@@ -25,6 +25,10 @@ struct CatalogView: View {
     @State private var errorMessage: String?
     @State private var camera: MapCameraPosition = .automatic
 
+    init(initialFilter: CatalogFilter = .routes) {
+        _filter = State(initialValue: initialFilter)
+    }
+
     private var matches: [CatalogFeature] {
         let rows = catalog?.matching(query, groupID: groupID, filter: filter) ?? []
         guard let reference else { return rows }
@@ -78,7 +82,8 @@ struct CatalogView: View {
             ContentView(scenario: route.scenario)
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
-        .navigationTitle("Recorridos")
+        .navigationTitle(filter == .stops ? "Paradas" : "Recorridos")
+        .toolbar(.visible, for: .navigationBar)
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             ToolbarItem {
