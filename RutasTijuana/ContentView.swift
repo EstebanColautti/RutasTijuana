@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var scenario: JourneyScenario
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var textSize
     @ObservedObject private var catalogRepository = CatalogRepository.shared
     private var route: TransitRoute { scenario.route }
     @State private var search = ""
@@ -35,6 +36,13 @@ struct ContentView: View {
     @AccessibilityFocusState private var resultFocused: Bool
     private var evaluation: Bool { scenario.fixedOriginID != nil }
     private var isDemo: Bool { scenario.routeID == nil }
+    private var journeyFixture: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--journey-fixture")
+        #else
+        return false
+        #endif
+    }
 
     init(scenario: JourneyScenario = .sample, recent: RecentJourney? = nil) {
         _scenario = State(initialValue: scenario)
@@ -82,7 +90,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if stage == .home { welcome }
+                if stage == .home { welcome.toolbar(.hidden, for: .navigationBar) }
                 else {
                     routeMap
                         .overlay(alignment: .top) {
@@ -110,7 +118,7 @@ struct ContentView: View {
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .tint(actionTint)
-                .presentationBackground(.background)
+                .presentationBackground(Color(uiColor: .secondarySystemBackground))
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -128,7 +136,7 @@ struct ContentView: View {
                 Button("Aceptar", role: .cancel) { importError = nil }
             } message: { Text(importError ?? "") }
             .tint(actionTint)
-            .navigationTitle(stage == .home ? "" : title)
+            .navigationTitle("")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -136,6 +144,9 @@ struct ContentView: View {
                 guard !invalidDestination, stage != .journey,
                       let stop = route.stops.first(where: { $0.id == id }) else { return }
                 select(stop.point)
+            }
+            .onChange(of: stage) { _, next in
+                if next != .home && textSize.isAccessibilitySize { detent = .large }
             }
             #if os(iOS)
             .onChange(of: location.point) { _, point in
@@ -154,57 +165,125 @@ struct ContentView: View {
     }
 
     private var welcomeContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Spacer()
-            Image(systemName: "bus.fill")
-                .font(.system(size: 44)).foregroundStyle(.blue).padding(20)
-                .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
-                .accessibilityHidden(true)
-            Text("Rutas Tijuana").font(.largeTitle.bold())
-            Text("Consulta cómo llegar de un punto A a un punto B en transporte público.")
-                .foregroundStyle(.primary)
-            demoNotice
-            #if DEBUG
-            if isDemo {
-                Button { importing = true } label: {
-                    Text("Abrir datos de evaluación").frame(minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                Button("Evaluar consulta") {
-                    scenario = .evaluation
-                    if ProcessInfo.processInfo.arguments.contains("--evaluation-no-date") {
-                        scenario.updatedAt = nil
-                    }
-                    reset()
-                }.buttonStyle(.bordered).frame(minHeight: 44)
-            }
-            #endif
-            Spacer()
-            if let id = scenario.routeID {
-                Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
-                Text(scenario.name).font(.headline).accessibilityIdentifier(id)
-            } else {
-                NavigationLink { CatalogView() } label: {
-                    Label("Explorar recorridos", systemImage: "map").frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered).controlSize(.large)
-                .accessibilityIdentifier("Explorar recorridos")
-            }
-            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 60, height: 44).accessibilityHidden(true)
+                Text("Rutas Tijuana")
+                    .font(.title.bold())
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 88)
+                    .accessibilityAddTraits(.isHeader)
                 NavigationLink {
-                    TripPlannerView(catalog: catalog)
+                    noticesView
                 } label: {
-                    Text("Planear viaje").frame(minHeight: 44)
+                    Image(systemName: "bell")
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Avisos")
+                .padding(.trailing, 16)
+            }
+            .background(.black)
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("¿A dónde quieres ir hoy?")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+
+                NavigationLink {
+                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                        TripPlannerView(catalog: catalog)
+                    } else {
+                        CatalogView()
+                    }
+                } label: {
+                    Map(initialPosition: .region(MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
+                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                    )))
+                    .mapStyle(.standard(elevation: .flat))
+                    .frame(height: textSize.isAccessibilitySize ? 220 : 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
+
+                if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
+                #if DEBUG
+                if isDemo && !ProcessInfo.processInfo.arguments.contains("--capture-catalog") {
+                    Button { importing = true } label: {
+                        Text("Abrir datos de evaluación").frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Evaluar consulta") {
+                        scenario = .evaluation
+                        if ProcessInfo.processInfo.arguments.contains("--evaluation-no-date") {
+                            scenario.updatedAt = nil
+                        }
+                        reset()
+                    }.buttonStyle(.bordered).frame(minHeight: 44)
+                }
+                #endif
+
+                if let id = scenario.routeID {
+                    Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
+                    Text(scenario.name).font(.headline).accessibilityIdentifier(id)
+                } else {
+                    NavigationLink { CatalogView() } label: {
+                        Label("Explorar recorridos", systemImage: "map")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(actionTint)
+                    .accessibilityIdentifier("Explorar recorridos")
+                }
+                if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                    NavigationLink { TripPlannerView(catalog: catalog) } label: {
+                        Text("Planear viaje").frame(minHeight: 44)
+                    }
+                }
+                Divider()
+                Text("Consultas recientes")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                NavigationLink { recentView } label: {
+                    Label(recents.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityIdentifier("Consultas recientes")
+                if isDemo && !evaluation && !journeyFixture {
+                    Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
+                }
+                Text("Puedes elegir tu ubicación manualmente. No se guarda.")
+                    .font(.footnote).foregroundStyle(.primary)
+                if !evaluation && scenario.routeID == nil && !journeyFixture {
+                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                        NavigationLink { TripPlannerView(catalog: catalog) } label: {
+                            Text("Elegir ubicación inicial").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                        .controlSize(.large)
+                        .accessibilityIdentifier("Elegir ubicación inicial")
+                    } else {
+                        NavigationLink { CatalogView() } label: {
+                            Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                        .controlSize(.large)
+                    }
+                } else {
+                    primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
                 }
             }
-            NavigationLink { recentView } label: {
-                Text("Consultas recientes").frame(minHeight: 44)
-            }
-            Text("Puedes elegir tu ubicación manualmente. No se guarda.")
-                .font(.footnote).foregroundStyle(.primary)
-            primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
+            .padding(24)
         }
-        .padding(24)
     }
 
     private var routeMap: some View {
@@ -256,6 +335,32 @@ struct ContentView: View {
         }
     }
 
+    private var noticesView: some View {
+        let notices = catalogRepository.catalog?.serviceNotices.filter {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } ?? []
+        return Group {
+            if catalogRepository.catalog == nil {
+                ContentUnavailableView("Avisos no disponibles", systemImage: "bell", description: Text("Descarga el catálogo para consultar los avisos."))
+            } else if notices.isEmpty {
+                ContentUnavailableView("Avisos", systemImage: "bell", description: Text("No hay avisos disponibles."))
+            } else {
+                List(Array(notices.enumerated()), id: \.offset) { item in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "circle.fill").font(.caption).foregroundStyle(.blue).accessibilityHidden(true)
+                        Text(item.element)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Avisos")
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .tint(.white)
+    }
+
     private var panel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -271,7 +376,7 @@ struct ContentView: View {
             }
             .padding(16)
         }
-        .frame(maxWidth: .infinity).background(.background)
+        .frame(maxWidth: .infinity).background(Color(uiColor: .secondarySystemBackground))
     }
 
     private var originPanel: some View {
@@ -307,7 +412,7 @@ struct ContentView: View {
             if let stop = route.stops.first(where: { $0.id == originID }) {
                 Label("Origen: \(stop.name)", systemImage: "a.circle")
             }
-            Text("Dónde te bajas").font(.title3.bold())
+            Text("Bájate en").font(.title3.bold())
             Text("Toca el mapa o elige una parada para marcar el destino.")
                 .font(.subheadline).foregroundStyle(.primary)
             searchField
@@ -450,8 +555,9 @@ struct ContentView: View {
         Button { selectStop(stop, isOrigin: isOrigin) } label: {
             Text(stop.name)
                 .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(.background)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .padding(.horizontal, 12)
+                .background(.background, in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
         }
         .accessibilityIdentifier("stop-\(stop.id)")
@@ -573,7 +679,7 @@ struct ContentView: View {
             if !recents.isEmpty {
                 Button("Borrar recientes", role: .destructive) { storeRecents([]) }
             }
-        }.navigationTitle("Consultas recientes").onAppear { storeRecents(recents) }
+        }.navigationTitle("Consultas recientes").toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
     }
 
     private var searchField: some View {

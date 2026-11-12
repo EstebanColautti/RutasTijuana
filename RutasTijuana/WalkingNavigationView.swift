@@ -109,9 +109,10 @@ struct WalkingNavigationView: View {
                                 }
                                 Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
                             }
-                        }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxHeight: .infinity)
+                    .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 }
             }
             .navigationTitle(model.destination.title).navigationBarTitleDisplayMode(.inline)

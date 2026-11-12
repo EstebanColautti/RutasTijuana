@@ -101,8 +101,14 @@ struct TripPlannerView: View {
     @State private var destination: GeoPoint?
     @State private var originName = ""
     @State private var destinationName = ""
+    @State private var originReference: GeoPoint?
+    @State private var destinationReference: GeoPoint?
+    @State private var originReferenceUsesLocation = false
+    @State private var requestingOriginLocation = false
     @State private var query = ""
-    @State private var selectingOrigin = false
+    @State private var searchExpanded = false
+    @State private var searchMessage = ""
+    @State private var selectingOrigin = true
     @State private var places: [MKMapItem] = []
     @State private var message = ""
     @State private var transferCache = TripTransferCache()
@@ -150,79 +156,59 @@ struct TripPlannerView: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 Map(position: $camera) { mapContents }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : 0.42))
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : geometry.size.height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42))
                     .accessibilityLabel("Mapa de origen, destino e itinerario")
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                             Text("Datos de evaluación").font(.footnote)
                         }
                         #endif
-                        Text("Origen").font(.headline).accessibilityAddTraits(.isHeader)
-                        Text(originName.isEmpty ? "Elige desde dónde sales" : originName)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                        TripActionButton("Usar mi ubicación") { invalidate(); location.request() }
-                            .frame(minHeight: 44).disabled(location.isRequesting || working)
-                        Toggle(isOn: $selectingOrigin) {
-                            Text("Buscar un origen").frame(minHeight: 44)
-                        }.disabled(working)
-                        selectionMap
-                        Text("Destino").font(.headline).accessibilityAddTraits(.isHeader)
-                        Text(destinationName.isEmpty ? "Elige a dónde quieres llegar" : destinationName)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                        Text(selectingOrigin ? "Buscar origen" : "Buscar destino").font(.subheadline)
-                        TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query, prompt: Text(""))
-                            .focused($searchFocused)
-                            .accessibilityIdentifier("trip-place-search")
-                            .padding(.horizontal, 12).frame(minHeight: 44)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-                            .contentShape(Rectangle())
-                            .onTapGesture { searchFocused = true }
-                            .submitLabel(.search).onSubmit { findPlaces() }
-                            .disabled(working)
-                        TripActionButton("Buscar lugar") { findPlaces() }.frame(minHeight: 44).disabled(working)
-                        ForEach(Array(places.enumerated()), id: \.offset) { row in
-                            Button {
-                                guard let coordinate = row.element.placemark.location?.coordinate else { return }
+                        if trip == nil {
+                        if selectingOrigin {
+                            Text("Desde dónde sales").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+                            Text(originName.isEmpty ? "Elige desde dónde sales" : originName)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                                .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                            TripActionButton("Usar mi ubicación") {
                                 invalidate()
-                                let point = GeoPoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                                if selectingOrigin { origin = point; originName = row.element.name ?? "Origen"; selectingOrigin = false }
-                                else { destination = point; destinationName = row.element.name ?? "Destino" }
-                                places = []
-                                query = ""
-                                camera = .automatic
-                            } label: {
-                                VStack(alignment: .leading) {
-                                    Text(row.element.name ?? "Lugar")
-                                    Text(row.element.placemark.title ?? "").font(.caption)
-                                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                            }.accessibilityIdentifier("trip-place-\(row.offset)")
+                                requestingOriginLocation = true
+                                location.request()
+                            }
+                                .frame(minHeight: 44).disabled(location.isRequesting || working)
+                        } else {
+                            Label(originName.isEmpty ? "Origen" : "Origen: \(originName)", systemImage: "a.circle")
+                            Text("A dónde vas").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+                            Text(destinationName.isEmpty ? "Elige a dónde quieres llegar" : destinationName)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                                .background(.background, in: RoundedRectangle(cornerRadius: 12))
                         }
+                        Button {
+                            searchExpanded = true
+                        } label: {
+                            Label(selectingOrigin ? "Buscar origen" : "Buscar destino", systemImage: "magnifyingglass")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("trip-search-toggle")
+                        .disabled(working)
+                        selectionMap
+                        stopSuggestions
                         if let error = location.message { Text(error) }
                         if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
-                        if working {
-                            ProgressView("Calculando itinerario")
-                            TripActionButton("Cancelar") { invalidate() }.frame(minHeight: 44)
-                        } else {
-                            Button(action: calculate) {
-                                Text(paused ? "Continuar búsqueda" : "Calcular viaje")
-                                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                            }
-                                .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                                .accessibilityIdentifier("trip-calculate")
-                                .disabled(origin == nil || destination == nil)
-                                .frame(minHeight: 44)
                         }
                         if let trip {
-                            Text("Ruta recomendada").font(.title2.bold())
+                            if let error = location.message { Text(error) }
+                            if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
+                            Text(primaryService?.name ?? "Ruta recomendada").font(.title2.bold())
                                 .accessibilityAddTraits(.isHeader)
                                 .accessibilityFocused($resultFocused)
                                 .accessibilityIdentifier("trip-result")
                                 .onAppear { resultFocused = true }
+                            if let direction = primaryService?.direction, !direction.isEmpty {
+                                Text(direction).font(.subheadline)
+                            }
                             Text("\(trip.transfers) \(trip.transfers == 1 ? "transbordo" : "transbordos") · \(WalkingFormat.distance(trip.walkingMeters)) a pie")
                             if trip.exceedsPreferences {
                                 Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
@@ -230,49 +216,95 @@ struct TripPlannerView: View {
                             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
                                 legSummary(row.element)
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                                    .background(.background, in: RoundedRectangle(cornerRadius: 14))
+                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
-                            Button { travelling = true } label: {
-                                Text("Iniciar viaje").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                            }
-                                .accessibilityIdentifier("trip-begin")
-                                .disabled(working)
-                                .buttonStyle(.borderedProminent).tint(Color(red: 0.02, green: 0.29, blue: 0.57)).frame(minHeight: 44)
                         }
-                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .id("\(trip != nil)-\(selectingOrigin)")
                 .scrollDismissesKeyboard(.interactively)
-                .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                .background(Color(uiColor: .systemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    primaryAction
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Color(uiColor: .systemBackground))
+                }
             }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
         .preferredColorScheme(testColorScheme)
-        .navigationTitle("Planear viaje")
+        .navigationTitle(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .principal) { Text(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas").foregroundStyle(.white).accessibilityAddTraits(.isHeader) } }
+        .toolbar {
+            if trip != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Editar") { invalidate() }
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel("Cambiar origen o destino")
+                        .accessibilityIdentifier("Cambiar origen o destino")
+                }
+            } else if !selectingOrigin {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Cambiar origen") { selectingOrigin = true }
+                        .foregroundStyle(.white)
+                        .frame(minHeight: 44).disabled(working)
+                }
+            }
+        }
+        .tint(.white)
         .sheet(isPresented: $selectingOnMap) { mapSelection }
+        .sheet(isPresented: $searchExpanded, onDismiss: {
+            search?.cancel()
+            searchGeneration = UUID()
+            places = []
+            query = ""
+            searchFocused = false
+            searchMessage = ""
+        }) { searchSheet }
         .fullScreenCover(isPresented: $travelling) {
             if let trip {
                 TripTravelView(trip: trip, destinationName: destinationName, onReplan: { point in
                     invalidate()
                     origin = point
                     originName = "Tu ubicación"
+                    originReference = nil
+                    originReferenceUsesLocation = false
                     travelling = false
                     calculate()
                 })
             }
         }
         .onChange(of: location.point) { _, point in
-            if let point { invalidate(); origin = point; originName = "Tu ubicación" }
+            guard selectingOrigin, requestingOriginLocation, let point else { return }
+            requestingOriginLocation = false
+            invalidate(); origin = point; originName = "Tu ubicación"
+            if let accuracy = location.horizontalAccuracy, accuracy >= 0, accuracy <= 100 {
+                originReference = point; originReferenceUsesLocation = true
+            } else {
+                originReference = nil; originReferenceUsesLocation = false
+            }
         }
         .onChange(of: message) { _, text in
             if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
         }
         .onChange(of: selectingOrigin) { _, _ in
+            requestingOriginLocation = false
+            location.cancel()
             search?.cancel()
             searchGeneration = UUID()
             places = []
+            query = ""
+            searchExpanded = false
+            message = ""
         }
         .onDisappear {
             searchGeneration = UUID()
@@ -284,6 +316,46 @@ struct TripPlannerView: View {
         }
     }
 
+    @ViewBuilder private var primaryAction: some View {
+        if trip != nil {
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+            layout {
+                Button { invalidate() } label: {
+                    Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
+                Button { travelling = true } label: {
+                    Text("Empezar viaje").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("trip-begin")
+                .disabled(working)
+                .buttonStyle(.borderedProminent)
+            }
+        } else if selectingOrigin {
+            Button { selectingOrigin = false } label: {
+                Text("Continuar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("trip-continue")
+            .disabled(origin == nil || working)
+            .buttonStyle(.borderedProminent)
+        } else if working {
+            HStack {
+                ProgressView("Calculando itinerario")
+                Spacer()
+                TripActionButton("Cancelar") { invalidate() }.frame(minHeight: 44)
+            }
+        } else {
+            Button(action: calculate) {
+                Text(paused ? "Continuar búsqueda" : "Ver trayecto")
+                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("trip-calculate")
+            .disabled(origin == nil || destination == nil)
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
     private var testColorScheme: ColorScheme? {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("--trip-dark") ? .dark : nil
@@ -292,13 +364,23 @@ struct TripPlannerView: View {
         #endif
     }
 
+    private var primaryService: TripService? {
+        guard let trip else { return nil }
+        for leg in trip.legs {
+            if case .ride(let service, _) = leg { return service }
+        }
+        return nil
+    }
+
     @MapContentBuilder private var mapContents: some MapContent {
 
         if let origin {
-            Marker("Origen", coordinate: .init(latitude: origin.latitude, longitude: origin.longitude))
+            Marker("Origen", systemImage: "a.circle.fill", coordinate: .init(latitude: origin.latitude, longitude: origin.longitude))
+                .tint(.blue)
         }
-        if let destination {
-            Marker("Destino", coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
+        if let destination, !selectingOrigin || trip != nil {
+            Marker("Destino", systemImage: "b.circle.fill", coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
+                .tint(colorScheme == .dark ? .indigo : .black)
         }
         if let trip {
             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
@@ -317,22 +399,154 @@ struct TripPlannerView: View {
                         }
                     }
                     if let stop = stops.first {
-                        Marker("Sube en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                        Marker("Sube en " + stop.name, systemImage: "a.circle.fill", coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                            .tint(.blue)
                     }
                     if let stop = stops.last {
-                        Marker("Baja en " + stop.name, coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                        Marker("Baja en " + stop.name, systemImage: "b.circle.fill", coordinate: .init(latitude: stop.point.latitude, longitude: stop.point.longitude))
+                            .tint(colorScheme == .dark ? .indigo : .black)
                     }
                 }
             }
         }
     }
 
+    private struct NearbyStop: Identifiable {
+        let feature: CatalogFeature
+        let distance: Double
+        var id: String { feature.id }
+    }
+
+    private var catalogHasStops: Bool {
+        catalog.features.contains { feature in
+            guard feature.kind == .stop, case .point = feature.geometry else { return false }
+            return true
+        }
+    }
+
+    private var nearbyStops: [NearbyStop] {
+        let reference = selectingOrigin ? originReference : destinationReference
+        guard let reference, reference.latitude.isFinite, reference.longitude.isFinite,
+              (-90...90).contains(reference.latitude), (-180...180).contains(reference.longitude) else { return [] }
+        return catalog.features.compactMap { feature in
+            guard feature.kind == .stop, case .point(let position) = feature.geometry else { return nil }
+            let distance = position.point.distance(to: reference)
+            guard distance.isFinite, distance <= 1_000 else { return nil }
+            return NearbyStop(feature: feature, distance: distance)
+        }.sorted { $0.distance == $1.distance ? $0.id < $1.id : $0.distance < $1.distance }.prefix(3).map { $0 }
+    }
+
+    private func isSelected(_ feature: CatalogFeature) -> Bool {
+        guard case .point(let coordinate) = feature.geometry else { return false }
+        return (selectingOrigin ? origin : destination) == coordinate.point
+    }
+
+    @ViewBuilder private var stopSuggestions: some View {
+        if !catalogHasStops {
+            Text("Puedes elegir un lugar o seleccionarlo en el mapa.")
+                .font(.footnote)
+        } else if (selectingOrigin ? originReference : destinationReference) == nil {
+            Text("Elige un punto en el mapa o busca un lugar para ver paradas cercanas.")
+                .font(.footnote)
+        } else if nearbyStops.isEmpty {
+            Text("No hay paradas cercanas a este punto. Puedes elegir otro lugar.")
+                .font(.footnote)
+        } else {
+            Text("Paradas cercanas").font(.headline).accessibilityAddTraits(.isHeader)
+            if selectingOrigin && originReferenceUsesLocation {
+                Text("Al elegir una parada, el viaje comenzará desde ella; no se incluye la caminata desde tu ubicación.").font(.footnote)
+            }
+            ForEach(nearbyStops) { item in
+                Button {
+                    guard case .point(let coordinate) = item.feature.geometry else { return }
+                    requestingOriginLocation = false
+                    location.cancel()
+                    search?.cancel()
+                    searchGeneration = UUID()
+                    invalidate()
+                    if selectingOrigin {
+                        origin = coordinate.point; originName = item.feature.name
+                    } else {
+                        destination = coordinate.point; destinationName = item.feature.name
+                    }
+                    places = []; query = ""; searchFocused = false; camera = .automatic
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "bus.fill").accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.feature.name).fontWeight(.medium)
+                            Text("A \(WalkingFormat.distance(item.distance)) en línea recta").font(.caption)
+                        }
+                        Spacer(minLength: 0)
+                        if isSelected(item.feature) {
+                            Image(systemName: "checkmark").accessibilityLabel("Seleccionada")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(12).background(.background, in: RoundedRectangle(cornerRadius: 12))
+                    .contentShape(Rectangle())
+                }
+                .accessibilityValue(isSelected(item.feature) ? "Seleccionada" : "")
+                .accessibilityIdentifier("trip-stop-\(item.feature.id)")
+            }
+        }
+    }
+
     private var selectionMap: some View {
         TripActionButton(selectingOrigin ? "Elegir origen en el mapa" : "Elegir destino en el mapa") {
+            requestingOriginLocation = false
             location.cancel()
             mapPoint = selectingOrigin ? origin : destination
             selectingOnMap = true
         }.disabled(working)
+    }
+
+    private var searchSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
+                    .focused($searchFocused)
+                    .accessibilityIdentifier("trip-place-search")
+                    .padding(.horizontal, 12).frame(minHeight: 44)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .submitLabel(.search).onSubmit { findPlaces() }
+                TripActionButton("Buscar lugar") { findPlaces() }.frame(minHeight: 44)
+                if !searchMessage.isEmpty { Text(searchMessage).accessibilityIdentifier("trip-search-status") }
+                List(Array(places.enumerated()), id: \.offset) { row in
+                    Button {
+                        guard let coordinate = row.element.placemark.location?.coordinate else { return }
+                        requestingOriginLocation = false
+                        location.cancel()
+                        invalidate()
+                        let point = GeoPoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                        if selectingOrigin { origin = point; originName = row.element.name ?? "Origen"; originReference = point; originReferenceUsesLocation = false }
+                        else { destination = point; destinationName = row.element.name ?? "Destino"; destinationReference = point }
+                        places = []
+                        query = ""
+                        searchExpanded = false
+                        camera = .automatic
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(row.element.name ?? "Lugar")
+                            Text(row.element.placemark.title ?? "").font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .accessibilityIdentifier("trip-place-\(row.offset)")
+                }
+                .listStyle(.plain)
+            }
+            .padding(16)
+            .navigationTitle(selectingOrigin ? "Buscar origen" : "Buscar destino")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { searchExpanded = false } } }
+        }
+        .tint(.blue)
+        .onChange(of: searchMessage) { _, text in
+            if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
+        }
     }
 
     private var mapSelection: some View {
@@ -362,14 +576,15 @@ struct TripPlannerView: View {
                         searchGeneration = UUID()
                         places = []
                         query = ""
-                        if selectingOrigin { origin = mapPoint; originName = "Origen en el mapa"; selectingOrigin = false }
-                        else { destination = mapPoint; destinationName = "Destino en el mapa" }
+                        if selectingOrigin { origin = mapPoint; originName = "Origen en el mapa"; originReference = mapPoint; originReferenceUsesLocation = false }
+                        else { destination = mapPoint; destinationName = "Destino en el mapa"; destinationReference = mapPoint }
                         camera = .automatic
                         selectingOnMap = false
                     }.disabled(mapPoint == nil)
                 }
             }
         }
+        .tint(.blue)
     }
 
     @ViewBuilder private func legSummary(_ leg: TripLeg) -> some View {
@@ -377,11 +592,20 @@ struct TripPlannerView: View {
         case .walk(_, _, let route):
             Label("Camina \(WalkingFormat.distance(route.length)) · \(WalkingFormat.duration(route.duration, arrived: false))", systemImage: "figure.walk")
         case .ride(let service, let stops):
-            VStack(alignment: .leading) {
-                Label(service.name, systemImage: "bus")
-                Text(service.direction ?? "Sentido del recorrido")
-                Text(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")")
-                Text(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")")
+            VStack(alignment: .leading, spacing: 12) {
+                Label(service.name, systemImage: "bus").font(.headline)
+                Text(service.direction ?? "Sentido del recorrido").font(.subheadline)
+                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+                layout {
+                    boardingPoint(
+                        stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")",
+                        symbol: "arrow.up.circle.fill", color: .blue
+                    )
+                    boardingPoint(
+                        stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")",
+                        symbol: "arrow.down.circle.fill", color: .orange
+                    )
+                }
                 if stops.contains(where: \.suggested) {
                     Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
                 }
@@ -390,6 +614,14 @@ struct TripPlannerView: View {
                 }
             }
         }
+    }
+
+    private func boardingPoint(_ title: String, symbol: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: symbol).foregroundStyle(color).accessibilityHidden(true)
+            Text(title).fontWeight(.semibold)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func invalidate() {
@@ -410,7 +642,9 @@ struct TripPlannerView: View {
         searchGeneration = token
         let request = MKLocalSearch.Request()
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { places = []; message = "Escribe el nombre de un lugar."; return }
+        guard !text.isEmpty else { places = []; searchMessage = "Escribe el nombre de un lugar."; return }
+        places = []
+        searchMessage = ""
         searchFocused = false
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
@@ -421,7 +655,7 @@ struct TripPlannerView: View {
                 item.name = feature.name
                 return item
             }
-            message = places.isEmpty ? "No se encontraron lugares." : ""
+            searchMessage = places.isEmpty ? "No se encontraron lugares." : ""
             return
         }
         #endif
@@ -433,8 +667,28 @@ struct TripPlannerView: View {
         operation.start { response, error in
             guard searchGeneration == token else { return }
             places = response?.mapItems ?? []
-            message = error == nil ? (places.isEmpty ? "No se encontraron lugares." : "") : "No se pudo buscar. Intenta de nuevo."
+            searchMessage = error == nil ? (places.isEmpty ? "No se encontraron lugares." : "") : "No se pudo buscar. Intenta de nuevo."
         }
+    }
+
+    private func showTrip(_ trip: PlannedTrip, origin: GeoPoint, destination: GeoPoint) {
+        var points = [origin, destination]
+        for leg in trip.legs {
+            switch leg {
+            case .walk(_, _, let route):
+                points.append(contentsOf: route.points)
+            case .ride(let service, let stops):
+                points.append(contentsOf: service.section(through: stops) ?? service.geometry.flatMap { $0 })
+                points.append(contentsOf: stops.map(\.point))
+            }
+        }
+        let valid = points.filter { $0.latitude.isFinite && $0.longitude.isFinite }
+        guard let minLat = valid.map(\.latitude).min(), let maxLat = valid.map(\.latitude).max(),
+              let minLon = valid.map(\.longitude).min(), let maxLon = valid.map(\.longitude).max() else { return }
+        camera = .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: max(0.008, (maxLat - minLat) * 2),
+                                   longitudeDelta: max(0.008, (maxLon - minLon) * 2))))
     }
 
     private func calculate() {
@@ -465,7 +719,10 @@ struct TripPlannerView: View {
                 let result = try await activePlanner.search(from: origin, to: destination)
                 guard !Task.isCancelled else { return }
                 switch result {
-                case .found(let result): trip = result; paused = false; camera = .automatic
+                case .found(let result):
+                    trip = result
+                    paused = false
+                    showTrip(result, origin: origin, destination: destination)
                 case .paused: paused = true; message = "La búsqueda necesita continuar."
                 case .unavailable:
                     trip = nil

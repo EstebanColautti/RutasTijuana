@@ -5,7 +5,7 @@ final class JourneyTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app.launchArguments = ["--ui-testing"]
+        app.launchArguments = ["--ui-testing", "--journey-fixture"]
         app.launch()
     }
 
@@ -68,7 +68,7 @@ final class JourneyTests: XCTestCase {
 
     func testCatalogAndWalkingAccessibility() throws {
         app.terminate()
-        app.launchArguments = ["--ui-testing", "--catalog-info-sample", "--walking-fixture"]
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--catalog-info-sample", "--walking-fixture"]
         app.launch()
         tap("Explorar recorridos")
         let search = app.textFields["catalog-search"]
@@ -111,7 +111,7 @@ final class JourneyTests: XCTestCase {
         ]
         for size in sizes {
             app.terminate()
-            app.launchArguments = ["--ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategory" + size]
+            app.launchArguments = ["--journey-fixture", "--ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategory" + size]
             app.launch()
             tap("Elegir ubicación inicial")
             tap("stop-demo-1")
@@ -143,6 +143,7 @@ final class JourneyTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
         app.launch()
+        tap("trip-continue")
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts.matching(identifier: "trip-result").count, 1)
@@ -169,6 +170,14 @@ final class JourneyTests: XCTestCase {
         capture("Viaje combinado")
         tap("Terminar")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+        tap("Cambiar origen o destino")
+        XCTAssertTrue(app.staticTexts["Destino de ejemplo"].waitForExistence(timeout: 5))
+        tap("Cambiar origen")
+        XCTAssertTrue(app.staticTexts["Origen de ejemplo"].waitForExistence(timeout: 5))
+        tap("trip-continue")
+        XCTAssertTrue(app.staticTexts["Destino de ejemplo"].waitForExistence(timeout: 5))
+        tap("trip-calculate")
+        XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
     }
 
     func testCombinedTripLargeText() {
@@ -176,6 +185,7 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--trip-fixture", "--trip-dark",
                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
+        tap("trip-continue")
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
         for _ in 0..<8 {
@@ -192,13 +202,54 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
     }
 
+    func testHomeMapWithoutCatalog() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        tap("Abrir catálogo de recorridos")
+        XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Descargar catálogo"].waitForExistence(timeout: 10))
+    }
+
+    func testMainNavigation() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
+        app.launch()
+        let tabs = app.tabBars.firstMatch
+        XCTAssertTrue(tabs.buttons["Inicio"].waitForExistence(timeout: 10))
+        tabs.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
+        tabs.buttons["Inicio"].tap()
+        tap("Abrir mapa para planear viaje")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons.firstMatch.tap()
+        tap("Avisos")
+        XCTAssertTrue(app.staticTexts["No hay avisos disponibles."].waitForExistence(timeout: 10))
+        app.navigationBars.buttons.firstMatch.tap()
+        tabs.buttons["Paradas"].tap()
+        XCTAssertTrue(app.navigationBars["Paradas"].waitForExistence(timeout: 10))
+        tabs.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
+        tap("map-start")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        tap("trip-search-toggle")
+        let search = app.textFields["trip-place-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !search.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(search.isHittable)
+        search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        tap("Cerrar")
+        tabs.buttons["Inicio"].tap()
+        XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
+    }
+
     func testTripManualSearch() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture"]
         app.launch()
-        let originToggle = app.switches["Buscar un origen"]
-        XCTAssertTrue(originToggle.waitForExistence(timeout: 5))
-        originToggle.tap()
+        tap("trip-search-toggle")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].exists)
         let search = app.textFields["trip-place-search"]
         for _ in 0..<8 {
             if search.isHittable { break }
@@ -207,15 +258,42 @@ final class JourneyTests: XCTestCase {
         search.tap()
         search.typeText("Parada 1\n")
         tap("trip-place-0")
+        tap("trip-continue")
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
         capture("Consulta con origen manual")
+    }
+
+    func testNearbyStopSelectionKeepsSuggestions() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--trip-fixture"]
+        app.launch()
+        tap("trip-search-toggle")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].exists)
+        let search = app.textFields["trip-place-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !search.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        search.tap()
+        search.typeText("Parada 1\n")
+        tap("trip-place-0")
+        let stop = app.buttons["trip-stop-trip-stop-0"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 5))
+        XCTAssertTrue(stop.label.contains("en línea recta"))
+        let description = stop.label
+        tap("trip-stop-trip-stop-0")
+        XCTAssertTrue(stop.waitForExistence(timeout: 5))
+        XCTAssertTrue(stop.label.contains(description))
+        XCTAssertEqual(stop.value as? String, "Seleccionada")
+        XCTAssertTrue(app.staticTexts["Paradas cercanas"].exists)
+        tap("trip-continue")
+        XCTAssertTrue(app.navigationBars["A dónde vas"].waitForExistence(timeout: 5))
     }
 
     func testTripImpreciseLocation() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--trip-fixture", "--trip-imprecise"]
         app.launch()
+        tap("trip-continue")
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
         tap("trip-begin")
@@ -244,6 +322,12 @@ final class JourneyTests: XCTestCase {
                 if issue.auditType == .hitRegion && element.identifier.isEmpty && element.label == "Aviso legal" {
                     return true
                 }
+                if issue.auditType == .contrast {
+                    let tabBar = self.app.tabBars.firstMatch
+                    let bottom = tabBar.isHittable ? tabBar.frame.minY : self.app.frame.maxY
+                    if element.frame.minY >= bottom || element.frame.maxY <= self.app.frame.minY ||
+                        element.frame.minX >= self.app.frame.maxX || element.frame.maxX <= self.app.frame.minX { return true }
+                }
             } else {
                 print("[\(screen)] \(issue.auditType): \(issue.compactDescription)")
             }
@@ -266,7 +350,7 @@ final class JourneyTests: XCTestCase {
 
     func testWalkingGuide() {
         app.terminate()
-        app.launchArguments = ["--ui-testing", "--walking-fixture"]
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--walking-fixture"]
         app.launch()
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
@@ -287,7 +371,7 @@ final class JourneyTests: XCTestCase {
 
     func testWalkingFailure() {
         app.terminate()
-        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-error"]
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--walking-fixture", "--walking-error"]
         app.launch()
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
@@ -305,7 +389,7 @@ final class JourneyTests: XCTestCase {
 
     func testWalkingWarningAndLargeText() {
         app.terminate()
-        app.launchArguments = ["--ui-testing", "--walking-fixture", "--walking-gap", "--walking-long", "--walking-dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--walking-fixture", "--walking-gap", "--walking-long", "--walking-dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
@@ -333,7 +417,9 @@ final class JourneyTests: XCTestCase {
         let filter = app.buttons["catalog-filter"]
         XCTAssertTrue(filter.waitForExistence(timeout: 5))
         filter.tap()
-        tap("Paradas")
+        let stopOption = app.buttons.matching(identifier: "Paradas").allElementsBoundByIndex.first { $0.isHittable }
+        XCTAssertNotNil(stopOption)
+        stopOption?.tap()
         XCTAssertFalse(app.buttons["catalog-sample-route"].exists)
         XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 5))
         capture("Filtro de paradas")
@@ -371,7 +457,7 @@ final class JourneyTests: XCTestCase {
 
     func testSearchWithoutConnection() {
         app.terminate()
-        app.launchArguments = ["--offline"]
+        app.launchArguments = ["--journey-fixture", "--offline"]
         app.launch()
         tap("Elegir ubicación inicial")
         XCTAssertTrue(app.staticTexts.matching(identifier: "Sin conexión · Puedes elegir de la lista").firstMatch.waitForExistence(timeout: 5))
@@ -437,6 +523,10 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--capture-catalog"]
         app.launch()
         XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
+        tap("Avisos")
+        XCTAssertTrue(app.navigationBars["Avisos"].waitForExistence(timeout: 10))
+        capture("Avisos")
+        app.navigationBars.buttons.firstMatch.tap()
         capture("Inicio")
         tap("Explorar recorridos")
         let route = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@", "catalog-", "catalog-filter", "catalog-information")).firstMatch
@@ -445,9 +535,25 @@ final class JourneyTests: XCTestCase {
         route.tap()
         capture("Recorrido")
         app.navigationBars.buttons.firstMatch.tap()
-        tap("Planear viaje")
-        XCTAssertTrue(app.navigationBars["Planear viaje"].waitForExistence(timeout: 10))
-        capture("Planear viaje - puntos de prueba")
+        app.tabBars.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 10))
+        capture("Mapa")
+        tap("map-start")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        let continueButton = app.buttons["trip-continue"]
+        XCTAssertTrue(continueButton.isHittable)
+        XCTAssertLessThanOrEqual(continueButton.frame.maxY, app.frame.maxY - 20)
+        capture("Origen - puntos de prueba")
+        tap("trip-search-toggle")
+        XCTAssertTrue(app.textFields["trip-place-search"].waitForExistence(timeout: 10))
+        capture("Buscar origen")
+        tap("Cerrar")
+        tap("trip-continue")
+        XCTAssertTrue(app.navigationBars["A dónde vas"].waitForExistence(timeout: 10))
+        let calculateButton = app.buttons["trip-calculate"]
+        XCTAssertTrue(calculateButton.isHittable)
+        XCTAssertLessThanOrEqual(calculateButton.frame.maxY, app.frame.maxY - 20)
+        capture("Destino - puntos de prueba")
         tap("trip-calculate")
         capture("Cálculo de viaje - puntos de prueba")
         let result = app.staticTexts["trip-result"]
@@ -470,6 +576,8 @@ final class JourneyTests: XCTestCase {
             if begin.isHittable {
                 begin.tap()
                 if app.buttons["trip-finish"].waitForExistence(timeout: 10) {
+                    let map = app.maps.firstMatch
+                    if map.exists { map.pinch(withScale: 0.8, velocity: -1) }
                     capture("Etapa de viaje - puntos de prueba")
                 }
             }
@@ -478,7 +586,7 @@ final class JourneyTests: XCTestCase {
 
     func testWalkingLiveRoute() {
         app.terminate()
-        app.launchArguments = ["--ui-testing", "--walking-live-directions"]
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--walking-live-directions"]
         app.launch()
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
