@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var scenario: JourneyScenario
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var textSize
     @ObservedObject private var catalogRepository = CatalogRepository.shared
     private var route: TransitRoute { scenario.route }
     @State private var search = ""
@@ -143,6 +144,9 @@ struct ContentView: View {
                 guard !invalidDestination, stage != .journey,
                       let stop = route.stops.first(where: { $0.id == id }) else { return }
                 select(stop.point)
+            }
+            .onChange(of: stage) { _, next in
+                if next != .home && textSize.isAccessibilitySize { detent = .large }
             }
             #if os(iOS)
             .onChange(of: location.point) { _, point in

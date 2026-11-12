@@ -158,7 +158,7 @@ struct TripPlannerView: View {
                     .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : trip == nil ? 0.52 : 0.42))
                     .accessibilityLabel("Mapa de origen, destino e itinerario")
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                             Text("Datos de evaluación").font(.footnote)
@@ -183,8 +183,6 @@ struct TripPlannerView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
                         }
-                        selectionMap
-                        stopSuggestions
                         Button {
                             searchExpanded.toggle()
                         } label: {
@@ -228,6 +226,8 @@ struct TripPlannerView: View {
                             }.accessibilityIdentifier("trip-place-\(row.offset)")
                         }
                         }
+                        selectionMap
+                        stopSuggestions
                         if let error = location.message { Text(error) }
                         if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
                         }
@@ -254,7 +254,7 @@ struct TripPlannerView: View {
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
                         }
-                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .id("\(trip != nil)-\(selectingOrigin)")
                 .scrollDismissesKeyboard(.interactively)
