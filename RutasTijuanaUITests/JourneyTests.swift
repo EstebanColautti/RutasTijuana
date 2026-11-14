@@ -534,6 +534,17 @@ final class JourneyTests: XCTestCase {
         capture("Catálogo")
         route.tap()
         capture("Recorrido")
+        let favorite = app.buttons["favorite-toggle"]
+        XCTAssertTrue(favorite.waitForExistence(timeout: 10))
+        if favorite.label == "Quitar de favoritos" { favorite.tap() }
+        favorite.tap()
+        XCTAssertEqual(favorite.label, "Quitar de favoritos")
+        capture("Recorrido guardado")
+        app.navigationBars.buttons.firstMatch.tap()
+        tap("Favoritos")
+        XCTAssertTrue(app.navigationBars["Favoritos"].waitForExistence(timeout: 10))
+        XCTAssertTrue(route.waitForExistence(timeout: 10))
+        capture("Favoritos")
         app.navigationBars.buttons.firstMatch.tap()
         app.tabBars.buttons["Mapa"].tap()
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 10))
