@@ -4,6 +4,14 @@ func check(_ condition: Bool, _ message: String) {
     guard condition else { fatalError(message) }
 }
 
+var favorites = FavoriteRoutes.toggle("ruta-1", in: Data())
+check(FavoriteRoutes.decode(favorites) == ["ruta-1"], "Guardar favorito")
+favorites = FavoriteRoutes.toggle("ruta-2", in: favorites)
+favorites = FavoriteRoutes.toggle("ruta-1", in: favorites)
+check(FavoriteRoutes.decode(favorites) == ["ruta-2"], "Quitar favorito sin afectar otros")
+check(FavoriteRoutes.decode(Data([0xff])).isEmpty, "Recuperar favoritos inválidos")
+print("Pruebas de favoritos correctas")
+
 let route = TransitRoute.demonstration
 check(Set(route.stops.map(\.id)).count == route.stops.count, "Identificadores duplicados")
 check(route.journey(from: "demo-1", to: "demo-4")?.map(\.id) == ["demo-1", "demo-2", "demo-3", "demo-4"], "Orden del recorrido")

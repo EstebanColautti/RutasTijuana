@@ -248,6 +248,12 @@ struct ContentView: View {
                     }
                 }
                 Divider()
+                NavigationLink { CatalogView(favoritesOnly: true) } label: {
+                    Label("Favoritos", systemImage: "star")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .foregroundStyle(actionTint)
+                .accessibilityIdentifier("Favoritos")
                 Text("Consultas recientes")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)

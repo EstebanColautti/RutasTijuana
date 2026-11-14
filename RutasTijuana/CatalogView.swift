@@ -6,6 +6,8 @@ struct CatalogView: View {
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchFocused: Bool
     @ObservedObject private var repository = CatalogRepository.shared
+    @AppStorage("favorite-routes") private var favoriteData = Data()
+    private let favoritesOnly: Bool
     @State private var privateCatalog: RouteCatalog?
     private var catalog: RouteCatalog? { privateCatalog ?? repository.catalog }
     @State private var query = ""
@@ -26,12 +28,14 @@ struct CatalogView: View {
     @State private var errorMessage: String?
     @State private var camera: MapCameraPosition = .automatic
 
-    init(initialFilter: CatalogFilter = .routes) {
+    init(initialFilter: CatalogFilter = .routes, favoritesOnly: Bool = false) {
         _filter = State(initialValue: initialFilter)
+        self.favoritesOnly = favoritesOnly
     }
 
     private var matches: [CatalogFeature] {
-        let rows = catalog?.matching(query, groupID: groupID, filter: filter) ?? []
+        let all = catalog?.matching(query, groupID: groupID, filter: filter) ?? []
+        let rows = favoritesOnly ? all.filter { $0.kind == .route && FavoriteRoutes.decode(favoriteData).contains($0.id) } : all
         guard let reference else { return rows }
         return rows.compactMap { feature -> (CatalogFeature, Double)? in
             guard let distance = feature.distance(to: reference), distance <= 1_000 else { return nil }
@@ -59,6 +63,10 @@ struct CatalogView: View {
                 }
                 map.frame(minHeight: 180, maxHeight: 310)
                 filters
+                if favoritesOnly && matches.isEmpty {
+                    NavigationLink("Explorar recorridos") { CatalogView() }
+                        .frame(minHeight: 44)
+                }
                 if let selection { detail(selection) }
                 featureList
             } else {
@@ -84,7 +92,7 @@ struct CatalogView: View {
             ContentView(scenario: route.scenario)
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
-        .navigationTitle(filter == .stops ? "Paradas" : "Recorridos")
+        .navigationTitle(favoritesOnly ? "Favoritos" : filter == .stops ? "Paradas" : "Recorridos")
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.black, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -167,6 +175,9 @@ struct CatalogView: View {
     }
 
     private var emptySearch: some View {
+        if favoritesOnly {
+            return ContentUnavailableView("Sin favoritos", systemImage: "star", description: Text("Guarda recorridos desde el catálogo para verlos aquí."))
+        }
         let description = "No hay resultados en " + filter.title.lowercased() + ". Cambia la búsqueda, el grupo o el punto de referencia."
         return ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass", description: Text(description))
     }
@@ -224,9 +235,11 @@ struct CatalogView: View {
                     ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
                 }
                 .labelsHidden()
-                Picker("Contenido", selection: $filter) {
-                    ForEach(CatalogFilter.allCases) { Text($0.title).tag($0) }
-                }.accessibilityIdentifier("catalog-filter")
+                if !favoritesOnly {
+                    Picker("Contenido", selection: $filter) {
+                        ForEach(CatalogFilter.allCases) { Text($0.title).tag($0) }
+                    }.accessibilityIdentifier("catalog-filter")
+                }
             }
             HStack {
                 Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.primary)
@@ -288,6 +301,15 @@ struct CatalogView: View {
             HStack {
                 Text(feature.name).font(.headline)
                 Spacer()
+                if feature.kind == .route && privateCatalog == nil {
+                    let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
+                    Button(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star") {
+                        favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityIdentifier("favorite-toggle")
+                }
                 Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
