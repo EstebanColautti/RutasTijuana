@@ -200,15 +200,20 @@ struct ContentView: View {
                         CatalogView()
                     }
                 } label: {
-                    Map(initialPosition: .region(MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                    )))
-                    .mapStyle(.standard(elevation: .flat))
-                    .frame(height: textSize.isAccessibilitySize ? 220 : 280)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                    Rectangle()
+                        .fill(.clear)
+                        .frame(height: textSize.isAccessibilitySize ? 220 : 280)
+                        .background {
+                            Map(initialPosition: .region(MKCoordinateRegion(
+                                center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
+                                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                            )))
+                            .mapStyle(.standard(elevation: .flat))
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")

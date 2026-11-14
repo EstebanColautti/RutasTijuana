@@ -57,6 +57,9 @@ final class JourneyTests: XCTestCase {
         try audit("Inicio")
         tap("Elegir ubicación inicial")
         try audit("Origen")
+        app.scrollViews.containing(.button, identifier: "stop-demo-3").firstMatch.swipeUp()
+        try audit("Origen desplazado")
+        app.scrollViews.containing(.button, identifier: "stop-demo-1").firstMatch.swipeDown()
         tap("stop-demo-1")
         tap("Continuar")
         XCTAssertFalse(app.buttons["Ver trayecto"].isEnabled)
@@ -325,7 +328,7 @@ final class JourneyTests: XCTestCase {
                 if issue.auditType == .contrast {
                     let tabBar = self.app.tabBars.firstMatch
                     let bottom = tabBar.isHittable ? tabBar.frame.minY : self.app.frame.maxY
-                    if element.frame.minY >= bottom || element.frame.maxY <= self.app.frame.minY ||
+                    if element.frame.midY >= bottom || element.frame.maxY <= self.app.frame.minY ||
                         element.frame.minX >= self.app.frame.maxX || element.frame.maxX <= self.app.frame.minX { return true }
                 }
             } else {
@@ -620,7 +623,9 @@ final class JourneyTests: XCTestCase {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
         for _ in 0..<8 {
-            if button.isHittable { break }
+            let tabBar = app.tabBars.firstMatch
+            let unobscured = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
+            if button.isHittable && unobscured { break }
             app.scrollViews.firstMatch.swipeUp()
         }
         XCTAssertTrue(button.isHittable, identifier)
