@@ -737,10 +737,13 @@ struct ContentView: View {
     }
 
     private func primaryButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text(title).frame(maxWidth: .infinity, minHeight: 44) }
-            .buttonStyle(.borderedProminent)
-            .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-            .controlSize(.large).disabled(disabled)
+        Button(action: action) {
+            Text(title).fontWeight(.semibold).foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(disabled ? Color(white: 0.32) : Color(red: 0.02, green: 0.29, blue: 0.57),
+                            in: RoundedRectangle(cornerRadius: 12))
+        }
+            .buttonStyle(.plain).disabled(disabled)
             .accessibilityIdentifier(title)
     }
 

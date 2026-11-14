@@ -232,7 +232,6 @@ struct CatalogView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
                     .contentShape(Rectangle())
-                    .onTapGesture { searchFocused = true }
             }
             HStack {
                 Picker("Grupo", selection: $groupID) {

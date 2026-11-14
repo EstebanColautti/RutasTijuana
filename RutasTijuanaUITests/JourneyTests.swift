@@ -78,8 +78,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         XCTAssertEqual(search.label, "Buscar nombre, grupo o información")
         XCTAssertGreaterThanOrEqual(search.frame.width, 44)
-        search.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .withOffset(CGVector(dx: 0, dy: -20)).tap()
+        search.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         search.typeText("\n")
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
@@ -624,7 +623,10 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
         for _ in 0..<8 {
             let tabBar = app.tabBars.firstMatch
-            let unobscured = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
+            let fixedAction = app.buttons["trip-continue"]
+            let aboveTab = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
+            let aboveAction = identifier == "trip-continue" || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY
+            let unobscured = aboveTab && aboveAction
             if button.isHittable && unobscured { break }
             app.scrollViews.firstMatch.swipeUp()
         }
