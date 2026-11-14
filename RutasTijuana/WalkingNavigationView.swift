@@ -71,7 +71,7 @@ struct WalkingNavigationView: View {
                     .overlay(alignment: .topTrailing) {
                         Button {
                             follow = true
-                            recenter()
+                            recenter(animated: true)
                         } label: {
                             Label("Recentrar", systemImage: "location.fill")
                                 .labelStyle(.iconOnly)
@@ -169,11 +169,16 @@ struct WalkingNavigationView: View {
         return nil
         #endif
     }
-    private func recenter() {
+    private func recenter(animated: Bool = false) {
         guard follow, let fix = model.fix else { return }
         if fix.speed >= 0.7 && fix.course >= 0 { lastHeading = fix.course }
         let heading = reduceMotion ? 0 : lastHeading
-        camera = .camera(MapCamera(centerCoordinate: fix.point.walkingCoordinate, distance: 500, heading: heading, pitch: 0))
+        let target = MapCameraPosition.camera(MapCamera(centerCoordinate: fix.point.walkingCoordinate, distance: 500, heading: heading, pitch: 0))
+        if animated && !reduceMotion {
+            withAnimation(.easeInOut(duration: 0.25)) { camera = target }
+        } else {
+            camera = target
+        }
     }
     private func openMaps() {
         model.finish()

@@ -96,6 +96,7 @@ struct TripPlannerView: View {
     let catalog: RouteCatalog
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var location = LocationService()
     @State private var origin: GeoPoint?
     @State private var destination: GeoPoint?
@@ -224,6 +225,7 @@ struct TripPlannerView: View {
                     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .id("\(trip != nil)-\(selectingOrigin)")
+                .transition(reduceMotion ? .identity : .opacity)
                 .scrollDismissesKeyboard(.interactively)
                 .background(Color(uiColor: .systemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -233,6 +235,8 @@ struct TripPlannerView: View {
                         .background(Color(uiColor: .systemBackground))
                 }
             }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectingOrigin)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: trip != nil)
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
         .preferredColorScheme(testColorScheme)

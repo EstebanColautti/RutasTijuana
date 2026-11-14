@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct CatalogView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
     @ObservedObject private var repository = CatalogRepository.shared
     @AppStorage("favorite-routes") private var favoriteData = Data()
@@ -14,6 +15,7 @@ struct CatalogView: View {
     @State private var groupID: String?
     @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
+    @State private var favoritePulse = 0
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
     @State private var importing = false
@@ -67,7 +69,10 @@ struct CatalogView: View {
                     NavigationLink("Explorar recorridos") { CatalogView() }
                         .frame(minHeight: 44)
                 }
-                if let selection { detail(selection) }
+                Group {
+                    if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
                 featureList
             } else {
                 ContentUnavailableView {
@@ -303,8 +308,12 @@ struct CatalogView: View {
                 Spacer()
                 if feature.kind == .route && privateCatalog == nil {
                     let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
-                    Button(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star") {
+                    Button {
                         favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
+                        if !reduceMotion { favoritePulse += 1 }
+                    } label: {
+                        Label(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star")
+                            .symbolEffect(.bounce, value: favoritePulse)
                     }
                     .labelStyle(.iconOnly)
                     .frame(minWidth: 44, minHeight: 44)
