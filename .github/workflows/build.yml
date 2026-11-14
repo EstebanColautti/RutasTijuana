@@ -9,7 +9,7 @@ on:
       mode:
         description: Comprobaciones
         type: choice
-        options: [full, native, walking]
+        options: [full, native, walking, package]
         default: full
       public_key:
         description: Clave pública para los resultados
@@ -26,6 +26,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  package:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'package' }}
+    uses: ./.github/workflows/compilacion.yml
+
   walking:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'walking' }}
     uses: ./.github/workflows/walking.yml
@@ -35,7 +39,7 @@ jobs:
 
   changes:
     name: Selección
-    if: ${{ inputs.mode != 'walking' }}
+    if: ${{ inputs.mode != 'walking' && inputs.mode != 'package' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -216,7 +220,7 @@ jobs:
   result:
     name: Resultado
     needs: [changes, web, native, ui]
-    if: ${{ !cancelled() && inputs.mode != 'walking' }}
+    if: ${{ !cancelled() && inputs.mode != 'walking' && inputs.mode != 'package' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
