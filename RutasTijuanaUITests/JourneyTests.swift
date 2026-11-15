@@ -623,9 +623,9 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
         for _ in 0..<8 {
             let tabBar = app.tabBars.firstMatch
-            let fixedAction = app.buttons["trip-continue"]
             let aboveTab = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
-            let aboveAction = identifier == "trip-continue" || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY
+            let fixedAction = app.buttons["trip-continue"]
+            let aboveAction = !identifier.hasPrefix("trip-stop-") || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY
             let unobscured = aboveTab && aboveAction
             if button.isHittable && unobscured { break }
             app.scrollViews.firstMatch.swipeUp()

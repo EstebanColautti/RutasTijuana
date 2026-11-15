@@ -737,13 +737,9 @@ struct ContentView: View {
     }
 
     private func primaryButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).fontWeight(.semibold).foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(disabled ? Color(white: 0.32) : Color(red: 0.02, green: 0.29, blue: 0.57),
-                            in: RoundedRectangle(cornerRadius: 12))
-        }
-            .buttonStyle(.plain).disabled(disabled)
+        Button(title, action: action)
+            .buttonStyle(ConsultationButtonStyle())
+            .disabled(disabled)
             .accessibilityIdentifier(title)
     }
 
@@ -806,6 +802,19 @@ struct ContentView: View {
         #if os(iOS)
         location.cancel()
         #endif
+    }
+}
+
+private struct ConsultationButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .fontWeight(.semibold)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(isEnabled ? Color(red: 0.02, green: 0.29, blue: 0.57) : Color(white: 0.32),
+                        in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
