@@ -525,17 +525,22 @@ struct TripPlannerView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
-                    .focused($searchFocused)
-                    .accessibilityIdentifier("trip-place-search")
-                    .submitLabel(.search).onSubmit { findPlaces() }
-                if !query.isEmpty {
-                    Button { query = ""; searchFocused = true } label: {
-                        Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44)
-                    }.accessibilityLabel("Borrar búsqueda")
-                }
+                        .focused($searchFocused)
+                        .accessibilityIdentifier("trip-place-search")
+                        .submitLabel(.search).onSubmit { findPlaces() }
+                    if !query.isEmpty {
+                        Button { query = ""; searchFocused = true } label: {
+                            Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44)
+                        }.accessibilityLabel("Borrar búsqueda")
+                    }
                 }
                 .padding(.horizontal, 12).frame(minHeight: 44)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && recentStops.isEmpty {
+                    Text("Busca una parada o un lugar.").font(.footnote)
+                } else if query.trimmingCharacters(in: .whitespacesAndNewlines).count == 1 {
+                    Text("Escribe al menos dos caracteres.").font(.footnote)
+                }
                 if searchingPlaces { ProgressView("Buscando lugares…") }
                 if !searchMessage.isEmpty { Text(searchMessage).accessibilityIdentifier("trip-search-status") }
                 if placeSearchFailed {
