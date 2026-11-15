@@ -159,6 +159,8 @@ final class JourneyTests: XCTestCase {
         capture("Itinerario combinado")
         tap("trip-begin")
         capture("Caminata inicial del viaje")
+        tap("trip-stages")
+        XCTAssertTrue(app.staticTexts["Etapa 1 · Actual"].waitForExistence(timeout: 5))
         tap("trip-walk")
         tap("Iniciar guía")
         XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 5))
