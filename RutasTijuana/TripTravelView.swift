@@ -281,8 +281,12 @@ struct TripTravelView: View {
         Map(interactionModes: [.pan, .zoom]) {
             if case .walk = model.leg {
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                    .stroke(.white, style: StrokeStyle(lineWidth: 8, dash: [6, 4]))
+                MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, dash: [6, 4]))
             } else {
+                MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                    .stroke(.white, lineWidth: 9)
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                     .stroke(.indigo, lineWidth: 6)
             }

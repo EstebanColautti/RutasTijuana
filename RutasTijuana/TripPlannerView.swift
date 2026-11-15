@@ -441,9 +441,13 @@ struct TripPlannerView: View {
                 switch row.element {
                 case .walk(_, _, let route):
                     MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                        .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), style: StrokeStyle(lineWidth: selectedLegIndex == row.offset ? 10 : 7, dash: [6, 4]))
+                    MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                         .stroke(.blue.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), style: StrokeStyle(lineWidth: selectedLegIndex == row.offset ? 7 : 4, dash: [6, 4]))
                 case .ride(let service, let stops):
                     if let path = service.section(through: stops) {
+                        MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                            .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 11 : 8)
                         MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                             .stroke(.indigo.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 8 : 5)
                     } else {
