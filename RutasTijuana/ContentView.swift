@@ -242,6 +242,7 @@ struct ContentView: View {
                     NavigationLink { CatalogView() } label: {
                         Label("Explorar recorridos", systemImage: "map")
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(actionTint)

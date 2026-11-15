@@ -80,9 +80,14 @@ final class JourneyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(search.frame.width, 44)
         search.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        search.typeText("\n")
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
-        waitForExpectations(timeout: 5)
+        search.typeText("Recorrido\n")
+        expectation(for: NSPredicate(format: "hittable == false"), evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 15)
+        search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        tap("Listo")
+        expectation(for: NSPredicate(format: "hittable == false"), evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 15)
         tap("catalog-sample-route")
         tap("catalog-information")
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
@@ -550,6 +555,7 @@ final class JourneyTests: XCTestCase {
         for _ in 0..<2 {
             app.launch()
             tap("Explorar recorridos")
+            XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 15))
             tap("catalog-sample-route")
             tap("catalog-information")
             XCTAssertTrue(app.images["catalog-photo"].waitForExistence(timeout: 10))
@@ -668,6 +674,13 @@ final class JourneyTests: XCTestCase {
             let unobscured = aboveTab && aboveAction
             if button.isHittable && unobscured { break }
             app.scrollViews.firstMatch.swipeUp()
+            var previousY = button.frame.midY
+            for _ in 0..<10 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+                let currentY = button.frame.midY
+                if abs(currentY - previousY) < 0.5 { break }
+                previousY = currentY
+            }
         }
         XCTAssertTrue(button.isHittable, identifier)
         button.tap()
