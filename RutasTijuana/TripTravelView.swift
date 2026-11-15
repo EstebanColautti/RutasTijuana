@@ -279,8 +279,13 @@ struct TripTravelView: View {
 
     private var travelMap: some View {
         Map(interactionModes: [.pan, .zoom]) {
-            MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                .stroke(.blue, lineWidth: 6)
+            if case .walk = model.leg {
+                MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                    .stroke(.blue, style: StrokeStyle(lineWidth: 5, dash: [6, 4]))
+            } else {
+                MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                    .stroke(.indigo, lineWidth: 6)
+            }
             if model.finished, let destination = finalDestination {
                 Marker(destinationName, systemImage: "flag.fill",
                        coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
@@ -331,6 +336,35 @@ struct TripTravelView: View {
                 .accessibilityLabel("Progreso por etapas del viaje")
                 .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
         }
+    }
+
+    private func stageTitle(_ leg: TripLeg) -> String {
+        switch leg {
+        case .walk(_, _, let route):
+            return "Caminata · " + WalkingFormat.distance(route.length)
+        case .ride(let service, let stops):
+            if let first = stops.first, let last = stops.last {
+                return "\(service.name) · \(first.name) a \(last.name)"
+            }
+            return service.name
+        }
+    }
+
+    private var allStages: some View {
+        DisclosureGroup("Ver etapas del viaje") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(model.trip.legs.enumerated()), id: \.offset) { item in
+                    let status = model.finished || item.offset < model.index ? "Completada" : item.offset == model.index ? "Actual" : "Pendiente"
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Etapa \(item.offset + 1) · \(status)").font(.caption.weight(.semibold))
+                        Text(stageTitle(item.element))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                }
+            }.padding(.top, 8)
+        }
+        .accessibilityIdentifier("trip-stages")
     }
 
     @ViewBuilder private func stageAction(stage: Int) -> some View {
@@ -428,6 +462,7 @@ struct TripTravelView: View {
                             if !model.finished, model.index > 0 {
                                 TripActionButton("Volver a la etapa anterior") { model.previousLeg(from: stage) }.frame(minHeight: 44)
                             }
+                            allStages
                             if !model.message.isEmpty { Text(model.message).accessibilityIdentifier("trip-travel-status") }
                             if model.missedStop, model.point != nil, let onReplan {
                                 TripActionButton("Recalcular desde aquí") {
