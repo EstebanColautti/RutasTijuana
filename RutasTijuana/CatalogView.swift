@@ -90,7 +90,7 @@ struct CatalogView: View {
                 Text(favoriteNotice).font(.footnote).padding(10)
                     .accessibilityIdentifier("favorite-notice")
                     .task(id: favoriteNotice) {
-                        do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+                        do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
                         favoriteNotice = ""
                     }
             }

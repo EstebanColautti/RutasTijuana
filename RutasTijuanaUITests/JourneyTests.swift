@@ -556,6 +556,7 @@ final class JourneyTests: XCTestCase {
         if favorite.label == "Quitar de favoritos" { favorite.tap() }
         favorite.tap()
         XCTAssertTrue(app.staticTexts["Guardado en favoritos"].waitForExistence(timeout: 5))
+        XCTAssertEqual(favorite.label, "Quitar de favoritos")
         capture("Favorito guardado")
         app.terminate()
         app.launch()
