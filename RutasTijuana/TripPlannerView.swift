@@ -743,6 +743,8 @@ struct TripPlannerView: View {
     private func findPlaces(dismissKeyboard: Bool = true) {
         searchDelay?.cancel()
         search?.cancel()
+        search = nil
+        searchingPlaces = false
         let token = UUID()
         searchGeneration = token
         let request = MKLocalSearch.Request()
