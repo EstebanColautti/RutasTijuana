@@ -157,37 +157,44 @@ struct ContentView: View {
     }
 
     private var welcome: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
+        VStack(spacing: 0) {
+            welcomeHeader
+            GeometryReader { geometry in
+                ScrollView {
+                    welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
+                }
             }
         }
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .top))
+    }
+
+    private var welcomeHeader: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 60, height: 44).accessibilityHidden(true)
+            Text("Rutas Tijuana")
+                .font(.title.bold())
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 88)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("home-title")
+            NavigationLink {
+                noticesView
+            } label: {
+                Image(systemName: "bell")
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Avisos")
+            .padding(.trailing, 16)
+        }
+        .background { Rectangle().fill(.black) }
     }
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
-                Color.clear.frame(width: 60, height: 44).accessibilityHidden(true)
-                Text("Rutas Tijuana")
-                    .font(.title.bold())
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: 88)
-                    .accessibilityAddTraits(.isHeader)
-                NavigationLink {
-                    noticesView
-                } label: {
-                    Image(systemName: "bell")
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Avisos")
-                .padding(.trailing, 16)
-            }
-            .background(.black)
-
             VStack(alignment: .leading, spacing: 16) {
                 Text("¿A dónde quieres ir hoy?")
                     .font(.title2.bold())

@@ -221,6 +221,22 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
     }
 
+    func testHomeHeaderWhileScrolling() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
+        app.launch()
+        let title = app.staticTexts["home-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let initialY = title.frame.minY
+        XCTAssertGreaterThanOrEqual(initialY, 20)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(title.isHittable)
+        XCTAssertEqual(title.frame.minY, initialY, accuracy: 1)
+        capture("Inicio desplazado")
+        tap("Explorar recorridos")
+        XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 15))
+    }
+
     func testHomeMapWithoutCatalog() {
         app.terminate()
         app.launchArguments = ["--ui-testing"]
