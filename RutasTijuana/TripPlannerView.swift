@@ -332,6 +332,9 @@ struct TripPlannerView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Paso \(index + 1) de \(total)").font(.caption).foregroundStyle(.secondary)
             legSummary(leg)
+            if selectedLegIndex == index {
+                Label("Etapa seleccionada", systemImage: "checkmark.circle.fill").font(.caption)
+            }
             Button("Mostrar etapa en el mapa") {
                 selectedLegIndex = index
                 showLeg(leg)
