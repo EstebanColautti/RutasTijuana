@@ -230,6 +230,7 @@ struct TripTravelView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var walking: WalkingDestination?
+    @State private var showingStages = false
     @AccessibilityFocusState private var stageFocused: Bool
     init(trip: PlannedTrip, destinationName: String = "Destino", onReplan: ((GeoPoint) -> Void)? = nil) {
         self.onReplan = onReplan
@@ -355,20 +356,33 @@ struct TripTravelView: View {
     }
 
     private var allStages: some View {
-        DisclosureGroup("Ver etapas del viaje") {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(model.trip.legs.enumerated()), id: \.offset) { item in
-                    let status = model.finished || item.offset < model.index ? "Completada" : item.offset == model.index ? "Actual" : "Pendiente"
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Etapa \(item.offset + 1) · \(status)").font(.caption.weight(.semibold))
-                        Text(stageTitle(item.element))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .accessibilityElement(children: .combine)
+        VStack(alignment: .leading, spacing: 8) {
+            Button { showingStages.toggle() } label: {
+                HStack {
+                    Text("Ver etapas del viaje")
+                    Spacer()
+                    Image(systemName: showingStages ? "chevron.down" : "chevron.right")
+                        .accessibilityHidden(true)
                 }
-            }.padding(.top, 8)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .accessibilityValue(showingStages ? "Expandido" : "Contraído")
+            .accessibilityIdentifier("trip-stages")
+            if showingStages {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(model.trip.legs.enumerated()), id: \.offset) { item in
+                        let status = model.finished || item.offset < model.index ? "Completada" : item.offset == model.index ? "Actual" : "Pendiente"
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Etapa \(item.offset + 1) · \(status)").font(.caption.weight(.semibold))
+                            Text(stageTitle(item.element))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
         }
-        .accessibilityIdentifier("trip-stages")
     }
 
     @ViewBuilder private func stageAction(stage: Int) -> some View {

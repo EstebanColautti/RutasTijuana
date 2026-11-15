@@ -160,6 +160,9 @@ final class JourneyTests: XCTestCase {
         capture("Itinerario combinado")
         tap("trip-begin")
         capture("Caminata inicial del viaje")
+        for _ in 0..<8 where !app.buttons["trip-stages"].exists {
+            app.scrollViews.firstMatch.swipeUp()
+        }
         tap("trip-stages")
         let currentStage = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Etapa 1 · Actual")).firstMatch
         XCTAssertTrue(currentStage.waitForExistence(timeout: 5))
