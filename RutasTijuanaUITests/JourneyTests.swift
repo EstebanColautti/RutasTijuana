@@ -85,6 +85,7 @@ final class JourneyTests: XCTestCase {
         waitForExpectations(timeout: 15)
         search.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        capture("Búsqueda del catálogo")
         tap("Listo")
         expectation(for: NSPredicate(format: "hittable == false"), evaluatedWith: app.keyboards.firstMatch)
         waitForExpectations(timeout: 15)
