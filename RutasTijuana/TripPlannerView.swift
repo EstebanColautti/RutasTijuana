@@ -109,6 +109,10 @@ struct TripPlannerView: View {
     @State private var query = ""
     @State private var searchExpanded = false
     @State private var searchMessage = ""
+    @State private var searchingPlaces = false
+    @State private var placeSearchFailed = false
+    @State private var searchDelay: Task<Void, Never>?
+    @AppStorage("journey-recent") private var recentData = Data()
     @State private var selectingOrigin = true
     @State private var places: [MKMapItem] = []
     @State private var message = ""
@@ -118,6 +122,7 @@ struct TripPlannerView: View {
     @State private var trip: PlannedTrip?
     @State private var working = false
     @State private var paused = false
+    @State private var canRetry = false
     @State private var task: Task<Void, Never>?
     @State private var search: MKLocalSearch?
     @State private var searchGeneration = UUID()
@@ -215,12 +220,17 @@ struct TripPlannerView: View {
                                 Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
                             }
                             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
-                                legSummary(row.element)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Paso \(row.offset + 1) de \(trip.legs.count)").font(.caption).foregroundStyle(.secondary)
+                                    legSummary(row.element)
+                                }
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
+                            Button("Nueva consulta") { resetConsultation() }
+                                .frame(minHeight: 44)
                         }
                     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -267,8 +277,11 @@ struct TripPlannerView: View {
         .tint(.white)
         .sheet(isPresented: $selectingOnMap) { mapSelection }
         .sheet(isPresented: $searchExpanded, onDismiss: {
+            searchDelay?.cancel()
             search?.cancel()
             searchGeneration = UUID()
+            searchingPlaces = false
+            placeSearchFailed = false
             places = []
             query = ""
             searchFocused = false
@@ -311,6 +324,7 @@ struct TripPlannerView: View {
             message = ""
         }
         .onDisappear {
+            searchDelay?.cancel()
             searchGeneration = UUID()
             task?.cancel()
             let cancelledPlanner = planner
@@ -351,7 +365,7 @@ struct TripPlannerView: View {
             }
         } else {
             Button(action: calculate) {
-                Text(paused ? "Continuar búsqueda" : "Ver trayecto")
+                Text(paused ? "Continuar búsqueda" : canRetry ? "Reintentar" : "Ver trayecto")
                     .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("trip-calculate")
@@ -509,15 +523,34 @@ struct TripPlannerView: View {
     private var searchSheet: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
-                TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
+                HStack {
+                    TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
                     .focused($searchFocused)
                     .accessibilityIdentifier("trip-place-search")
-                    .padding(.horizontal, 12).frame(minHeight: 44)
-                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
                     .submitLabel(.search).onSubmit { findPlaces() }
-                TripActionButton("Buscar lugar") { findPlaces() }.frame(minHeight: 44)
+                if !query.isEmpty {
+                    Button { query = ""; searchFocused = true } label: {
+                        Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44)
+                    }.accessibilityLabel("Borrar búsqueda")
+                }
+                }
+                .padding(.horizontal, 12).frame(minHeight: 44)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                if searchingPlaces { ProgressView("Buscando lugares…") }
                 if !searchMessage.isEmpty { Text(searchMessage).accessibilityIdentifier("trip-search-status") }
-                List(Array(places.enumerated()), id: \.offset) { row in
+                if placeSearchFailed {
+                    Button("Reintentar búsqueda") { findPlaces() }.frame(minHeight: 44)
+                }
+                List {
+                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !recentStops.isEmpty {
+                        Section("Consultas recientes") {
+                            ForEach(recentStops) { feature in
+                                Button(feature.name) { selectRecentStop(feature) }
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }
+                        }
+                    }
+                    ForEach(Array(places.enumerated()), id: \.offset) { row in
                     Button {
                         guard let coordinate = row.element.placemark.location?.coordinate else { return }
                         requestingOriginLocation = false
@@ -539,6 +572,7 @@ struct TripPlannerView: View {
                         .contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("trip-place-\(row.offset)")
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -548,9 +582,53 @@ struct TripPlannerView: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { searchExpanded = false } } }
         }
         .tint(.blue)
+        .onChange(of: query) { _, text in
+            searchDelay?.cancel()
+            search?.cancel()
+            searchGeneration = UUID()
+            searchingPlaces = false
+            placeSearchFailed = false
+            places = []
+            searchMessage = ""
+            guard text.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { return }
+            searchDelay = Task { @MainActor in
+                do { try await Task.sleep(nanoseconds: 400_000_000) } catch { return }
+                guard !Task.isCancelled, searchExpanded else { return }
+                findPlaces(dismissKeyboard: false)
+            }
+        }
         .onChange(of: searchMessage) { _, text in
             if !text.isEmpty { AccessibilityNotification.Announcement(text).post() }
         }
+    }
+
+    private var recentStops: [CatalogFeature] {
+        let entries = (try? JSONDecoder().decode([RecentJourney].self, from: recentData)) ?? []
+        let ids = entries.map { selectingOrigin ? $0.originID : $0.destinationID }
+        var seen = Set<String>()
+        return ids.compactMap { id in
+            guard seen.insert(id).inserted else { return nil }
+            return catalog.features.first { feature in
+                guard feature.id == id, feature.kind == .stop, case .point = feature.geometry else { return false }
+                return true
+            }
+        }.prefix(5).map { $0 }
+    }
+
+    private func selectRecentStop(_ feature: CatalogFeature) {
+        guard case .point(let coordinate) = feature.geometry else { return }
+        requestingOriginLocation = false
+        location.cancel()
+        invalidate()
+        if selectingOrigin {
+            origin = coordinate.point; originName = feature.name
+            originReference = coordinate.point; originReferenceUsesLocation = false
+        } else {
+            destination = coordinate.point; destinationName = feature.name
+            destinationReference = coordinate.point
+        }
+        searchExpanded = false
+        camera = .automatic
     }
 
     private var mapSelection: some View {
@@ -636,11 +714,25 @@ struct TripPlannerView: View {
         plannedVersion = nil
         trip = nil
         paused = false
+        canRetry = false
         working = false
         message = ""
     }
 
-    private func findPlaces() {
+    private func resetConsultation() {
+        invalidate()
+        location.cancel()
+        requestingOriginLocation = false
+        origin = nil; destination = nil
+        originName = ""; destinationName = ""
+        originReference = nil; destinationReference = nil
+        originReferenceUsesLocation = false
+        selectingOrigin = true
+        camera = .automatic
+    }
+
+    private func findPlaces(dismissKeyboard: Bool = true) {
+        searchDelay?.cancel()
         search?.cancel()
         let token = UUID()
         searchGeneration = token
@@ -649,7 +741,8 @@ struct TripPlannerView: View {
         guard !text.isEmpty else { places = []; searchMessage = "Escribe el nombre de un lugar."; return }
         places = []
         searchMessage = ""
-        searchFocused = false
+        placeSearchFailed = false
+        if dismissKeyboard { searchFocused = false }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
             places = catalog.features.compactMap { feature in
@@ -668,8 +761,12 @@ struct TripPlannerView: View {
                                             span: MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3))
         let operation = MKLocalSearch(request: request)
         search = operation
+        searchingPlaces = true
         operation.start { response, error in
             guard searchGeneration == token else { return }
+            searchingPlaces = false
+            search = nil
+            placeSearchFailed = error != nil
             places = response?.mapItems ?? []
             searchMessage = error == nil ? (places.isEmpty ? "No se encontraron lugares." : "") : "No se pudo buscar. Intenta de nuevo."
         }
@@ -716,6 +813,7 @@ struct TripPlannerView: View {
         }
         guard let activePlanner = planner else { return }
         working = true
+        canRetry = false
         message = ""
         task = Task {
             do {
@@ -735,9 +833,11 @@ struct TripPlannerView: View {
                 }
             } catch TripPlanningError.tryAgainLater {
                 guard !Task.isCancelled else { return }
+                canRetry = true
                 message = "Espera un momento antes de volver a calcular."
             } catch {
                 guard !Task.isCancelled else { return }
+                canRetry = true
                 message = "No se pudo calcular el viaje. Comprueba la conexión y vuelve a intentar."
             }
             working = false

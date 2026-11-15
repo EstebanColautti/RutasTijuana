@@ -258,6 +258,10 @@ final class JourneyTests: XCTestCase {
             app.scrollViews.firstMatch.swipeUp()
         }
         search.tap()
+        search.typeText("Parada 1")
+        XCTAssertTrue(app.buttons["trip-place-0"].waitForExistence(timeout: 10))
+        tap("Borrar búsqueda")
+        XCTAssertFalse(app.buttons["trip-place-0"].exists)
         search.typeText("Parada 1\n")
         tap("trip-place-0")
         tap("trip-continue")
