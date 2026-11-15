@@ -162,25 +162,7 @@ struct TripPlannerView: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                Map(position: $camera) { mapContents }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : geometry.size.height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42))
-                    .accessibilityLabel("Mapa de origen, destino e itinerario")
-                    .accessibilityHint("Las etapas del viaje también están disponibles en la lista.")
-                    .overlay(alignment: .bottomTrailing) {
-                        if let trip, let origin, let destination {
-                            Button {
-                                selectedLegIndex = nil
-                                showTrip(trip, origin: origin, destination: destination)
-                            } label: {
-                                Label("Mostrar viaje completo", systemImage: "arrow.up.left.and.arrow.down.right")
-                                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
-                                    .background(.regularMaterial, in: Circle())
-                            }
-                            .accessibilityLabel("Mostrar viaje completo")
-                            .accessibilityIdentifier("trip-show-all")
-                            .padding(10)
-                        }
-                    }
+                tripMap(height: geometry.size.height)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         #if DEBUG
@@ -237,19 +219,7 @@ struct TripPlannerView: View {
                                 Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
                             }
                             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Paso \(row.offset + 1) de \(trip.legs.count)").font(.caption).foregroundStyle(.secondary)
-                                    legSummary(row.element)
-                                    Button("Mostrar etapa en el mapa") {
-                                        selectedLegIndex = row.offset
-                                        showLeg(row.element)
-                                    }
-                                    .frame(minHeight: 44)
-                                    .accessibilityValue(selectedLegIndex == row.offset ? "Seleccionada" : "")
-                                    .accessibilityIdentifier("trip-show-leg-\(row.offset)")
-                                }
-                                    .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                                    .background(selectedLegIndex == row.offset ? Color.blue.opacity(0.12) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                tripLegCard(row.element, index: row.offset, total: trip.legs.count)
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
@@ -356,6 +326,45 @@ struct TripPlannerView: View {
             search?.cancel()
             location.cancel()
         }
+    }
+
+    private func tripLegCard(_ leg: TripLeg, index: Int, total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Paso \(index + 1) de \(total)").font(.caption).foregroundStyle(.secondary)
+            legSummary(leg)
+            Button("Mostrar etapa en el mapa") {
+                selectedLegIndex = index
+                showLeg(leg)
+            }
+            .frame(minHeight: 44)
+            .accessibilityValue(selectedLegIndex == index ? "Seleccionada" : "")
+            .accessibilityIdentifier("trip-show-leg-\(index)")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+        .background(selectedLegIndex == index ? Color.blue.opacity(0.12) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func tripMap(height: CGFloat) -> some View {
+        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42
+        return Map(position: $camera) { mapContents }
+            .frame(height: height * fraction)
+            .accessibilityLabel("Mapa de origen, destino e itinerario")
+            .accessibilityHint("Las etapas del viaje también están disponibles en la lista.")
+            .overlay(alignment: .bottomTrailing) {
+                if let trip, let origin, let destination {
+                    Button {
+                        selectedLegIndex = nil
+                        showTrip(trip, origin: origin, destination: destination)
+                    } label: {
+                        Label("Mostrar viaje completo", systemImage: "arrow.up.left.and.arrow.down.right")
+                            .labelStyle(.iconOnly).frame(width: 44, height: 44)
+                            .background(.regularMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Mostrar viaje completo")
+                    .accessibilityIdentifier("trip-show-all")
+                    .padding(10)
+                }
+            }
     }
 
     @ViewBuilder private var primaryAction: some View {
