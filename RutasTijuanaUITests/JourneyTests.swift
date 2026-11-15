@@ -149,6 +149,10 @@ final class JourneyTests: XCTestCase {
         tap("trip-calculate")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts.matching(identifier: "trip-result").count, 1)
+        tap("trip-show-leg-0")
+        XCTAssertEqual(app.buttons["trip-show-leg-0"].value as? String, "Seleccionada")
+        capture("Etapa seleccionada")
+        tap("trip-show-all")
         for _ in 0..<8 {
             if app.buttons["trip-begin"].isHittable { break }
             app.scrollViews.firstMatch.swipeUp()
@@ -156,6 +160,13 @@ final class JourneyTests: XCTestCase {
         capture("Itinerario combinado")
         tap("trip-begin")
         capture("Caminata inicial del viaje")
+        for _ in 0..<8 where !app.buttons["trip-stages"].exists {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        tap("trip-stages")
+        let currentStage = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Etapa 1 · Actual")).firstMatch
+        XCTAssertTrue(currentStage.waitForExistence(timeout: 5))
+        capture("Etapas del viaje")
         tap("trip-walk")
         tap("Iniciar guía")
         XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 5))
@@ -507,6 +518,30 @@ final class JourneyTests: XCTestCase {
         tap("catalog-sample-route")
         XCTAssertTrue(app.staticTexts["Recorrido de ejemplo"].firstMatch.waitForExistence(timeout: 5))
         capture("Catálogo guardado")
+    }
+
+    func testFavoritesPersistAndShowFeedback() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
+        app.launch()
+        tap("Explorar recorridos")
+        tap("catalog-sample-route")
+        let favorite = app.buttons["favorite-toggle"]
+        XCTAssertTrue(favorite.waitForExistence(timeout: 10))
+        if favorite.label == "Quitar de favoritos" { favorite.tap() }
+        favorite.tap()
+        XCTAssertTrue(app.staticTexts["Guardado en favoritos"].waitForExistence(timeout: 5))
+        capture("Favorito guardado")
+        app.terminate()
+        app.launch()
+        tap("Favoritos")
+        let route = app.buttons["catalog-sample-route"]
+        XCTAssertTrue(route.waitForExistence(timeout: 10))
+        XCTAssertTrue((route.value as? String ?? "").contains("Favorito"))
+        capture("Favoritos guardados")
+        tap("catalog-sample-route")
+        tap("favorite-toggle")
+        XCTAssertTrue(app.staticTexts["Quitado de favoritos"].waitForExistence(timeout: 5))
     }
 
     func testBundledCatalogAndPhotoOffline() {

@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import UniformTypeIdentifiers
+import Accessibility
 
 struct CatalogView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -16,6 +17,7 @@ struct CatalogView: View {
     @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
     @State private var favoritePulse = 0
+    @State private var favoriteNotice = ""
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
     @State private var importing = false
@@ -84,6 +86,14 @@ struct CatalogView: View {
                 }
             }
             if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
+            if !favoriteNotice.isEmpty {
+                Text(favoriteNotice).font(.footnote).padding(10)
+                    .accessibilityIdentifier("favorite-notice")
+                    .task(id: favoriteNotice) {
+                        do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+                        favoriteNotice = ""
+                    }
+            }
             if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
@@ -181,6 +191,9 @@ struct CatalogView: View {
 
     private var emptySearch: some View {
         if favoritesOnly {
+            if !FavoriteRoutes.decode(favoriteData).isEmpty && (!query.isEmpty || groupID != nil || reference != nil) {
+                return ContentUnavailableView("Sin coincidencias", systemImage: "magnifyingglass", description: Text("Cambia la búsqueda o los filtros."))
+            }
             return ContentUnavailableView("Sin favoritos", systemImage: "star", description: Text("Guarda recorridos desde el catálogo para verlos aquí."))
         }
         let description = "No hay resultados en " + filter.title.lowercased() + ". Cambia la búsqueda, el grupo o el punto de referencia."
@@ -209,11 +222,18 @@ struct CatalogView: View {
                     }
                 }
                 Spacer(minLength: 0)
+                if feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
+                    Image(systemName: "star.fill").accessibilityHidden(true)
+                }
                 if selectedID == feature.id { Image(systemName: "checkmark") }
             }
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+        .accessibilityValue([
+            selectedID == feature.id ? "Seleccionado" : nil,
+            feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) ? "Favorito" : nil
+        ].compactMap { $0 }.joined(separator: ", "))
         .accessibilityIdentifier("catalog-\(feature.id)")
     }
 
@@ -309,6 +329,8 @@ struct CatalogView: View {
                     let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
                     Button {
                         favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
+                        favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
+                        AccessibilityNotification.Announcement(favoriteNotice).post()
                         if !reduceMotion { favoritePulse += 1 }
                     } label: {
                         Label(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star")

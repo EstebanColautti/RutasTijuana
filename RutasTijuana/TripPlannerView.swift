@@ -120,6 +120,7 @@ struct TripPlannerView: View {
     @State private var planner: TripPlanner?
     @State private var plannedVersion: String?
     @State private var trip: PlannedTrip?
+    @State private var selectedLegIndex: Int?
     @State private var working = false
     @State private var paused = false
     @State private var canRetry = false
@@ -161,9 +162,7 @@ struct TripPlannerView: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                Map(position: $camera) { mapContents }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : geometry.size.height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42))
-                    .accessibilityLabel("Mapa de origen, destino e itinerario")
+                tripMap(height: geometry.size.height)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         #if DEBUG
@@ -220,12 +219,7 @@ struct TripPlannerView: View {
                                 Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
                             }
                             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Paso \(row.offset + 1) de \(trip.legs.count)").font(.caption).foregroundStyle(.secondary)
-                                    legSummary(row.element)
-                                }
-                                    .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                tripLegCard(row.element, index: row.offset, total: trip.legs.count)
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
                                 .font(.footnote)
@@ -334,6 +328,48 @@ struct TripPlannerView: View {
         }
     }
 
+    private func tripLegCard(_ leg: TripLeg, index: Int, total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Paso \(index + 1) de \(total)").font(.caption).foregroundStyle(.secondary)
+            legSummary(leg)
+            if selectedLegIndex == index {
+                Label("Etapa seleccionada", systemImage: "checkmark.circle.fill").font(.caption)
+            }
+            Button("Mostrar etapa en el mapa") {
+                selectedLegIndex = index
+                showLeg(leg)
+            }
+            .frame(minHeight: 44)
+            .accessibilityValue(selectedLegIndex == index ? "Seleccionada" : "")
+            .accessibilityIdentifier("trip-show-leg-\(index)")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+        .background(selectedLegIndex == index ? Color.blue.opacity(0.12) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func tripMap(height: CGFloat) -> some View {
+        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42
+        return Map(position: $camera) { mapContents }
+            .frame(height: height * fraction)
+            .accessibilityLabel("Mapa de origen, destino e itinerario")
+            .accessibilityHint("Las etapas del viaje también están disponibles en la lista.")
+            .overlay(alignment: .bottomTrailing) {
+                if let trip, let origin, let destination {
+                    Button {
+                        selectedLegIndex = nil
+                        showTrip(trip, origin: origin, destination: destination)
+                    } label: {
+                        Label("Mostrar viaje completo", systemImage: "arrow.up.left.and.arrow.down.right")
+                            .labelStyle(.iconOnly).frame(width: 44, height: 44)
+                            .background(.regularMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Mostrar viaje completo")
+                    .accessibilityIdentifier("trip-show-all")
+                    .padding(10)
+                }
+            }
+    }
+
     @ViewBuilder private var primaryAction: some View {
         if trip != nil {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
@@ -405,11 +441,15 @@ struct TripPlannerView: View {
                 switch row.element {
                 case .walk(_, _, let route):
                     MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                        .stroke(.blue, style: StrokeStyle(lineWidth: 4, dash: [6, 4]))
+                        .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), style: StrokeStyle(lineWidth: selectedLegIndex == row.offset ? 10 : 7, dash: [6, 4]))
+                    MapPolyline(coordinates: route.points.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                        .stroke(.blue.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), style: StrokeStyle(lineWidth: selectedLegIndex == row.offset ? 7 : 4, dash: [6, 4]))
                 case .ride(let service, let stops):
                     if let path = service.section(through: stops) {
                         MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                            .stroke(.indigo, lineWidth: 5)
+                            .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 11 : 8)
+                        MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
+                            .stroke(.indigo.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 8 : 5)
                     } else {
                         ForEach(Array(service.geometry.enumerated()), id: \.offset) { part in
                             MapPolyline(coordinates: part.element.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
@@ -727,6 +767,7 @@ struct TripPlannerView: View {
         planner = nil
         plannedVersion = nil
         trip = nil
+        selectedLegIndex = nil
         paused = false
         canRetry = false
         working = false
@@ -799,6 +840,18 @@ struct TripPlannerView: View {
                 points.append(contentsOf: stops.map(\.point))
             }
         }
+        showPoints(points)
+    }
+
+    private func showLeg(_ leg: TripLeg) {
+        switch leg {
+        case .walk(_, _, let route): showPoints(route.points)
+        case .ride(let service, let stops):
+            showPoints((service.section(through: stops) ?? service.geometry.flatMap { $0 }) + stops.map(\.point))
+        }
+    }
+
+    private func showPoints(_ points: [GeoPoint]) {
         let valid = points.filter { $0.latitude.isFinite && $0.longitude.isFinite }
         guard let minLat = valid.map(\.latitude).min(), let maxLat = valid.map(\.latitude).max(),
               let minLon = valid.map(\.longitude).min(), let maxLon = valid.map(\.longitude).max() else { return }
