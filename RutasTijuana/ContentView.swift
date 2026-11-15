@@ -92,13 +92,11 @@ struct ContentView: View {
             Group {
                 if stage == .home { welcome.toolbar(.hidden, for: .navigationBar) }
                 else {
-                    routeMap
-                        .overlay(alignment: .top) {
-                            if !connectivity.isConnected {
-                                Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                                    .font(.caption).padding(10).background(.regularMaterial, in: Capsule()).padding()
-                            }
-                        }
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 1).accessibilityHidden(true)
+                        routeMap
+                    }
+                    .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .top))
                 }
             }
             .sheet(isPresented: Binding(get: { stage != .home }, set: { _ in })) {
@@ -346,10 +344,18 @@ struct ContentView: View {
                 select(GeoPoint(latitude: point.latitude, longitude: point.longitude))
             }
             .overlay(alignment: .topLeading) {
-                if isDemo {
-                    Text("Recorrido de evaluación").font(.caption.weight(.medium)).padding(8)
-                        .background(.regularMaterial, in: Capsule()).padding(12).allowsHitTesting(false)
+                VStack(alignment: .leading, spacing: 8) {
+                    if isDemo {
+                        Text("Recorrido de evaluación").font(.caption.weight(.medium)).padding(8)
+                            .background(.regularMaterial, in: Capsule())
+                            .accessibilityIdentifier("route-map-demo")
+                    }
+                    if !connectivity.isConnected {
+                        Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
+                            .font(.caption).padding(8).background(.regularMaterial, in: Capsule())
+                    }
                 }
+                .padding(12).allowsHitTesting(false)
             }
         }
     }

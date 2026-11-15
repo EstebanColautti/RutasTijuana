@@ -500,6 +500,9 @@ final class JourneyTests: XCTestCase {
         app.launch()
         tap("Elegir ubicación inicial")
         XCTAssertTrue(app.staticTexts.matching(identifier: "Sin conexión · Puedes elegir de la lista").firstMatch.waitForExistence(timeout: 5))
+        let mapNotice = app.staticTexts["route-map-demo"]
+        XCTAssertTrue(mapNotice.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(mapNotice.frame.minY, 20)
         let search = app.textFields["journey-search"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
