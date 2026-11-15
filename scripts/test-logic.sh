@@ -2,7 +2,7 @@
 set -euo pipefail
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$project_root/build"
-swiftc "$project_root/RutasTijuana/TransitRoute.swift" "$project_root/RutasTijuana/RouteCatalog.swift" "$project_root/RutasTijuana/CatalogPublic.swift" "$project_root/RutasTijuana/CatalogPackage.swift" "$project_root/RutasTijuana/JourneyScenario.swift" "$project_root/RutasTijuana/CatalogSync.swift" "$project_root/RutasTijuana/CatalogCache.swift" "$project_root/RutasTijuana/WalkingNavigation.swift" "$project_root/RutasTijuana/TransitProgress.swift" "$project_root/RutasTijuana/TripPlanner.swift" "$project_root/RutasTijuana/RouteAccess.swift" "$project_root/tests/main.swift" -o "$project_root/build/route-tests"
+swiftc "$project_root/RutasTijuana/FavoriteRoutes.swift" "$project_root/RutasTijuana/TransitRoute.swift" "$project_root/RutasTijuana/RouteCatalog.swift" "$project_root/RutasTijuana/CatalogPublic.swift" "$project_root/RutasTijuana/CatalogPackage.swift" "$project_root/RutasTijuana/JourneyScenario.swift" "$project_root/RutasTijuana/CatalogSync.swift" "$project_root/RutasTijuana/CatalogCache.swift" "$project_root/RutasTijuana/WalkingNavigation.swift" "$project_root/RutasTijuana/TransitProgress.swift" "$project_root/RutasTijuana/TripPlanner.swift" "$project_root/RutasTijuana/RouteAccess.swift" "$project_root/tests/main.swift" -o "$project_root/build/route-tests"
 port_file="$(mktemp "$project_root/build/http-port.XXXXXX")"
 python3 "$project_root/tests/catalog_http.py" "$port_file" &
 server_pid=$!
