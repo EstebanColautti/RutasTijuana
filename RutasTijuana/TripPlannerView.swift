@@ -691,8 +691,17 @@ struct TripPlannerView: View {
                 if stops.contains(where: \.suggested) {
                     Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
                 }
-                if service.section(through: stops) == nil {
-                    Text("El seguimiento de esta etapa usa confirmación manual.").font(.footnote)
+                DisclosureGroup("Información del recorrido") {
+                    let feature = catalog.features.first { $0.id == service.id }
+                    let schedules = feature?.publishedValues(for: "schedule") ?? []
+                    let fares = feature?.publishedValues(for: "fare") ?? []
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(schedules.isEmpty ? "Horario no disponible" : "Horario: " + schedules.joined(separator: "; "))
+                        Text(fares.isEmpty ? "Tarifa no disponible" : "Tarifa: " + fares.joined(separator: "; "))
+                        if service.section(through: stops) == nil {
+                            Text("El seguimiento de esta etapa usa confirmación manual.")
+                        }
+                    }.font(.footnote)
                 }
             }
         }
