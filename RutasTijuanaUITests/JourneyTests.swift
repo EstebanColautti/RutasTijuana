@@ -80,9 +80,15 @@ final class JourneyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(search.frame.width, 44)
         search.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        search.typeText("\n")
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
-        waitForExpectations(timeout: 5)
+        search.typeText("Recorrido\n")
+        expectation(for: NSPredicate(format: "hittable == false"), evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 15)
+        search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        capture("Búsqueda del catálogo")
+        tap("Listo")
+        expectation(for: NSPredicate(format: "hittable == false"), evaluatedWith: app.keyboards.firstMatch)
+        waitForExpectations(timeout: 15)
         tap("catalog-sample-route")
         tap("catalog-information")
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
@@ -213,6 +219,22 @@ final class JourneyTests: XCTestCase {
         capture("Transporte con texto grande")
         tap("trip-finish")
         XCTAssertTrue(app.staticTexts["trip-result"].waitForExistence(timeout: 5))
+    }
+
+    func testHomeHeaderWhileScrolling() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
+        app.launch()
+        let title = app.staticTexts["home-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let initialY = title.frame.minY
+        XCTAssertGreaterThanOrEqual(initialY, 20)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(title.isHittable)
+        XCTAssertEqual(title.frame.minY, initialY, accuracy: 1)
+        capture("Inicio desplazado")
+        tap("Explorar recorridos")
+        XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 15))
     }
 
     func testHomeMapWithoutCatalog() {
@@ -478,6 +500,9 @@ final class JourneyTests: XCTestCase {
         app.launch()
         tap("Elegir ubicación inicial")
         XCTAssertTrue(app.staticTexts.matching(identifier: "Sin conexión · Puedes elegir de la lista").firstMatch.waitForExistence(timeout: 5))
+        let mapNotice = app.staticTexts["route-map-demo"]
+        XCTAssertTrue(mapNotice.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(mapNotice.frame.minY, 20)
         let search = app.textFields["journey-search"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
@@ -531,6 +556,7 @@ final class JourneyTests: XCTestCase {
         if favorite.label == "Quitar de favoritos" { favorite.tap() }
         favorite.tap()
         XCTAssertTrue(app.staticTexts["Guardado en favoritos"].waitForExistence(timeout: 5))
+        XCTAssertEqual(favorite.label, "Quitar de favoritos")
         capture("Favorito guardado")
         app.terminate()
         app.launch()
@@ -550,6 +576,7 @@ final class JourneyTests: XCTestCase {
         for _ in 0..<2 {
             app.launch()
             tap("Explorar recorridos")
+            XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 15))
             tap("catalog-sample-route")
             tap("catalog-information")
             XCTAssertTrue(app.images["catalog-photo"].waitForExistence(timeout: 10))
@@ -668,6 +695,13 @@ final class JourneyTests: XCTestCase {
             let unobscured = aboveTab && aboveAction
             if button.isHittable && unobscured { break }
             app.scrollViews.firstMatch.swipeUp()
+            var previousY = button.frame.midY
+            for _ in 0..<10 {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+                let currentY = button.frame.midY
+                if abs(currentY - previousY) < 0.5 { break }
+                previousY = currentY
+            }
         }
         XCTAssertTrue(button.isHittable, identifier)
         button.tap()

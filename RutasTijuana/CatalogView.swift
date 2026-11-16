@@ -90,7 +90,7 @@ struct CatalogView: View {
                 Text(favoriteNotice).font(.footnote).padding(10)
                     .accessibilityIdentifier("favorite-notice")
                     .task(id: favoriteNotice) {
-                        do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+                        do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
                         favoriteNotice = ""
                     }
             }
@@ -125,6 +125,13 @@ struct CatalogView: View {
             #if DEBUG
             ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
             #endif
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Listo") { searchFocused = false }
+                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+            }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             switch result {
