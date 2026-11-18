@@ -136,7 +136,11 @@ struct TripPlannerView: View {
         center: CLLocationCoordinate2D(latitude: 32.53, longitude: -117),
         span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
 
-    init(catalog: RouteCatalog) {
+    @State private var requiredRouteID: String?
+    @State private var canSearchAll = false
+
+    init(catalog: RouteCatalog, requiredRouteID: String? = nil) {
+        _requiredRouteID = State(initialValue: requiredRouteID)
         self.catalog = catalog
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--capture-catalog"),
@@ -407,6 +411,15 @@ struct TripPlannerView: View {
             .accessibilityIdentifier("trip-calculate")
             .disabled(origin == nil || destination == nil)
             .buttonStyle(.borderedProminent)
+            if canSearchAll {
+                Button("Buscar en todas las rutas") {
+                    requiredRouteID = nil
+                    canSearchAll = false
+                    planner = nil
+                    calculate()
+                }
+                .frame(minHeight: 44)
+            }
         }
     }
 
@@ -873,10 +886,10 @@ struct TripPlannerView: View {
             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                 planner = TripPlanner(network: .init(catalog: catalog), provider: FixtureTripWalkingProvider())
             } else {
-                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), transferCache: transferCache)
+                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), preferences: .init(requiredRouteID: requiredRouteID), transferCache: transferCache)
             }
             #else
-            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), transferCache: transferCache)
+            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), preferences: .init(requiredRouteID: requiredRouteID), transferCache: transferCache)
             #endif
             plannedVersion = catalog.version
         }
@@ -898,7 +911,8 @@ struct TripPlannerView: View {
                 case .unavailable:
                     trip = nil
                     paused = false
-                    message = "No se encontró una conexión con los recorridos disponibles."
+                    canSearchAll = requiredRouteID != nil
+                    message = canSearchAll ? "No se encontró un viaje que use esta ruta." : "No se encontró una conexión con los recorridos disponibles."
                 }
             } catch TripPlanningError.tryAgainLater {
                 guard !Task.isCancelled else { return }
