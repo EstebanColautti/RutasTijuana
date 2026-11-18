@@ -750,7 +750,7 @@ struct TripPlannerView: View {
                     Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
                 }
                 DisclosureGroup("Información del recorrido") {
-                    let feature = catalog.features.first { $0.id == service.id }
+                    let feature = catalog.features.first { $0.id == (service.catalogRouteID ?? service.id) }
                     let schedules = feature?.publishedValues(for: "schedule") ?? []
                     let fares = feature?.publishedValues(for: "fare") ?? []
                     VStack(alignment: .leading, spacing: 6) {

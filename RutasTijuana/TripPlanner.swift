@@ -35,7 +35,8 @@ struct TripNetwork: Sendable {
             let exclusions = Set(feature.routeDetails?.excludedEdges ?? [])
             if exclusions.isEmpty, let scenario = catalog.journeyScenario(for: feature) {
                 return TripService(id: feature.id, name: feature.name, direction: scenario.direction,
-                               stops: scenario.stops, circular: scenario.circular == true, geometry: scenario.routeGeometry ?? [])
+                               stops: scenario.stops, circular: scenario.circular == true && (scenario.routeGeometry.map { $0.count == 1 && $0[0].first == $0[0].last } ?? false),
+                               geometry: scenario.routeGeometry ?? [])
             }
             guard catalog.readyForDistribution, feature.kind == .route, !feature.geometry.lines.isEmpty else { return nil }
             var edge = 0
@@ -513,12 +514,17 @@ actor TripPlanner {
                         let length = end > start ? end - start : (service.circular ? RouteMeasure(service.geometry[0]).length - start + end : .infinity)
                         rideDistances[distanceKey] = length
                     } else {
-                        rideDistances[distanceKey] = service.section(through: [service.stops[position], nextStop]).map { path in
-                            zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
-                        } ?? service.stops[position].point.distance(to: nextStop.point)
+                        if let path = service.section(through: [service.stops[position], nextStop]) {
+                            rideDistances[distanceKey] = zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+                        } else if service.geometry.isEmpty {
+                            rideDistances[distanceKey] = service.stops[position].point.distance(to: nextStop.point)
+                        } else {
+                            rideDistances[distanceKey] = .infinity
+                        }
                     }
                 }
-                next.riding += rideDistances[distanceKey]!
+                guard let rideDistance = rideDistances[distanceKey], rideDistance.isFinite else { continue }
+                next.riding += rideDistance
                 if current.service == service.id, case .ride(_, let previousStops)? = next.legs.last {
                     next.legs.removeLast()
                     next.legs.append(.ride(service: service, stops: previousStops + [nextStop]))

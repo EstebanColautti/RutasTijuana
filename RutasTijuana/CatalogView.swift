@@ -106,6 +106,7 @@ struct CatalogView: View {
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
 
     private var mapFeatures: [CatalogFeature] {
+        if routesTab, let selection { return [selection] }
         var features = matches
         if let index = features.firstIndex(where: { $0.id == selectedID }) {
             features.append(features.remove(at: index))
@@ -121,25 +122,47 @@ struct CatalogView: View {
                         .font(.caption).padding(10).frame(maxWidth: .infinity)
                         .background(.orange.opacity(0.1))
                 }
-                map.frame(minHeight: 180, maxHeight: 310)
-                filters
                 if routesTab {
-                    Picker("Organización", selection: $grouped) {
-                        Text("Por zona").tag(true)
-                        Text("Todas").tag(false)
-                    }.pickerStyle(.segmented).padding(.horizontal)
-                    Button("Mis listas", systemImage: "bookmark") { showingLists = true }
-                        .frame(minHeight: 44)
+                    ZStack {
+                        VStack(spacing: 0) {
+                            filters
+                            Picker("Organización", selection: $grouped) {
+                                Text("Por zona").tag(true)
+                                Text("Todas").tag(false)
+                            }.pickerStyle(.segmented).padding(.horizontal)
+                            Button("Mis listas", systemImage: "bookmark") {
+                                activeListID = nil
+                                listName = ""
+                                showingLists = true
+                            }.frame(minHeight: 44)
+                            featureList
+                        }
+                        .opacity(selection == nil ? 1 : 0)
+                        .accessibilityHidden(selection != nil)
+                        .allowsHitTesting(selection == nil)
+                        if let selection {
+                            ScrollView {
+                                VStack(spacing: 0) {
+                                    map.frame(height: 220)
+                                    detail(selection)
+                                }
+                            }
+                            .background(Color(uiColor: .systemBackground))
+                        }
+                    }
+                } else {
+                    map.frame(minHeight: 180, maxHeight: 310)
+                    filters
+                    if favoritesOnly && matches.isEmpty {
+                        NavigationLink("Explorar recorridos") { CatalogView() }
+                            .frame(minHeight: 44)
+                    }
+                    Group {
+                        if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
+                    }
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
+                    featureList
                 }
-                if favoritesOnly && matches.isEmpty {
-                    NavigationLink("Explorar recorridos") { CatalogView() }
-                        .frame(minHeight: 44)
-                }
-                Group {
-                    if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
-                }
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
-                featureList
             } else {
                 ContentUnavailableView {
                     Label("Recorridos", systemImage: "map")
@@ -309,10 +332,13 @@ struct CatalogView: View {
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
-                    .foregroundStyle(color(feature.color))
+                    .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
-                    Text(groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
+                    Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
+                    if routesTab, let direction = feature.routeDetails?.direction, direction != feature.name {
+                        Text(direction).font(.caption).foregroundStyle(.secondary)
+                    }
                     if let reference, let distance = feature.distance(to: reference) {
                         Text(distanceCaption(feature, meters: distance))
                             .font(.caption).foregroundStyle(.primary)
@@ -447,7 +473,8 @@ struct CatalogView: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
                 }
-                Button("Cerrar", systemImage: "xmark") { selectedID = nil }.labelStyle(.iconOnly)
+                Button("Cerrar", systemImage: "xmark") { selectedID = nil }
+                    .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(.caption).foregroundStyle(.primary)
