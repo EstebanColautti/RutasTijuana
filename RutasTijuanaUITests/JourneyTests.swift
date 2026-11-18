@@ -514,7 +514,9 @@ final class JourneyTests: XCTestCase {
         app.launch()
         tap("Explorar recorridos")
         tap("catalog-sample-route")
-        XCTAssertTrue(app.staticTexts["Horario y frecuencia: dato no disponible"].waitForExistence(timeout: 5))
+        tap("catalog-information")
+        XCTAssertTrue(app.staticTexts["Horario: Desconocido"].waitForExistence(timeout: 5))
+        tap("catalog-information-close")
         capture("Recorridos")
         let search = app.textFields["catalog-search"]
         search.tap()

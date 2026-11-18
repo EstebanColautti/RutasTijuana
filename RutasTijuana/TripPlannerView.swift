@@ -378,14 +378,18 @@ struct TripPlannerView: View {
         if trip != nil {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
             layout {
-                Button { invalidate() } label: {
-                    Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                if !textSize.isAccessibilitySize {
+                    Button { invalidate() } label: {
+                        Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
                 Button { travelling = true } label: {
-                    Text("Empezar viaje").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                    Text(textSize.isAccessibilitySize ? "Iniciar" : "Empezar viaje")
+                        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }
+                .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                 .accessibilityIdentifier("trip-begin")
                 .disabled(working)
                 .buttonStyle(.borderedProminent)
