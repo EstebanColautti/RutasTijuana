@@ -168,7 +168,6 @@ struct ContentView: View {
 
     private var welcomeHeader: some View {
         HStack(spacing: 0) {
-            Color.clear.frame(width: 60, height: 44).accessibilityHidden(true)
             Text("Rutas Tijuana")
                 .font(.title.bold())
                 .foregroundStyle(.white)
@@ -177,16 +176,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, minHeight: 88)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-title")
-            NavigationLink {
-                noticesView
-            } label: {
-                Image(systemName: "bell")
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Avisos")
-            .padding(.trailing, 16)
         }
         .background { Rectangle().fill(.black) }
     }

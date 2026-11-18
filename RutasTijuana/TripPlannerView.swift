@@ -136,7 +136,11 @@ struct TripPlannerView: View {
         center: CLLocationCoordinate2D(latitude: 32.53, longitude: -117),
         span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
 
-    init(catalog: RouteCatalog) {
+    @State private var requiredRouteID: String?
+    @State private var canSearchAll = false
+
+    init(catalog: RouteCatalog, requiredRouteID: String? = nil) {
+        _requiredRouteID = State(initialValue: requiredRouteID)
         self.catalog = catalog
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--capture-catalog"),
@@ -374,14 +378,18 @@ struct TripPlannerView: View {
         if trip != nil {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
             layout {
-                Button { invalidate() } label: {
-                    Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                if !textSize.isAccessibilitySize {
+                    Button { invalidate() } label: {
+                        Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
                 Button { travelling = true } label: {
-                    Text("Empezar viaje").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                    Text(textSize.isAccessibilitySize ? "Iniciar" : "Empezar viaje")
+                        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }
+                .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
                 .accessibilityIdentifier("trip-begin")
                 .disabled(working)
                 .buttonStyle(.borderedProminent)
@@ -407,6 +415,15 @@ struct TripPlannerView: View {
             .accessibilityIdentifier("trip-calculate")
             .disabled(origin == nil || destination == nil)
             .buttonStyle(.borderedProminent)
+            if canSearchAll {
+                Button("Buscar en todas las rutas") {
+                    requiredRouteID = nil
+                    canSearchAll = false
+                    planner = nil
+                    calculate()
+                }
+                .frame(minHeight: 44)
+            }
         }
     }
 
@@ -737,7 +754,7 @@ struct TripPlannerView: View {
                     Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
                 }
                 DisclosureGroup("Información del recorrido") {
-                    let feature = catalog.features.first { $0.id == service.id }
+                    let feature = catalog.features.first { $0.id == (service.catalogRouteID ?? service.id) }
                     let schedules = feature?.publishedValues(for: "schedule") ?? []
                     let fares = feature?.publishedValues(for: "fare") ?? []
                     VStack(alignment: .leading, spacing: 6) {
@@ -770,6 +787,7 @@ struct TripPlannerView: View {
         selectedLegIndex = nil
         paused = false
         canRetry = false
+        canSearchAll = false
         working = false
         message = ""
     }
@@ -873,10 +891,10 @@ struct TripPlannerView: View {
             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                 planner = TripPlanner(network: .init(catalog: catalog), provider: FixtureTripWalkingProvider())
             } else {
-                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), transferCache: transferCache)
+                planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), preferences: .init(requiredRouteID: requiredRouteID), transferCache: transferCache)
             }
             #else
-            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), transferCache: transferCache)
+            planner = TripPlanner(network: .init(catalog: catalog), provider: AppleTripWalkingProvider(), preferences: .init(requiredRouteID: requiredRouteID), transferCache: transferCache)
             #endif
             plannedVersion = catalog.version
         }
@@ -898,7 +916,8 @@ struct TripPlannerView: View {
                 case .unavailable:
                     trip = nil
                     paused = false
-                    message = "No se encontró una conexión con los recorridos disponibles."
+                    canSearchAll = requiredRouteID != nil
+                    message = canSearchAll ? "No se encontró un viaje que use esta ruta." : "No se encontró una conexión con los recorridos disponibles."
                 }
             } catch TripPlanningError.tryAgainLater {
                 guard !Task.isCancelled else { return }

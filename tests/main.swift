@@ -454,6 +454,20 @@ func testTripPlanning() async throws {
         fatalError("Direct service must be available")
     }
     check(directTrip.transfers == 0, "A direct service wins over a transfer")
+    let selectedPlanner = TripPlanner(network: .init(version: "synthetic", services: network.services + [direct]),
+                                      provider: SyntheticTripWalkingProvider(), preferences: .init(requiredRouteID: "two"))
+    guard case .found(let selectedTrip) = try await selectedPlanner.search(from: stops[0].point, to: stops[2].point) else {
+        fatalError("The selected route must be reachable through a transfer")
+    }
+    check(selectedTrip.legs.contains {
+        if case .ride(let service, _) = $0 { return service.id == "two" }
+        return false
+    }, "A faster trip cannot bypass the selected route")
+    let missingPlanner = TripPlanner(network: network, provider: SyntheticTripWalkingProvider(),
+                                     preferences: .init(requiredRouteID: "missing"))
+    guard case .unavailable = try await missingPlanner.search(from: stops[0].point, to: stops[2].point) else {
+        fatalError("No trip should be returned for a missing selected route")
+    }
     let farOrigin = GeoPoint(latitude: stops[0].point.latitude - 0.009, longitude: -117)
     let expanded = TripPlanner(network: .init(version: "synthetic", services: [direct]),
                                provider: SyntheticTripWalkingProvider(maximumDistance: 1500))

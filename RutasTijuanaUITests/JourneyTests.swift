@@ -246,6 +246,39 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.buttons["Descargar catálogo"].waitForExistence(timeout: 10))
     }
 
+    func testRoutesTabAndLists() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--offline"]
+        app.launch()
+        app.tabBars.buttons["Rutas"].tap()
+        XCTAssertTrue(app.navigationBars["Rutas"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 15))
+        capture("Rutas por zona")
+        app.buttons["Todas"].tap()
+        XCTAssertTrue(app.buttons["catalog-sample-route"].exists)
+        capture("Todas las rutas")
+        tap("catalog-sample-route")
+        XCTAssertTrue(app.buttons["Guardar en listas"].waitForExistence(timeout: 10))
+        capture("Ficha de ruta")
+        tap("Guardar en listas")
+        XCTAssertTrue(app.navigationBars["Guardar en listas"].waitForExistence(timeout: 10))
+        let name = "Lista " + String(UUID().uuidString.prefix(8))
+        let field = app.textFields["Nombre de la lista"]
+        field.tap()
+        field.typeText(name)
+        tap("Crear lista")
+        XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 10))
+        capture("Guardar en listas")
+        tap("Listo")
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Rutas"].tap()
+        tap("Mis listas")
+        XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["Mis listas"].waitForExistence(timeout: 10))
+        capture("Mis listas")
+    }
+
     func testMainNavigation() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
@@ -258,11 +291,8 @@ final class JourneyTests: XCTestCase {
         tap("Abrir mapa para planear viaje")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
         app.navigationBars.buttons.firstMatch.tap()
-        tap("Avisos")
-        XCTAssertTrue(app.staticTexts["No hay avisos disponibles."].waitForExistence(timeout: 10))
-        app.navigationBars.buttons.firstMatch.tap()
-        tabs.buttons["Paradas"].tap()
-        XCTAssertTrue(app.navigationBars["Paradas"].waitForExistence(timeout: 10))
+        tabs.buttons["Rutas"].tap()
+        XCTAssertTrue(app.navigationBars["Rutas"].waitForExistence(timeout: 10))
         tabs.buttons["Mapa"].tap()
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
         tap("map-start")
@@ -484,7 +514,9 @@ final class JourneyTests: XCTestCase {
         app.launch()
         tap("Explorar recorridos")
         tap("catalog-sample-route")
-        XCTAssertTrue(app.staticTexts["Horario y frecuencia: dato no disponible"].waitForExistence(timeout: 5))
+        tap("catalog-information")
+        XCTAssertTrue(app.staticTexts["Horario: Desconocido"].waitForExistence(timeout: 5))
+        tap("catalog-information-close")
         capture("Recorridos")
         let search = app.textFields["catalog-search"]
         search.tap()
@@ -524,7 +556,7 @@ final class JourneyTests: XCTestCase {
         tap("catalog-sample-route")
         tap("catalog-information")
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["06:00–20:00"].exists)
+        XCTAssertTrue(app.staticTexts["Horario: 06:00–20:00"].exists)
         capture("Información")
         tap("catalog-information-close")
         XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 5))
@@ -591,10 +623,6 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--capture-catalog"]
         app.launch()
         XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
-        tap("Avisos")
-        XCTAssertTrue(app.navigationBars["Avisos"].waitForExistence(timeout: 10))
-        capture("Avisos")
-        app.navigationBars.buttons.firstMatch.tap()
         capture("Inicio")
         tap("Explorar recorridos")
         let route = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@", "catalog-", "catalog-filter", "catalog-information")).firstMatch

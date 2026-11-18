@@ -92,7 +92,9 @@ def _build(raw, output, media_root=None):
         details = feature.get('routeDetails')
         if details and feature['kind'] == 'route':
             selected_details = {key: value for key, value in details.items()
-                                if (key in ('code', 'direction') and text(value)) or (key == 'circular' and type(value) is bool)}
+                                if (key in ('code', 'direction', 'vehicleColor') and text(value)) or (key == 'circular' and type(value) is bool)
+                                or (key == 'excludedEdges' and isinstance(value, list)
+                                    and all(type(edge) is int and edge >= 0 for edge in value))}
             if selected_details:
                 item['routeDetails'] = selected_details
         if feature.get('itinerary'):

@@ -65,6 +65,7 @@ enum RouteAccess {
                 let measure = RouteMeasure(points)
                 guard points.count > 1, measure.length > 1 else { return nil }
                 var part = service
+                part.catalogRouteID = service.catalogRouteID ?? service.id
                 part.id = service.id + ":part:\(index)"
                 part.geometry = [points]
                 part.circular = service.circular && points.first == points.last

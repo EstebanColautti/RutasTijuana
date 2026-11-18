@@ -4,6 +4,8 @@ struct CatalogRouteDetails: Codable, Equatable, Sendable {
     var code: String?
     var direction: String?
     var circular: Bool?
+    var vehicleColor: String? = nil
+    var excludedEdges: [Int]? = nil
 }
 
 struct CatalogAsset: Codable, Equatable, Sendable {
@@ -42,7 +44,7 @@ enum CatalogPublic {
             let information = try object(feature["information"], keys: ["description", "fields"])
             guard let fields = information["fields"] as? [Any] else { throw CatalogSyncError.format }
             for field in fields { _ = try object(field, keys: ["category", "label", "value"]) }
-            if let details = feature["routeDetails"], !(details is NSNull) { _ = try object(details, keys: ["code", "direction", "circular"]) }
+            if let details = feature["routeDetails"], !(details is NSNull) { _ = try object(details, keys: ["code", "direction", "circular", "vehicleColor", "excludedEdges"]) }
             if let itinerary = feature["itinerary"], !(itinerary is NSNull) { _ = try object(itinerary, keys: ["stopIDs", "circular", "direction", "updatedAt"]) }
         }
         if let service = document["serviceInformation"], !(service is NSNull) { _ = try object(service, keys: ["notices", "contact"]) }

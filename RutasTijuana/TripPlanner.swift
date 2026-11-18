@@ -8,6 +8,7 @@ struct TripService: Sendable {
     var circular: Bool
     var geometry: [[GeoPoint]] = []
     var accessPositions: [String: Double] = [:]
+    var catalogRouteID: String? = nil
 
     func section(through selected: [TransitStop]) -> [GeoPoint]? {
         if let first = selected.first, let last = selected.last,
@@ -31,13 +32,32 @@ struct TripNetwork: Sendable {
     init(catalog: RouteCatalog) {
         version = catalog.version
         services = catalog.features.compactMap { feature in
-            if let scenario = catalog.journeyScenario(for: feature) {
+            let exclusions = Set(feature.routeDetails?.excludedEdges ?? [])
+            if exclusions.isEmpty, let scenario = catalog.journeyScenario(for: feature) {
                 return TripService(id: feature.id, name: feature.name, direction: scenario.direction,
-                               stops: scenario.stops, circular: scenario.circular == true, geometry: scenario.routeGeometry ?? [])
+                               stops: scenario.stops, circular: scenario.circular == true && (scenario.routeGeometry.map { $0.count == 1 && $0[0].first == $0[0].last } ?? false),
+                               geometry: scenario.routeGeometry ?? [])
             }
             guard catalog.readyForDistribution, feature.kind == .route, !feature.geometry.lines.isEmpty else { return nil }
+            var edge = 0
+            var parts: [[GeoPoint]] = []
+            for line in feature.geometry.lines {
+                var part: [GeoPoint] = []
+                for vertex in line {
+                    if !part.isEmpty {
+                        if exclusions.contains(edge) {
+                            if part.count > 1 { parts.append(part) }
+                            part = []
+                        }
+                        edge += 1
+                    }
+                    part.append(vertex.point)
+                }
+                if part.count > 1 { parts.append(part) }
+            }
+            guard !parts.isEmpty else { return nil }
             return TripService(id: feature.id, name: feature.name, direction: feature.routeDetails?.direction,
-                stops: [], circular: feature.routeDetails?.circular == true, geometry: feature.geometry.lines.map { $0.map(\.point) })
+                stops: [], circular: exclusions.isEmpty && feature.routeDetails?.circular == true, geometry: parts)
         }.sorted { $0.id < $1.id }
     }
 
@@ -58,6 +78,7 @@ struct TripPreferences: Sendable {
     var walkingMeters = 800.0
     var transfers = 2
     var requestsPerBatch = 24
+    var requiredRouteID: String? = nil
 }
 
 enum TripLeg: Sendable {
@@ -402,12 +423,18 @@ actor TripPlanner {
                 push(current)
                 continue
             }
-            let stateKey = "\(current.stop)|\(current.service ?? "")|\(current.boardings)"
+            let hasRequiredRoute = preferences.requiredRouteID.map { required in
+                current.legs.contains { leg in
+                    if case .ride(let service, _) = leg { return (service.catalogRouteID ?? service.id) == required }
+                    return false
+                }
+            } ?? true
+            let stateKey = "\(current.stop)|\(current.service ?? "")|\(current.boardings)|\(hasRequiredRoute)"
             let currentScore = entry.priority
             let cost = currentScore[0] - currentScore[1]
             if let previous = best[stateKey], previous <= cost + 0.000001 { continue }
             best[stateKey] = cost
-            if current.stop == final && current.boardings > 0 {
+            if current.stop == final && current.boardings > 0 && hasRequiredRoute {
                 var candidateResolved = false
                 defer {
                     if !candidateResolved {
@@ -487,12 +514,17 @@ actor TripPlanner {
                         let length = end > start ? end - start : (service.circular ? RouteMeasure(service.geometry[0]).length - start + end : .infinity)
                         rideDistances[distanceKey] = length
                     } else {
-                        rideDistances[distanceKey] = service.section(through: [service.stops[position], nextStop]).map { path in
-                            zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
-                        } ?? service.stops[position].point.distance(to: nextStop.point)
+                        if let path = service.section(through: [service.stops[position], nextStop]) {
+                            rideDistances[distanceKey] = zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+                        } else if service.geometry.isEmpty {
+                            rideDistances[distanceKey] = service.stops[position].point.distance(to: nextStop.point)
+                        } else {
+                            rideDistances[distanceKey] = .infinity
+                        }
                     }
                 }
-                next.riding += rideDistances[distanceKey]!
+                guard let rideDistance = rideDistances[distanceKey], rideDistance.isFinite else { continue }
+                next.riding += rideDistance
                 if current.service == service.id, case .ride(_, let previousStops)? = next.legs.last {
                     next.legs.removeLast()
                     next.legs.append(.ride(service: service, stops: previousStops + [nextStop]))

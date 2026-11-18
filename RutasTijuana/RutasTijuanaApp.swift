@@ -32,12 +32,12 @@ private struct MainTabs: View {
     var body: some View {
         TabView(selection: $selected) {
             NavigationStack {
-                CatalogView(initialFilter: .stops)
+                CatalogView(routesTab: true)
                     .toolbarBackground(.black, for: .navigationBar)
                     .toolbarBackground(.visible, for: .navigationBar)
                     .toolbarColorScheme(.dark, for: .navigationBar)
             }
-            .tabItem { Label("Paradas", systemImage: "octagon") }
+            .tabItem { Label("Rutas", systemImage: "map") }
             .tag(Section.stops)
 
             ContentView()
