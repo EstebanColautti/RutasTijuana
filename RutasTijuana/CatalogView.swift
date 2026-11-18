@@ -455,7 +455,11 @@ struct CatalogView: View {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                Text(zone(feature)).font(.caption)
+                Text("Zona: " + zone(feature)).font(.caption)
+                if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(.caption) }
+                Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
+                    fit(feature)
+                }.frame(minHeight: 44)
                 if routesTab, let catalog, catalog.readyForDistribution {
                     NavigationLink("Usar esta ruta") {
                         TripPlannerView(catalog: catalog, requiredRouteID: feature.id)

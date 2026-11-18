@@ -783,6 +783,7 @@ struct TripPlannerView: View {
         selectedLegIndex = nil
         paused = false
         canRetry = false
+        canSearchAll = false
         working = false
         message = ""
     }
