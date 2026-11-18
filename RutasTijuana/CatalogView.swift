@@ -507,7 +507,7 @@ struct CatalogView: View {
                 Text("Distancia al trazado en línea recta.")
                     .font(.caption).foregroundStyle(.primary)
             }
-            if feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
+            if feature.kind == .route || feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
                 Button("Ver información disponible") { showingInformation = true }
                     .accessibilityIdentifier("catalog-information")
             }
@@ -580,52 +580,57 @@ struct CatalogView: View {
     }
 
     private func informationSheet(_ feature: CatalogFeature) -> some View {
-        NavigationStack {
-            List {
-                Section {
-                    Text("Información del catálogo y detalles geométricos.")
-                        .font(.footnote).foregroundStyle(.primary)
-                }
-                ForEach(feature.media ?? [], id: \.self) { media in
-                    Section("Fotografía") { CatalogPhoto(id: media) }
-                }
-                if feature.kind == .route {
-                    Section("Servicio") {
-                        let fields = feature.information?.fields ?? []
-                        ForEach(["fare", "schedule", "frequency"], id: \.self) { category in
-                            let title = category == "fare" ? "Tarifa" : category == "schedule" ? "Horario" : "Frecuencia"
-                            let values = fields.filter { $0.category == category && !$0.inferred && !$0.value.isEmpty }.map(\.value)
+        let information = CatalogPublic.information(feature.information, description: true)
+        let serviceCategories = [("fare", "Tarifa"), ("schedule", "Horario"), ("frequency", "Frecuencia")]
+        return NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(feature.name)
+                        .font(.title2.bold())
+                        .accessibilityAddTraits(.isHeader)
+                    if let description = information?.description, !description.isEmpty {
+                        Text(description).textSelection(.enabled)
+                    }
+                    ForEach(feature.media ?? [], id: \.self) { media in
+                        CatalogPhoto(id: media)
+                    }
+                    if feature.kind == .route {
+                        ForEach(serviceCategories, id: \.0) { category, title in
+                            let values = (information?.fields ?? []).filter { $0.category == category }.map(\.value)
                             Text(title + ": " + (values.isEmpty ? "Desconocido" : values.joined(separator: " · ")))
-                                .font(.caption)
                         }
                         Text("Color del vehículo: " + (feature.routeDetails?.vehicleColor ?? "Desconocido"))
-                            .font(.caption)
                     }
-                }
-                if let details = feature.routeDetails {
-                    if let code = details.code, !code.isEmpty { Section("Código") { Text(code) } }
-                    if let direction = details.direction, !direction.isEmpty { Section("Sentido") { Text(direction) } }
-                    if let circular = details.circular { Section("Recorrido") { Text(circular ? "Circular" : "Lineal") } }
-                }
-                if let information = CatalogPublic.information(feature.information, description: true) {
-                    if !information.description.isEmpty {
-                        Section("Descripción disponible") { Text(information.description).textSelection(.enabled) }
+                    if let details = feature.routeDetails {
+                        if let code = details.code, !code.isEmpty { Text("Código: " + code) }
+                        if let direction = details.direction, !direction.isEmpty { Text("Sentido: " + direction) }
+                        if let circular = details.circular { Text(circular ? "Recorrido circular" : "Recorrido lineal") }
                     }
-                    ForEach(Array(information.fields.enumerated()), id: \.offset) { item in
-                        Section {
-                            Text(item.element.value).textSelection(.enabled)
-                        } header: {
-                            Text(item.element.label)
-                                .textCase(nil)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.vertical, 4)
+                    if let information {
+                        let fields = information.fields.filter { field in
+                            feature.kind != .route || !serviceCategories.contains { $0.0 == field.category }
+                        }
+                        ForEach(Array(fields.enumerated()), id: \.offset) { item in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.element.label).font(.headline)
+                                Text(item.element.value).textSelection(.enabled)
+                            }
                         }
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
             }
-            .navigationTitle(feature.name)
+            .navigationTitle("Información")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingInformation = false }.accessibilityIdentifier("catalog-information-close") } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Cerrar") { showingInformation = false }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("catalog-information-close")
+                }
+            }
         }
     }
 
