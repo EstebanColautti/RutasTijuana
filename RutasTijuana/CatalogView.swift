@@ -482,11 +482,13 @@ struct CatalogView: View {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                Text("Zona: " + zone(feature)).font(.caption)
-                if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(.caption) }
-                Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
-                    fit(feature)
-                }.frame(minHeight: 44)
+                if routesTab {
+                    Text("Zona: " + zone(feature)).font(.caption)
+                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(.caption) }
+                    Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
+                        fit(feature)
+                    }.frame(minHeight: 44)
+                }
                 if routesTab, let catalog, catalog.readyForDistribution {
                     NavigationLink("Usar esta ruta") {
                         TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
@@ -496,15 +498,6 @@ struct CatalogView: View {
                         plannedRoute = PlannedRoute(id: feature.id, scenario: scenario)
                     }.frame(minHeight: 44)
                 }
-                let fields = feature.information?.fields ?? []
-                ForEach(["fare", "schedule", "frequency"], id: \.self) { category in
-                    let title = category == "fare" ? "Tarifa" : category == "schedule" ? "Horario" : "Frecuencia"
-                    let values = fields.filter { $0.category == category && !$0.inferred && !$0.value.isEmpty }.map(\.value)
-                    Text(title + ": " + (values.isEmpty ? "Desconocido" : values.joined(separator: " · ")))
-                        .font(.caption)
-                }
-                Text("Color del vehículo: " + (feature.routeDetails?.vehicleColor ?? "Desconocido"))
-                    .font(.caption)
                 Text("Distancia al trazado en línea recta.")
                     .font(.caption).foregroundStyle(.primary)
             }
@@ -588,6 +581,19 @@ struct CatalogView: View {
                 }
                 ForEach(feature.media ?? [], id: \.self) { media in
                     Section("Fotografía") { CatalogPhoto(id: media) }
+                }
+                if feature.kind == .route {
+                    Section("Servicio") {
+                        let fields = feature.information?.fields ?? []
+                        ForEach(["fare", "schedule", "frequency"], id: \.self) { category in
+                            let title = category == "fare" ? "Tarifa" : category == "schedule" ? "Horario" : "Frecuencia"
+                            let values = fields.filter { $0.category == category && !$0.inferred && !$0.value.isEmpty }.map(\.value)
+                            Text(title + ": " + (values.isEmpty ? "Desconocido" : values.joined(separator: " · ")))
+                                .font(.caption)
+                        }
+                        Text("Color del vehículo: " + (feature.routeDetails?.vehicleColor ?? "Desconocido"))
+                            .font(.caption)
+                    }
                 }
                 if let details = feature.routeDetails {
                     if let code = details.code, !code.isEmpty { Section("Código") { Text(code) } }
