@@ -436,9 +436,15 @@ struct CatalogView: View {
                 reference = GeoPoint(latitude: point.latitude, longitude: point.longitude)
             }
             .overlay(alignment: .topLeading) {
-                Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
-                    .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .padding(10).allowsHitTesting(false)
+                if routesTab, let selection {
+                    Text(zone(selection))
+                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(10).allowsHitTesting(false)
+                } else {
+                    Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
+                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(10).allowsHitTesting(false)
+                }
             }
         }
     }
@@ -559,6 +565,7 @@ struct CatalogView: View {
             .navigationTitle(routeID == nil ? "Mis listas" : "Guardar en listas")
             .toolbar { Button("Listo") { savingToLists = false; showingLists = false } }
         }
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
     }
 
     private func toggleRoute(_ routeID: String, listID: UUID) {
