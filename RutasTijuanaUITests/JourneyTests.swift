@@ -5,11 +5,15 @@ final class JourneyTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    private func launchConsultation() {
         app.launchArguments = ["--ui-testing", "--journey-fixture"]
         app.launch()
     }
 
     func testJourneyAndReset() {
+        launchConsultation()
         capture("Inicio")
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
@@ -30,6 +34,7 @@ final class JourneyTests: XCTestCase {
     }
 
     func testEvaluationFlowAndSimulation() {
+        launchConsultation()
         tap("Evaluar consulta")
         capture("Inicio de evaluación")
         tap("Planear mi ruta")
@@ -53,6 +58,7 @@ final class JourneyTests: XCTestCase {
     }
 
     func testConsultationAccessibilityAudit() throws {
+        launchConsultation()
         continueAfterFailure = true
         try audit("Inicio")
         tap("Elegir ubicación inicial")
@@ -516,6 +522,7 @@ final class JourneyTests: XCTestCase {
     }
 
     func testSameStopIsRejected() {
+        launchConsultation()
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")
         tap("Continuar")
