@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
       mode:
@@ -53,6 +54,7 @@ jobs:
     outputs:
       web: ${{ steps.select.outputs.web }}
       native: ${{ steps.select.outputs.native }}
+      ui: ${{ steps.select.outputs.ui }}
       reason: ${{ steps.select.outputs.reason }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -64,6 +66,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
           CHECK_MODE: ${{ inputs.mode || 'full' }}
         run: python3 scripts/ci_select.py
       - name: Selección de pruebas de interfaz
@@ -154,7 +157,7 @@ jobs:
   ui:
     name: Interfaz iPhone
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.ui == 'true' }}
     runs-on: ${{ matrix.device == 'compact' && 'macos-15' || 'macos-26' }}
     timeout-minutes: 55
     strategy:

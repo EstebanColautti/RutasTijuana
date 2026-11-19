@@ -31,16 +31,30 @@ class CISelectionTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual((select([path])['web'], select([path])['native']), (True, True))
 
+    def test_draft_and_selective_ui(self):
+        selection = load('ci_select').workflow_selection
+        changed = ['RutasTijuana/ContentView.swift']
+        draft = selection(changed, 'pull_request', 'full', True)
+        self.assertEqual((draft['native'], draft['ui']), (True, False))
+        ready = selection(changed, 'pull_request', 'full', False)
+        self.assertEqual((ready['native'], ready['ui']), (True, True))
+        focused = selection([], 'workflow_dispatch', 'ui', False)
+        self.assertEqual((focused['web'], focused['native'], focused['ui']), (False, False, True))
+        self.assertTrue(successful({
+            'changes': {'result': 'success', 'outputs': {'web': 'false', 'native': 'false', 'ui': 'true'}},
+            'web': {'result': 'skipped'}, 'native': {'result': 'skipped'}, 'ui': {'result': 'success'},
+        }))
+
     def test_summary(self):
         def results(web='skipped', native='success', ui='success'):
-            return {'changes': {'result': 'success', 'outputs': {'web': 'false', 'native': 'true'}}, 'web': {'result': web}, 'native': {'result': native}, 'ui': {'result': ui}}
+            return {'changes': {'result': 'success', 'outputs': {'web': 'false', 'native': 'true', 'ui': 'true'}}, 'web': {'result': web}, 'native': {'result': native}, 'ui': {'result': ui}}
         self.assertTrue(successful(results()))
         for result in ('failure', 'cancelled', 'timed_out', 'skipped'):
             self.assertFalse(successful(results(ui=result)))
         self.assertFalse(successful({'changes': {'result': 'failure'}}))
         self.assertFalse(successful({'changes': {'result': 'success'}}))
         value = results(native='skipped', ui='skipped')
-        value['changes']['outputs']['native'] = 'false'
+        value['changes']['outputs'].update(native='false', ui='false')
         self.assertTrue(successful(value))
 
 
