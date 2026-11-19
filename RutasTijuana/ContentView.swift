@@ -457,7 +457,31 @@ struct ContentView: View {
                     .background(Color(uiColor: .systemBackground))
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if textSize.isAccessibilitySize, stage == .journey, validation == .accepted,
+               simulationStep == nil, let first = trip.first {
+                walkingStartButton(first)
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppDesign.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .systemBackground))
+            }
+        }
         .background(Color(uiColor: .systemBackground))
+    }
+
+    private func walkingStartButton(_ first: TransitStop) -> some View {
+        Button {
+            walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point)
+        } label: {
+            Text("Ir a la parada")
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("walking-start")
     }
 
     private var originPanel: some View {
@@ -544,12 +568,7 @@ struct ContentView: View {
                 Label("Camina hasta la parada de subida", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.primary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
-                Button {
-                    walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point)
-                } label: {
-                    Text("Ir a la parada").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                }
-                    .accessibilityIdentifier("walking-start")
+                if !textSize.isAccessibilitySize { walkingStartButton(first) }
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
                     .font(.footnote).foregroundStyle(.primary)
