@@ -31,6 +31,18 @@ class CISelectionTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual((select([path])['web'], select([path])['native']), (True, True))
 
+    def test_ui_report_keeps_all_failures(self):
+        render = load('ci_ui_summary').render
+        report = render({'totalTestCount': 4, 'passedTests': 2, 'failedTests': 2, 'testFailures': [
+            {'testIdentifierString': 'JourneyTests/testOne()', 'failureText': 'Missing | control'},
+            {'testName': 'testTwo()', 'failureText': 'First line\nSecond line'},
+        ]}, 'compact')
+        self.assertIn('JourneyTests/testOne()', report)
+        self.assertIn('Missing &#124; control', report)
+        self.assertIn('testTwo()', report)
+        self.assertIn('First line · Second line', report)
+        self.assertIn('Sin resultado de XCTest', render(None, 'standard'))
+
     def test_summary(self):
         def results(web='skipped', native='success', ui='success'):
             return {'changes': {'result': 'success', 'outputs': {'web': 'false', 'native': 'true'}}, 'web': {'result': web}, 'native': {'result': native}, 'ui': {'result': ui}}

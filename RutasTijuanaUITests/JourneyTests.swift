@@ -114,40 +114,47 @@ final class JourneyTests: XCTestCase {
         try audit("Indicaciones de la guía", types: [.textClipped])
     }
 
-    func testConsultationTextSizes() {
-        let sizes = [
-            "XS", "S", "M", "L", "XL", "XXL", "XXXL",
-            "AccessibilityM", "AccessibilityL", "AccessibilityXL",
-            "AccessibilityXXL", "AccessibilityXXXL",
-        ]
-        for size in sizes {
-            app.terminate()
-            app.launchArguments = ["--journey-fixture", "--ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategory" + size]
-            app.launch()
-            tap("Elegir ubicación inicial")
-            tap("stop-demo-1")
-            tap("Continuar")
-            tap("stop-demo-4")
-            tap("Ver trayecto")
-            XCTAssertTrue(app.staticTexts["Ruta aceptada"].waitForExistence(timeout: 5))
-            capture("Consulta texto " + size)
-            tap("Nueva consulta")
-            XCTAssertTrue(app.buttons["Elegir ubicación inicial"].waitForExistence(timeout: 5))
-        }
+    func testConsultationTextSizeXS() { checkConsultationTextSize("XS") }
+    func testConsultationTextSizeS() { checkConsultationTextSize("S") }
+    func testConsultationTextSizeM() { checkConsultationTextSize("M") }
+    func testConsultationTextSizeL() { checkConsultationTextSize("L") }
+    func testConsultationTextSizeXL() { checkConsultationTextSize("XL") }
+    func testConsultationTextSizeXXL() { checkConsultationTextSize("XXL") }
+    func testConsultationTextSizeXXXL() { checkConsultationTextSize("XXXL") }
+    func testConsultationTextSizeAccessibilityM() { checkConsultationTextSize("AccessibilityM") }
+    func testConsultationTextSizeAccessibilityL() { checkConsultationTextSize("AccessibilityL") }
+    func testConsultationTextSizeAccessibilityXL() { checkConsultationTextSize("AccessibilityXL") }
+    func testConsultationTextSizeAccessibilityXXL() { checkConsultationTextSize("AccessibilityXXL") }
+    func testConsultationTextSizeAccessibilityXXXL() { checkConsultationTextSize("AccessibilityXXXL") }
+
+    private func checkConsultationTextSize(_ size: String) {
+        app.terminate()
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategory" + size]
+        app.launch()
+        tap("Elegir ubicación inicial")
+        tap("stop-demo-1")
+        tap("Continuar")
+        tap("stop-demo-4")
+        tap("Ver trayecto")
+        XCTAssertTrue(app.staticTexts["Ruta aceptada"].waitForExistence(timeout: 5))
+        capture("Consulta texto " + size)
+        tap("Nueva consulta")
+        XCTAssertTrue(app.buttons["Elegir ubicación inicial"].waitForExistence(timeout: 5))
     }
 
-    func testCatalogLineVisibility() {
-        for dark in [false, true] {
-            app.terminate()
-            app.launchArguments = ["--ui-testing", "--catalog-pale-sample"] + (dark ? ["--catalog-dark"] : [])
-            app.launch()
-            tap("Explorar recorridos")
-            XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 5))
-            capture(dark ? "Recorrido claro en mapa oscuro" : "Recorrido claro en mapa claro")
-            tap("catalog-sample-route")
-            XCTAssertTrue(app.staticTexts["Distancia al trazado en línea recta."].waitForExistence(timeout: 5))
-            capture(dark ? "Selección en mapa oscuro" : "Selección en mapa claro")
-        }
+    func testCatalogLineVisibilityLight() { checkCatalogLineVisibility(dark: false) }
+    func testCatalogLineVisibilityDark() { checkCatalogLineVisibility(dark: true) }
+
+    private func checkCatalogLineVisibility(dark: Bool) {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-pale-sample"] + (dark ? ["--catalog-dark"] : [])
+        app.launch()
+        tap("Explorar recorridos")
+        XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 5))
+        capture(dark ? "Recorrido claro en mapa oscuro" : "Recorrido claro en mapa claro")
+        tap("catalog-sample-route")
+        XCTAssertTrue(app.staticTexts["Distancia al trazado en línea recta."].waitForExistence(timeout: 5))
+        capture(dark ? "Selección en mapa oscuro" : "Selección en mapa claro")
     }
 
     func testCombinedTrip() {
@@ -752,7 +759,10 @@ final class JourneyTests: XCTestCase {
 
     private func tap(_ identifier: String) {
         let button = app.buttons[identifier]
-        XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
+        guard button.waitForExistence(timeout: 5) else {
+            recordMissingControl(identifier, reason: "No apareció")
+            return
+        }
         for _ in 0..<8 {
             let tabBar = app.otherElements["app-dock"]
             let aboveTab = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
@@ -760,7 +770,10 @@ final class JourneyTests: XCTestCase {
             let aboveAction = !identifier.hasPrefix("trip-stop-") || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY
             let unobscured = aboveTab && aboveAction
             if button.isHittable && unobscured { break }
-            app.scrollViews.firstMatch.swipeUp()
+            let scroll = app.scrollViews.containing(.button, identifier: identifier).firstMatch
+            let target = scroll.exists ? scroll : app.scrollViews.firstMatch
+            guard target.isHittable else { break }
+            target.swipeUp()
             var previousY = button.frame.midY
             for _ in 0..<10 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.15))
@@ -769,8 +782,20 @@ final class JourneyTests: XCTestCase {
                 previousY = currentY
             }
         }
-        XCTAssertTrue(button.isHittable, identifier)
+        guard button.isHittable else {
+            recordMissingControl(identifier, reason: "No se pudo tocar")
+            return
+        }
         button.tap()
+    }
+
+    private func recordMissingControl(_ identifier: String, reason: String) {
+        capture("Fallo · " + identifier)
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.name = "Jerarquía · " + identifier
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
+        XCTFail(reason + ": " + identifier)
     }
 
     private func capture(_ name: String) {
