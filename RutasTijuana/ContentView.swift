@@ -458,15 +458,19 @@ struct ContentView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if textSize.isAccessibilitySize, stage == .journey, validation == .accepted,
-               simulationStep == nil, let first = trip.first {
-                walkingStartButton(first)
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppDesign.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .systemBackground))
+            if textSize.isAccessibilitySize, stage == .journey, simulationStep == nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    if validation == .accepted, let first = trip.first {
+                        walkingStartButton(first)
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppDesign.primary)
+                    }
+                    primaryButton("Nueva consulta", action: reset)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .systemBackground))
             }
         }
         .background(Color(uiColor: .systemBackground))
@@ -595,7 +599,7 @@ struct ContentView: View {
                 Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
                     .font(.footnote).foregroundStyle(.primary)
             }
-            primaryButton("Nueva consulta", action: reset)
+            if !textSize.isAccessibilitySize { primaryButton("Nueva consulta", action: reset) }
         }
         .onAppear { resultFocused = true }
     }
