@@ -69,9 +69,9 @@ final class JourneyTests: XCTestCase {
         try audit("Resultado")
     }
 
-    func testCatalogAndWalkingAccessibility() throws {
+    func testCatalogAccessibility() throws {
         app.terminate()
-        app.launchArguments = ["--journey-fixture", "--ui-testing", "--catalog-info-sample", "--walking-fixture"]
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--catalog-info-sample"]
         app.launch()
         tap("Explorar recorridos")
         let search = app.textFields["catalog-search"]
@@ -94,8 +94,11 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Descripción de ejemplo"].waitForExistence(timeout: 5))
         try audit("Información del catálogo", types: [.textClipped])
         tap("catalog-information-close")
-        app.terminate()
+    }
 
+    func testWalkingAccessibility() throws {
+        app.terminate()
+        app.launchArguments = ["--journey-fixture", "--ui-testing", "--walking-fixture"]
         app.launch()
         tap("Elegir ubicación inicial")
         tap("stop-demo-1")

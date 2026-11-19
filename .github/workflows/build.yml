@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}${{ inputs.mode == 'ui' && format('-ui-{0}', inputs.ui_device) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -186,20 +186,20 @@ jobs:
           fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
-          xcrun simctl bootstatus "$simulator" -b
       - name: Compilar pruebas
         run: |
           set -o pipefail
           xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/ui-build.log"
           python3 scripts/check_app_bundle.py "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app"
           python3 scripts/install_catalog.py --source Catalog --destination "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app/Full/Catalog.bundle"
+      - name: Esperar al simulador
+        run: xcrun simctl bootstatus "$SIMULATOR" -b
       - name: Interfaz
         env:
           UI_MODE: ${{ inputs.mode }}
           UI_TESTS: ${{ inputs.ui_tests }}
         run: |
           set -o pipefail
-          xcrun simctl bootstatus "$SIMULATOR" -b
           selectors=()
           if [ "$UI_MODE" = ui ]; then
             python3 scripts/ci_ui_selection.py > "$RUNNER_TEMP/ui-selection.txt"
