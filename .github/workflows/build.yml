@@ -179,7 +179,7 @@ jobs:
           set -o pipefail
           xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/ui-build.log"
           python3 scripts/check_app_bundle.py "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app"
-          python3 scripts/install_catalog.py --source Catalog --destination "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app/CatalogFull.bundle"
+          python3 scripts/install_catalog.py --source Catalog --destination "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app/Full/Catalog.bundle"
       - name: Interfaz
         run: |
           set -o pipefail

@@ -66,7 +66,7 @@ final class CatalogRepository: ObservableObject {
             catalog = await Task.detached(priority: .userInitiated) {
                 snapshots.lazy.compactMap { try? $0.validated(digest: Self.digest) }.first
             }.value
-            if bundleEnabled, let directory = Bundle.main.url(forResource: fullCatalogTest ? "CatalogFull" : "Catalog", withExtension: "bundle") {
+            if bundleEnabled, let directory = Bundle.main.url(forResource: "Catalog", withExtension: "bundle", subdirectory: fullCatalogTest ? "Full" : nil) {
                 do {
                     let package = try await Task.detached(priority: .userInitiated) {
                         try CatalogPackage.read(at: directory, digest: Self.digest)
