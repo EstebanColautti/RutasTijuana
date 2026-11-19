@@ -88,43 +88,62 @@ struct WalkingNavigationView: View {
                     }
                     .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : 0.5))
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(model.destination.name).font(.headline)
-                            if model.phase == .navigating {
-                                Text(model.instruction).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold)).accessibilityIdentifier("walking-instruction")
-                                Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
-                                if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(.caption) }
-                            }
-                            if model.route != nil {
-                                Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
-                                Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
-                            }
-                            if !model.message.isEmpty { Text(model.message).font(.subheadline).accessibilityIdentifier("walking-status") }
-                            if model.status.offersStart(phase: model.phase) { Button("Iniciar guía") { model.start() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.status.waitingToStart || model.status.calculating) }
-                            if model.phase == .paused { Button("Reanudar") { model.resume() }.buttonStyle(.borderedProminent).controlSize(.large) }
-                            if model.phase == .arrived || model.phase == .ended {
-                                Button("Volver al viaje") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
-                            } else {
-                                if model.offersRetry {
-                                    Button("Reintentar") { model.retry() }.buttonStyle(.borderedProminent).controlSize(.large)
-                                        .disabled(!model.retryAvailable || !model.status.connected)
-                                    if !model.retryAvailable { Text("Espera un momento antes de reintentar.").font(.caption) }
+                        if showingSteps {
+                            walkingSteps
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(model.destination.name).font(.headline)
+                                if model.phase == .navigating {
+                                    Text(model.instruction).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold)).accessibilityIdentifier("walking-instruction")
+                                    Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
+                                    if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(.caption) }
                                 }
-                                Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
-                            }
-                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                                if model.route != nil {
+                                    Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
+                                    Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
+                                }
+                                if !model.message.isEmpty { Text(model.message).font(.subheadline).accessibilityIdentifier("walking-status") }
+                                if model.phase == .paused { Button("Reanudar") { model.resume() }.buttonStyle(.borderedProminent).controlSize(.large) }
+                                if model.phase == .arrived || model.phase == .ended {
+                                    Button("Volver al viaje") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
+                                } else {
+                                    if model.offersRetry {
+                                        Button("Reintentar") { model.retry() }.buttonStyle(.borderedProminent).controlSize(.large)
+                                            .disabled(!model.retryAvailable || !model.status.connected)
+                                        if !model.retryAvailable { Text("Espera un momento antes de reintentar.").font(.caption) }
+                                    }
+                                    Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
+                                }
+                            }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
+                    .id(showingSteps)
                     .frame(maxHeight: .infinity)
                     .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if openAppDestination != nil {
-                    AppDock(selection: nil) { destination in
-                        pendingDestination = destination
-                        confirmingDestination = true
+                VStack(spacing: 4) {
+                    if !showingSteps && model.status.offersStart(phase: model.phase) {
+                        Button { model.start() } label: {
+                            Text("Iniciar guía")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppDesign.primary)
+                        .disabled(model.status.waitingToStart || model.status.calculating)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                    }
+                    if openAppDestination != nil {
+                        AppDock(selection: nil) { destination in
+                            pendingDestination = destination
+                            confirmingDestination = true
+                        }
                     }
                 }
+                .background(Color(uiColor: .systemBackground))
             }
             .confirmationDialog("¿Salir de la guía?", isPresented: $confirmingDestination, titleVisibility: .visible) {
                 Button("Salir", role: .destructive) {
@@ -135,20 +154,23 @@ struct WalkingNavigationView: View {
                 }
                 Button("Cancelar", role: .cancel) { pendingDestination = nil }
             }
-            .navigationTitle(model.destination.title).navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(showingSteps ? "Indicaciones" : model.destination.title)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack {
-                    Button { confirmEnd = true } label: {
-                        Text("Finalizar")
+                    Button {
+                        if showingSteps { showingSteps = false } else { confirmEnd = true }
+                    } label: {
+                        Text(showingSteps ? "Cerrar" : "Finalizar")
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.primary)
-                    .accessibilityIdentifier("walking-finish")
+                    .accessibilityIdentifier(showingSteps ? "walking-close-steps" : "walking-finish")
                     Spacer()
                 }
                 .padding(.horizontal, 16)
@@ -157,59 +179,7 @@ struct WalkingNavigationView: View {
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
                 Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
             }
-            .sheet(isPresented: $showingSteps, onDismiss: {
-                if pendingDestination != nil { confirmingDestination = true }
-            }) {
-                NavigationStack {
-                    ScrollView {
-                        VStack(spacing: 10) {
-                            ForEach(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
-                                HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: index < model.progress.stepIndex ? "checkmark.circle" : index == model.progress.stepIndex ? "location.circle.fill" : "circle")
-                                        .accessibilityHidden(true)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(step.instruction)
-                                        if model.phase == .navigating {
-                                            Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
-                                                .font(.subheadline)
-                                        }
-                                    }
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
-                                .padding(12)
-                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
-                                .accessibilityElement(children: .combine)
-                            }
-                        }.padding(16)
-                    }
-                        .navigationTitle("Indicaciones")
-                        .safeAreaInset(edge: .top, spacing: 0) {
-                            HStack {
-                                Spacer()
-                                Button("Cerrar") { showingSteps = false }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(.primary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .padding(.horizontal, 16)
-                            .background(Color(uiColor: .systemBackground))
-                        }
-                        .safeAreaInset(edge: .bottom, spacing: 0) {
-                            if openAppDestination != nil {
-                                AppDock(selection: nil) { destination in
-                                    pendingDestination = destination
-                                    showingSteps = false
-                                }
-                            }
-                        }
-                }
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
+
         }
         .preferredColorScheme(testColorScheme)
         .interactiveDismissDisabled()
@@ -217,6 +187,30 @@ struct WalkingNavigationView: View {
         .onChange(of: connectivity.isConnected) { _, value in model.connectivityChanged(value) }
         .onDisappear { model.finish() }
     }
+    private var walkingSteps: some View {
+        VStack(spacing: 10) {
+            ForEach(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: index == model.progress.stepIndex ? "location.circle.fill" : "circle")
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(step.instruction)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if model.phase == .navigating {
+                            Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
+                                .font(.subheadline)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
+                .padding(12)
+                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+            }
+        }.padding(16)
+    }
+
     private var testColorScheme: ColorScheme? {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("--walking-dark") ? .dark : nil
