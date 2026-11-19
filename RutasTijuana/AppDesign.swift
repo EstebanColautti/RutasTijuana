@@ -104,44 +104,72 @@ private struct DockIcon: Shape {
 
 struct AppDock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
     @ScaledMetric(relativeTo: .body) private var iconSize = 19.0
     var selection: AppDestination?
     var onSelect: (AppDestination) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(AppDestination.allCases, id: \.self) { destination in
-                Button {
-                    onSelect(destination)
-                } label: {
-                    VStack(spacing: 2) {
-                        DockIcon(destination: destination)
-                            .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                            .frame(width: iconSize, height: iconSize)
-                            .accessibilityHidden(true)
-                        Text(destination.rawValue)
-                            .font(.caption2.weight(.medium))
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if textSize.isAccessibilitySize {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(AppDestination.allCases, id: \.self) { destination in
+                            destinationButton(destination, showsIcon: false)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
                     }
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
-                        .contentShape(Capsule())
-                        .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: selection)
+                    VStack(spacing: 4) {
+                        destinations(showsIcon: false)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(destination.rawValue)
-                .accessibilityIdentifier("dock-" + destination.rawValue)
-                .accessibilityAddTraits(selection == destination ? .isSelected : [])
+            } else {
+                HStack(spacing: 8) {
+                    destinations(showsIcon: true)
+                }
             }
         }
+        .frame(maxWidth: .infinity)
         .foregroundStyle(.white)
         .padding(4)
-        .appGlass(in: Capsule(), dark: true)
-        .padding(.horizontal, 28)
+        .appGlass(in: RoundedRectangle(cornerRadius: 26), dark: true)
+        .padding(.horizontal, textSize.isAccessibilitySize ? 12 : 28)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-dock")
+    }
+
+    private func destinations(showsIcon: Bool) -> some View {
+        ForEach(AppDestination.allCases, id: \.self) { destination in
+            destinationButton(destination, showsIcon: showsIcon)
+        }
+    }
+
+    private func destinationButton(_ destination: AppDestination, showsIcon: Bool) -> some View {
+        Button {
+            onSelect(destination)
+        } label: {
+            VStack(spacing: 2) {
+                if showsIcon {
+                    DockIcon(destination: destination)
+                        .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                        .frame(width: iconSize, height: iconSize)
+                        .accessibilityHidden(true)
+                }
+                Text(destination.rawValue)
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 4)
+            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44)
+            .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
+            .contentShape(Capsule())
+            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: selection)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(destination.rawValue)
+        .accessibilityIdentifier("dock-" + destination.rawValue)
+        .accessibilityAddTraits(selection == destination ? .isSelected : [])
     }
 }
 
