@@ -602,6 +602,21 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Quitado de favoritos"].waitForExistence(timeout: 5))
     }
 
+    func testFullCatalogOffline() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--catalog-full-test", "--offline"]
+        for _ in 0..<2 {
+            app.launch()
+            app.tabBars.buttons["Rutas"].tap()
+            XCTAssertTrue(app.staticTexts["Resultados: 182"].waitForExistence(timeout: 25))
+            let search = app.textFields["catalog-search"]
+            search.tap()
+            search.typeText("Murua\n")
+            XCTAssertTrue(app.buttons["catalog-centro-murua"].waitForExistence(timeout: 10))
+            app.terminate()
+        }
+    }
+
     func testBundledCatalogAndPhotoOffline() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--offline"]

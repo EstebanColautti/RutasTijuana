@@ -26,7 +26,7 @@ cd RutasTijuana
 open RutasTijuana.xcodeproj
 ```
 
-Para ejecutar sin un paquete local, crear `Config/Debug.local.xcconfig` con `CATALOG_FIXTURE = YES`. Seleccionar el esquema **RutasTijuana**, elegir un simulador de iPhone y ejecutar con `⌘R`. Para un dispositivo físico, configurar el equipo de firma en **Signing & Capabilities**.
+La app incluye el catálogo para consultar recorridos sin conexión. Seleccionar el esquema **RutasTijuana**, elegir un simulador de iPhone y ejecutar con `⌘R`. Para un dispositivo físico, configurar el equipo de firma en **Signing & Capabilities**.
 
 ## Estructura
 
