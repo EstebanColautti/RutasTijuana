@@ -804,8 +804,11 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Buscar parada o lugar")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .background(colorScheme == .dark ? Color.black : Color.white)
             TextField("Buscar parada o lugar", text: $search, prompt: Text(""))
             .accessibilityLabel("Buscar parada o lugar")
             .padding(.horizontal, 12)
