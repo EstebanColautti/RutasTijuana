@@ -25,32 +25,35 @@ struct RutasTijuanaApp: App {
 }
 
 private struct MainTabs: View {
-    private enum Section: Hashable { case stops, home, map }
-    @State private var selected: Section = .home
+    @State private var selected: AppDestination = .home
     @ObservedObject private var repository = CatalogRepository.shared
 
     var body: some View {
         TabView(selection: $selected) {
             NavigationStack {
                 CatalogView(routesTab: true)
-                    .toolbarBackground(.black, for: .navigationBar)
+                    .toolbarBackground(AppDesign.header, for: .navigationBar)
                     .toolbarBackground(.visible, for: .navigationBar)
                     .toolbarColorScheme(.dark, for: .navigationBar)
             }
-            .tabItem { Label("Rutas", systemImage: "map") }
-            .tag(Section.stops)
+            .toolbar(.hidden, for: .tabBar)
+            .tag(AppDestination.routes)
 
             ContentView()
-                .tabItem { Label("Inicio", systemImage: "house") }
-                .tag(Section.home)
+                .toolbar(.hidden, for: .tabBar)
+                .tag(AppDestination.home)
 
             NavigationStack {
                 mapHome
             }
-            .tabItem { Label("Mapa", systemImage: "mappin") }
-            .tag(Section.map)
+            .toolbar(.hidden, for: .tabBar)
+            .tag(AppDestination.map)
         }
-        .tint(.primary)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            AppDock(selection: selected) { selected = $0 }
+        }
+        .environment(\.openAppDestination) { selected = $0 }
+        .tint(AppDesign.primary)
     }
 
     private var mapHome: some View {
@@ -62,7 +65,7 @@ private struct MainTabs: View {
             .accessibilityLabel("Mapa de Tijuana")
             VStack(spacing: 12) {
                 Text("¿A dónde quieres ir hoy?")
-                    .font(.title3.bold())
+                    .font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
                 if let catalog = repository.catalog, catalog.readyForDistribution {
                     NavigationLink { TripPlannerView(catalog: catalog) } label: {
@@ -70,13 +73,13 @@ private struct MainTabs: View {
                     }
                     .accessibilityIdentifier("map-start")
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .tint(AppDesign.primary)
                 } else {
                     NavigationLink { CatalogView() } label: {
                         Text("Consultar recorridos").frame(minWidth: 160, minHeight: 44)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .tint(AppDesign.primary)
                 }
             }
             .padding(16)
@@ -85,7 +88,7 @@ private struct MainTabs: View {
         }
         .navigationTitle("Rutas Tijuana")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
     }

@@ -176,7 +176,7 @@ struct TripPlannerView: View {
                         #endif
                         if trip == nil {
                         if selectingOrigin {
-                            Text("Desde dónde sales").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+                            Text("Desde dónde sales").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold)).accessibilityAddTraits(.isHeader)
                             Text(originName.isEmpty ? "Elige desde dónde sales" : originName)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
@@ -188,7 +188,7 @@ struct TripPlannerView: View {
                                 .frame(minHeight: 44).disabled(location.isRequesting || working)
                         } else {
                             Label(originName.isEmpty ? "Origen" : "Origen: \(originName)", systemImage: "a.circle")
-                            Text("A dónde vas").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+                            Text("A dónde vas").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold)).accessibilityAddTraits(.isHeader)
                             Text(destinationName.isEmpty ? "Elige a dónde quieres llegar" : destinationName)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
@@ -210,7 +210,7 @@ struct TripPlannerView: View {
                         if let trip {
                             if let error = location.message { Text(error) }
                             if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
-                            Text(primaryService?.name ?? "Ruta recomendada").font(.title2.bold())
+                            Text(primaryService?.name ?? "Ruta recomendada").font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
                                 .accessibilityAddTraits(.isHeader)
                                 .accessibilityFocused($resultFocused)
                                 .accessibilityIdentifier("trip-result")
@@ -246,12 +246,12 @@ struct TripPlannerView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectingOrigin)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: trip != nil)
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
         .preferredColorScheme(testColorScheme)
         .navigationTitle(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .principal) { Text(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas").foregroundStyle(.white).accessibilityAddTraits(.isHeader) } }
@@ -383,13 +383,13 @@ struct TripPlannerView: View {
                         Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.67, green: 0.04, blue: 0.04))
+                    .tint(AppDesign.danger)
                 }
                 Button { travelling = true } label: {
                     Text(textSize.isAccessibilitySize ? "Iniciar" : "Empezar viaje")
                         .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }
-                .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                .tint(AppDesign.primary)
                 .accessibilityIdentifier("trip-begin")
                 .disabled(working)
                 .buttonStyle(.borderedProminent)

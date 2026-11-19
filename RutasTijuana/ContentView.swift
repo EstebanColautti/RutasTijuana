@@ -82,7 +82,7 @@ struct ContentView: View {
     }
 
     private var actionTint: Color {
-        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57)
+        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary
     }
 
     private var mappedTrip: [GeoPoint]? { scenario.mappedSection(for: trip) }
@@ -169,22 +169,25 @@ struct ContentView: View {
     private var welcomeHeader: some View {
         HStack(spacing: 0) {
             Text("Rutas Tijuana")
-                .font(.title.bold())
+                .font(AppDesign.type(17, relativeTo: .headline, weight: .semibold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 88)
+                .frame(maxWidth: .infinity, minHeight: 56)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-title")
         }
-        .background { Rectangle().fill(.black) }
+        .background { Rectangle().fill(AppDesign.header) }
     }
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("¿A dónde quieres ir hoy?")
-                    .font(.title2.bold())
+                    .font(AppDesign.type(17, relativeTo: .headline, weight: .semibold))
+                    .foregroundStyle(AppDesign.header)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(AppDesign.accent, in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityAddTraits(.isHeader)
 
                 NavigationLink {
@@ -273,7 +276,7 @@ struct ContentView: View {
                             Text("Elegir ubicación inicial").frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                        .tint(AppDesign.primary)
                         .controlSize(.large)
                         .accessibilityIdentifier("Elegir ubicación inicial")
                     } else {
@@ -281,7 +284,7 @@ struct ContentView: View {
                             Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                        .tint(AppDesign.primary)
                         .controlSize(.large)
                     }
                 } else {
@@ -369,7 +372,7 @@ struct ContentView: View {
         }
         .navigationTitle("Avisos")
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .tint(.white)
@@ -395,7 +398,7 @@ struct ContentView: View {
 
     private var originPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(origin == nil ? "Tu ubicación" : "Paradas cercanas").font(.title3.bold())
+            Text(origin == nil ? "Tu ubicación" : "Paradas cercanas").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Toca el mapa o elige una parada. Las distancias son en línea recta.")
                 .font(.subheadline).foregroundStyle(.primary)
             #if os(iOS)
@@ -426,7 +429,7 @@ struct ContentView: View {
             if let stop = route.stops.first(where: { $0.id == originID }) {
                 Label("Origen: \(stop.name)", systemImage: "a.circle")
             }
-            Text("Bájate en").font(.title3.bold())
+            Text("Bájate en").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Toca el mapa o elige una parada para marcar el destino.")
                 .font(.subheadline).foregroundStyle(.primary)
             searchField
@@ -456,7 +459,7 @@ struct ContentView: View {
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($resultFocused)
-            Text(route.name).font(.title3.bold())
+            Text(route.name).font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             if isDemo {
                 Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.primary)
             } else if validation == .accepted && mappedTrip == nil {
@@ -633,7 +636,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             let finished = step >= trip.count
             Label(finished ? "Viaje finalizado" : "Trayecto en curso", systemImage: finished ? "checkmark.circle" : "bus")
-                .font(.title3.bold())
+                .font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Progreso simulado · Tiempo de llegada no disponible")
             if !finished {
                 Text(trip[step].name)
@@ -816,7 +819,7 @@ private struct ConsultationButtonStyle: ButtonStyle {
             .fontWeight(.semibold)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 52)
-            .background(isEnabled ? Color(red: 0.02, green: 0.29, blue: 0.57) : Color(white: 0.32),
+            .background(isEnabled ? AppDesign.primary : Color(white: 0.32),
                         in: RoundedRectangle(cornerRadius: 12))
     }
 }

@@ -250,7 +250,7 @@ final class JourneyTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--offline"]
         app.launch()
-        app.tabBars.buttons["Rutas"].tap()
+        app.buttons["dock-Rutas"].tap()
         XCTAssertTrue(app.navigationBars["Rutas"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 15))
         capture("Rutas por zona")
@@ -272,7 +272,7 @@ final class JourneyTests: XCTestCase {
         tap("Listo")
         app.terminate()
         app.launch()
-        app.tabBars.buttons["Rutas"].tap()
+        app.buttons["dock-Rutas"].tap()
         tap("Mis listas")
         XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 10))
         XCTAssertTrue(app.navigationBars["Mis listas"].waitForExistence(timeout: 10))
@@ -283,17 +283,16 @@ final class JourneyTests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample"]
         app.launch()
-        let tabs = app.tabBars.firstMatch
-        XCTAssertTrue(tabs.buttons["Inicio"].waitForExistence(timeout: 10))
-        tabs.buttons["Mapa"].tap()
+        XCTAssertTrue(app.buttons["dock-Inicio"].waitForExistence(timeout: 10))
+        app.buttons["dock-Mapa"].tap()
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
-        tabs.buttons["Inicio"].tap()
+        app.buttons["dock-Inicio"].tap()
         tap("Abrir mapa para planear viaje")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
         app.navigationBars.buttons.firstMatch.tap()
-        tabs.buttons["Rutas"].tap()
+        app.buttons["dock-Rutas"].tap()
         XCTAssertTrue(app.navigationBars["Rutas"].waitForExistence(timeout: 10))
-        tabs.buttons["Mapa"].tap()
+        app.buttons["dock-Mapa"].tap()
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
         tap("map-start")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
@@ -305,7 +304,7 @@ final class JourneyTests: XCTestCase {
         search.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         tap("Cerrar")
-        tabs.buttons["Inicio"].tap()
+        app.buttons["dock-Inicio"].tap()
         XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
     }
 
@@ -392,7 +391,7 @@ final class JourneyTests: XCTestCase {
                     return true
                 }
                 if issue.auditType == .contrast {
-                    let tabBar = self.app.tabBars.firstMatch
+                    let tabBar = self.app.otherElements["app-dock"]
                     let bottom = tabBar.isHittable ? tabBar.frame.minY : self.app.frame.maxY
                     if element.frame.midY >= bottom || element.frame.maxY <= self.app.frame.minY ||
                         element.frame.minX >= self.app.frame.maxX || element.frame.maxX <= self.app.frame.minX { return true }
@@ -607,7 +606,7 @@ final class JourneyTests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--catalog-full-test", "--offline"]
         for _ in 0..<2 {
             app.launch()
-            app.tabBars.buttons["Rutas"].tap()
+            app.buttons["dock-Rutas"].tap()
             XCTAssertTrue(app.staticTexts["Resultados: 182"].waitForExistence(timeout: 25))
             let search = app.textFields["catalog-search"]
             search.tap()
@@ -657,7 +656,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(route.waitForExistence(timeout: 10))
         capture("Favoritos")
         app.navigationBars.buttons.firstMatch.tap()
-        app.tabBars.buttons["Mapa"].tap()
+        app.buttons["dock-Mapa"].tap()
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 10))
         capture("Mapa")
         tap("map-start")
@@ -731,7 +730,7 @@ final class JourneyTests: XCTestCase {
         let button = app.buttons[identifier]
         XCTAssertTrue(button.waitForExistence(timeout: 5), identifier)
         for _ in 0..<8 {
-            let tabBar = app.tabBars.firstMatch
+            let tabBar = app.otherElements["app-dock"]
             let aboveTab = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
             let fixedAction = app.buttons["trip-continue"]
             let aboveAction = !identifier.hasPrefix("trip-stop-") || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY

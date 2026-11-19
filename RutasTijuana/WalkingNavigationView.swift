@@ -5,6 +5,9 @@ struct WalkingNavigationView: View {
     private let onArrival: (() -> Void)?
     @StateObject private var model: WalkingNavigationCoordinator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openAppDestination) private var openAppDestination
+    @State private var pendingDestination: AppDestination?
+    @State private var confirmingDestination = false
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -88,7 +91,7 @@ struct WalkingNavigationView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(model.destination.name).font(.headline)
                             if model.phase == .navigating {
-                                Text(model.instruction).font(.title2.bold()).accessibilityIdentifier("walking-instruction")
+                                Text(model.instruction).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold)).accessibilityIdentifier("walking-instruction")
                                 Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
                                 if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(.caption) }
                             }
@@ -114,6 +117,23 @@ struct WalkingNavigationView: View {
                     .frame(maxHeight: .infinity)
                     .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if openAppDestination != nil {
+                    AppDock(selection: nil) { destination in
+                        pendingDestination = destination
+                        confirmingDestination = true
+                    }
+                }
+            }
+            .confirmationDialog("¿Salir de la guía?", isPresented: $confirmingDestination, titleVisibility: .visible) {
+                Button("Salir", role: .destructive) {
+                    guard let pendingDestination else { return }
+                    model.finish()
+                    dismiss()
+                    openAppDestination?(pendingDestination)
+                }
+                Button("Cancelar", role: .cancel) { pendingDestination = nil }
             }
             .navigationTitle(model.destination.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {

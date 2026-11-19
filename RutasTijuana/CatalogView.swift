@@ -183,7 +183,7 @@ struct CatalogView: View {
             }
             if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
         .sheet(isPresented: $savingToLists) { if let selection { listEditor(routeID: selection.id) } }
         .sheet(isPresented: $showingLists, onDismiss: {
             if let id = routeToUse, let feature = catalog?.features.first(where: { $0.id == id }) {
@@ -209,7 +209,7 @@ struct CatalogView: View {
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle(favoritesOnly ? "Favoritos" : routesTab ? "Rutas" : filter == .stops ? "Paradas" : "Recorridos")
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .tint(.white)
@@ -230,7 +230,7 @@ struct CatalogView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Listo") { searchFocused = false }
-                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
@@ -565,7 +565,7 @@ struct CatalogView: View {
             .navigationTitle(routeID == nil ? "Mis listas" : "Guardar en listas")
             .toolbar { Button("Listo") { savingToLists = false; showingLists = false } }
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
     }
 
     private func toggleRoute(_ routeID: String, listID: UUID) {
@@ -586,7 +586,7 @@ struct CatalogView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(feature.name)
-                        .font(.title2.bold())
+                        .font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
                         .accessibilityAddTraits(.isHeader)
                     if let description = information?.description, !description.isEmpty {
                         Text(description).textSelection(.enabled)
