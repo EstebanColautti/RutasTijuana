@@ -116,7 +116,7 @@ struct ContentView: View {
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .tint(actionTint)
-                .presentationBackground(Color(uiColor: .secondarySystemBackground))
+                .presentationBackground(Color(uiColor: .systemBackground))
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -404,9 +404,12 @@ struct ContentView: View {
                 else if stage == .destination { destinationPanel }
                 else { journeyPanel }
             }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
         }
-        .frame(maxWidth: .infinity).background(Color(uiColor: .secondarySystemBackground))
+        .frame(maxWidth: .infinity)
+        .background(Color(uiColor: .systemBackground))
     }
 
     private var originPanel: some View {
@@ -597,7 +600,9 @@ struct ContentView: View {
         Group {
             if isDemo {
                 Label("Datos de evaluación", systemImage: "info.circle")
-                    .font(.caption).foregroundStyle(.primary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

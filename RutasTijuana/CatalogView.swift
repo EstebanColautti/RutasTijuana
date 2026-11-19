@@ -368,6 +368,8 @@ struct CatalogView: View {
                 Text("Buscar nombre, grupo o información").font(.subheadline)
                 TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
                     .focused($searchFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .submitLabel(.search)
                     .onSubmit { searchFocused = false }
                     .accessibilityLabel("Buscar nombre, grupo o información")
