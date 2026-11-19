@@ -142,14 +142,14 @@ jobs:
     name: Interfaz iPhone
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.device == 'compact' && 'macos-15' || 'macos-26' }}
     timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
         device: [standard, compact]
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.device == 'compact' && '/Applications/Xcode_16.4.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
     outputs:
       seconds: ${{ steps.elapsed.outputs.seconds }}
     steps:
@@ -169,7 +169,7 @@ jobs:
             fi
             simulator=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
           else
-            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-26" in k for v in d[k] if v["name"] == "iPhone 17"))')
           fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"

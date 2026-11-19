@@ -2,6 +2,8 @@ import CoreText
 import SwiftUI
 
 enum AppDesign {
+    static let navigationMotion = Animation.easeInOut(duration: 0.20)
+    static let selectionMotion = Animation.easeOut(duration: 0.16)
     static let header = Color(red: 23 / 255, green: 25 / 255, blue: 30 / 255)
     static let primary = Color(red: 0, green: 80 / 255, blue: 208 / 255)
     static let accent = Color(red: 184 / 255, green: 170 / 255, blue: 1)
@@ -39,6 +41,7 @@ enum AppDestination: String, CaseIterable {
 }
 
 struct AppDock: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var selection: AppDestination?
     var onSelect: (AppDestination) -> Void
 
@@ -53,6 +56,7 @@ struct AppDock: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
                         .contentShape(Capsule())
+                        .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: selection)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(destination.rawValue)

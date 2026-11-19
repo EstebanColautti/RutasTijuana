@@ -148,8 +148,10 @@ struct CatalogView: View {
                                 }
                             }
                             .background(Color(uiColor: .systemBackground))
+                            .transition(reduceMotion ? .identity : .opacity)
                         }
                     }
+                    .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectedID)
                 } else {
                     map.frame(minHeight: 180, maxHeight: 310)
                     filters
@@ -476,6 +478,8 @@ struct CatalogView: View {
                         savingToLists = true
                     }
                     .labelStyle(.iconOnly)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
                 }

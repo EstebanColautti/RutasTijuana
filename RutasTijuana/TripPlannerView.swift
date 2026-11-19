@@ -243,8 +243,8 @@ struct TripPlannerView: View {
                         .background(Color(uiColor: .systemBackground))
                 }
             }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectingOrigin)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: trip != nil)
+            .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectingOrigin)
+            .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: trip != nil)
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
         .preferredColorScheme(testColorScheme)
