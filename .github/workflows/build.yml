@@ -4,22 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
       mode:
         description: Comprobaciones
         type: choice
-        options: [full, native, ui, walking, package]
+        options: [full, native, walking, package]
         default: full
-      ui_device:
-        description: iPhone para el modo ui
-        type: choice
-        options: [standard, compact]
-        default: standard
-      ui_tests:
-        description: Nombres de pruebas separados por comas, para el modo ui
-        type: string
       public_key:
         description: Clave pública para los resultados
         type: string
@@ -31,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}${{ inputs.mode == 'ui' && format('-ui-{0}', inputs.ui_device) || '' }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -54,7 +45,6 @@ jobs:
     outputs:
       web: ${{ steps.select.outputs.web }}
       native: ${{ steps.select.outputs.native }}
-      ui: ${{ steps.select.outputs.ui }}
       reason: ${{ steps.select.outputs.reason }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -66,14 +56,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
-          PR_DRAFT: ${{ github.event.pull_request.draft }}
           CHECK_MODE: ${{ inputs.mode || 'full' }}
         run: python3 scripts/ci_select.py
-      - name: Selección de pruebas de interfaz
-        if: ${{ inputs.mode == 'ui' }}
-        env:
-          UI_TESTS: ${{ inputs.ui_tests }}
-        run: python3 scripts/ci_ui_selection.py
       - name: Configuración
         run: |
           git show --format= --check HEAD
@@ -122,7 +106,7 @@ jobs:
   native:
     name: Lógica y Release
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' && inputs.mode != 'ui' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
     runs-on: macos-15
     timeout-minutes: 15
     env:
@@ -157,13 +141,13 @@ jobs:
   ui:
     name: Interfaz iPhone
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.ui == 'true' }}
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
     runs-on: ${{ matrix.device == 'compact' && 'macos-15' || 'macos-26' }}
     timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
-        device: ${{ fromJSON(inputs.mode == 'ui' && format('["{0}"]', inputs.ui_device) || '["standard","compact"]') }}
+        device: [standard, compact]
     env:
       DEVELOPER_DIR: ${{ matrix.device == 'compact' && '/Applications/Xcode_16.4.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
     outputs:
@@ -189,29 +173,18 @@ jobs:
           fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
       - name: Compilar pruebas
         run: |
           set -o pipefail
           xcodebuild build-for-testing -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" CATALOG_FIXTURE=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/ui-build.log"
           python3 scripts/check_app_bundle.py "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app"
           python3 scripts/install_catalog.py --source Catalog --destination "$RUNNER_TEMP/UITestBuild/Build/Products/Debug-iphonesimulator/RutasTijuana.app/Full/Catalog.bundle"
-      - name: Esperar al simulador
-        run: xcrun simctl bootstatus "$SIMULATOR" -b
       - name: Interfaz
-        env:
-          UI_MODE: ${{ inputs.mode }}
-          UI_TESTS: ${{ inputs.ui_tests }}
         run: |
           set -o pipefail
-          selectors=()
-          if [ "$UI_MODE" = ui ]; then
-            python3 scripts/ci_ui_selection.py > "$RUNNER_TEMP/ui-selection.txt"
-            while IFS= read -r method; do
-              selectors+=("-only-testing:RutasTijuanaUITests/JourneyTests/$method")
-            done < "$RUNNER_TEMP/ui-selection.txt"
-          fi
-          { printf '%s\n' '### Selección de interfaz'; if [ "$UI_MODE" = ui ]; then cat "$RUNNER_TEMP/ui-selection.txt"; else printf '%s\n' 'Suite completa'; fi; } >> "$GITHUB_STEP_SUMMARY"
-          xcodebuild test-without-building "${selectors[@]}" -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/ui-tests.log"
+          xcrun simctl bootstatus "$SIMULATOR" -b
+          xcodebuild test-without-building -project RutasTijuana.xcodeproj -scheme RutasTijuana -destination "platform=iOS Simulator,id=$SIMULATOR" -derivedDataPath "$RUNNER_TEMP/UITestBuild" -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/ui-tests.log"
       - name: Capturas y resumen
         if: always()
         run: |

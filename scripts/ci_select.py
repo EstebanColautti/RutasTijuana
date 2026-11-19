@@ -6,7 +6,7 @@ import subprocess
 
 def select(paths, event='pull_request', mode='full'):
     if event == 'workflow_dispatch':
-        return {'web': mode not in ('native', 'ui'), 'native': True, 'reason': 'Ejecución manual: ' + mode}
+        return {'web': mode != 'native', 'native': True, 'reason': 'Ejecución manual: ' + mode}
     if event != 'pull_request' or paths is None:
         return {'web': True, 'native': True, 'reason': 'Comprobación completa'}
     web = native = False
@@ -26,16 +26,6 @@ def select(paths, event='pull_request', mode='full'):
     return {'web': web, 'native': native, 'reason': 'Cambios web y nativos' if web and native else 'Cambios nativos' if native else 'Cambios web' if web else 'Documentación'}
 
 
-def workflow_selection(paths, event, mode, draft):
-    result = select(paths, event, mode)
-    result['ui'] = result['native'] and not (event == 'pull_request' and draft)
-    if event == 'workflow_dispatch' and mode == 'ui':
-        result['native'] = False
-    if event == 'pull_request' and draft and result['native']:
-        result['reason'] += ' · Interfaz completa al salir de borrador'
-    return result
-
-
 def main():
     paths = None
     try:
@@ -46,9 +36,7 @@ def main():
         paths = [p for p in names if p]
     except (ValueError, subprocess.SubprocessError, UnicodeError):
         pass
-    result = workflow_selection(paths, os.environ.get('EVENT_NAME', ''),
-                                os.environ.get('CHECK_MODE', 'full'),
-                                os.environ.get('PR_DRAFT') == 'true')
+    result = select(paths, os.environ.get('EVENT_NAME', ''), os.environ.get('CHECK_MODE', 'full'))
     print(json.dumps(result, ensure_ascii=False))
     with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
         for key, value in result.items():
