@@ -323,7 +323,12 @@ struct CatalogView: View {
                 }
             } else if matches.isEmpty {
                 ContentUnavailableView {
-                    Label("Sin favoritos", systemImage: "star")
+                    VStack(spacing: 10) {
+                        Image(systemName: "star")
+                            .font(.system(size: 52, weight: .ultraLight))
+                            .accessibilityHidden(true)
+                        Text("Sin favoritos").font(AppDesign.title)
+                    }
                 } description: {
                     Text("Aún no tienes rutas guardadas.")
                 } actions: {
@@ -504,6 +509,8 @@ struct CatalogView: View {
                     .contentShape(Rectangle())
             }
             HStack {
+                Text("Filtros").font(AppDesign.subtitle)
+                    .accessibilityHidden(true)
                 Picker("Grupo", selection: $groupID) {
                     Text("Todos los grupos").tag(String?.none)
                     ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }

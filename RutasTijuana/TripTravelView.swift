@@ -292,7 +292,7 @@ struct TripTravelView: View {
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                     .stroke(.white, lineWidth: 9)
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                    .stroke(.indigo, lineWidth: 6)
+                    .stroke(AppDesign.routeInk, lineWidth: 6)
             }
             if model.finished, let destination = finalDestination {
                 Marker(destinationName, systemImage: "flag.fill",
@@ -434,14 +434,17 @@ struct TripTravelView: View {
             GeometryReader { geometry in
                 VStack(spacing: 0) {
                     if mapPath.count > 1 {
-                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.32 : 0.42))
+                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.32 : 0.48))
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Estado actual").font(.headline)
-                                Text(currentStatus).font(.subheadline)
+                                Text("Estado actual").font(AppDesign.subtitle)
+                                Text(currentStatus).font(AppDesign.body)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                             #if DEBUG
                             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                                 Text("Datos de evaluación").font(.footnote)

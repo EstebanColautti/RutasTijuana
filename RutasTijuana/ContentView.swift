@@ -36,7 +36,12 @@ struct ContentView: View {
     @AppStorage("recent-planned-routes") private var recentPlannedData = Data()
 
     private var recentPlannedRoutes: [CatalogFeature] {
-        let ids = (try? JSONDecoder().decode([String].self, from: recentPlannedData)) ?? []
+        let stored = (try? JSONDecoder().decode([String].self, from: recentPlannedData)) ?? []
+        #if DEBUG
+        let ids = ProcessInfo.processInfo.arguments.contains("--catalog-recent-sample") ? ["sample-route"] : stored
+        #else
+        let ids = stored
+        #endif
         guard let catalog = catalogRepository.catalog else { return [] }
         return ids.compactMap { id in catalog.features.first { $0.id == id && $0.kind == .route } }
     }
@@ -201,7 +206,7 @@ struct ContentView: View {
             .accessibilityIdentifier("Favoritos")
             .padding(.trailing, 8)
         }
-        .background { Rectangle().fill(AppDesign.header) }
+        .background { AppDesign.header.ignoresSafeArea(edges: .top) }
     }
 
     private var welcomeContent: some View {
@@ -557,8 +562,21 @@ struct ContentView: View {
             } else if validation == .accepted && mappedTrip == nil {
                 Text("El mapa muestra el recorrido completo y sus paradas.").font(.footnote).foregroundStyle(.primary)
             }
-            if let start = route.stops.first(where: { $0.id == originID }) { Text("Origen: \(start.name)") }
-            if let end = route.stops.first(where: { $0.id == destinationID }) { Text("Destino: \(end.name)") }
+            VStack(alignment: .leading, spacing: 10) {
+                if let start = route.stops.first(where: { $0.id == originID }) {
+                    Label("Origen: \(start.name)", systemImage: "a.circle")
+                }
+                if validation == .accepted && !trip.isEmpty {
+                    Label("Paradas principales: \(trip.count)", systemImage: "bus")
+                }
+                if let end = route.stops.first(where: { $0.id == destinationID }) {
+                    Label("Destino: \(end.name)", systemImage: "b.circle")
+                }
+            }
+            .font(AppDesign.subtitle)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
             Text("Sentido: \(scenario.direction ?? "No disponible")")
                 .font(.subheadline).foregroundStyle(.primary)
             if let date = scenario.updateDate { Text("Actualización: \(date)") }

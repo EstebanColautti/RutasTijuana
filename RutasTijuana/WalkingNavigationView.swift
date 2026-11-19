@@ -86,7 +86,7 @@ struct WalkingNavigationView: View {
                         .accessibilityLabel("Recentrar")
                         .padding()
                     }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : 0.5))
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.56 : 0.60))
                     ScrollView {
                         if showingSteps {
                             walkingSteps
@@ -232,6 +232,7 @@ struct WalkingNavigationView: View {
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
             }
         }.padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var testColorScheme: ColorScheme? {

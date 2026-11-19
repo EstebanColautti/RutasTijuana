@@ -8,6 +8,7 @@ enum AppDesign {
     static let primary = Color(red: 0, green: 80 / 255, blue: 208 / 255)
     static let accent = Color(red: 184 / 255, green: 170 / 255, blue: 1)
     static let dock = Color(red: 38 / 255, green: 38 / 255, blue: 38 / 255)
+    static let routeInk = Color(red: 0.25, green: 0.16, blue: 0.80)
     static let danger = Color(red: 215 / 255, green: 0, blue: 21 / 255)
 
     static var title: Font { type(17, relativeTo: .headline, weight: .semibold) }
@@ -56,8 +57,13 @@ struct AppDock: View {
                 Button {
                     onSelect(destination)
                 } label: {
-                    Image(systemName: destination.icon)
-                        .font(.title3)
+                    VStack(spacing: 2) {
+                        Image(systemName: destination.icon).font(.body.weight(.semibold))
+                        Text(destination.rawValue)
+                            .font(AppDesign.type(10, relativeTo: .caption2, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
                         .contentShape(Capsule())

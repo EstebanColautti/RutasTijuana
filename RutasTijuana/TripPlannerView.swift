@@ -198,6 +198,9 @@ struct TripPlannerView: View {
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("trip-search-toggle")
                         .disabled(working)
                         if selectingOrigin {
@@ -375,7 +378,7 @@ struct TripPlannerView: View {
     }
 
     private func tripMap(height: CGFloat) -> some View {
-        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : height < 700 ? 0.34 : trip == nil ? 0.52 : 0.42
+        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : height < 700 ? 0.34 : trip == nil ? 0.56 : 0.45
         return Map(position: $camera) { mapContents }
             .frame(height: height * fraction)
             .accessibilityLabel("Mapa de origen, destino e itinerario")
@@ -489,7 +492,7 @@ struct TripPlannerView: View {
                         MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                             .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 11 : 8)
                         MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                            .stroke(.indigo.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 8 : 5)
+                            .stroke(AppDesign.routeInk.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 8 : 5)
                     } else {
                         ForEach(Array(service.geometry.enumerated()), id: \.offset) { part in
                             MapPolyline(coordinates: part.element.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
@@ -662,6 +665,9 @@ struct TripPlannerView: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .contentShape(Rectangle())
                     }
+                    .padding(.horizontal, 12)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                    .listRowSeparator(.hidden)
                     .accessibilityIdentifier("trip-place-\(row.offset)")
                     }
                 }
