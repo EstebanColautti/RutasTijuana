@@ -289,7 +289,9 @@ struct ContentView: View {
                 Divider()
 
                 Text("Consultas recientes")
-                    .font(AppDesign.title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                     ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
@@ -438,30 +440,30 @@ struct ContentView: View {
     }
 
     private var panel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if !connectivity.isConnected {
-                    Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                        .font(AppDesign.note).foregroundStyle(.primary)
-                }
-                if let step = simulationStep { simulationPanel(step) }
-                else if stage == .origin { originPanel }
-                else if stage == .destination { destinationPanel }
-                else { journeyPanel }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-        }
-        .frame(maxWidth: .infinity)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(spacing: 0) {
             if isDemo {
                 demoNotice
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .systemBackground))
+                    .layoutPriority(1)
             }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !connectivity.isConnected {
+                        Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
+                            .font(AppDesign.note).foregroundStyle(.primary)
+                    }
+                    if let step = simulationStep { simulationPanel(step) }
+                    else if stage == .origin { originPanel }
+                    else if stage == .destination { destinationPanel }
+                    else { journeyPanel }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            }
+            .frame(maxWidth: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if textSize.isAccessibilitySize, stage == .journey, simulationStep == nil {
@@ -680,7 +682,7 @@ struct ContentView: View {
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .padding(.horizontal, 12)
-                .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
         }
         .accessibilityIdentifier("stop-\(stop.id)")

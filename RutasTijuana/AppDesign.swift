@@ -110,55 +110,36 @@ struct AppDock: View {
     var onSelect: (AppDestination) -> Void
 
     var body: some View {
-        Group {
-            if textSize.isAccessibilitySize {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(AppDestination.allCases, id: \.self) { destination in
-                            destinationButton(destination, showsIcon: false)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                    }
-                    VStack(spacing: 4) {
-                        destinations(showsIcon: false)
-                    }
-                }
-            } else {
-                HStack(spacing: 8) {
-                    destinations(showsIcon: true)
-                }
+        HStack(spacing: textSize.isAccessibilitySize ? 4 : 8) {
+            ForEach(AppDestination.allCases, id: \.self) { destination in
+                destinationButton(destination)
             }
         }
         .frame(maxWidth: .infinity)
         .foregroundStyle(.white)
         .padding(4)
         .appGlass(in: RoundedRectangle(cornerRadius: 26), dark: true)
-        .padding(.horizontal, textSize.isAccessibilitySize ? 12 : 28)
+        .padding(.horizontal, textSize.isAccessibilitySize ? 8 : 28)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-dock")
     }
 
-    private func destinations(showsIcon: Bool) -> some View {
-        ForEach(AppDestination.allCases, id: \.self) { destination in
-            destinationButton(destination, showsIcon: showsIcon)
-        }
-    }
-
-    private func destinationButton(_ destination: AppDestination, showsIcon: Bool) -> some View {
+    private func destinationButton(_ destination: AppDestination) -> some View {
         Button {
             onSelect(destination)
         } label: {
             VStack(spacing: 2) {
-                if showsIcon {
+                if !textSize.isAccessibilitySize {
                     DockIcon(destination: destination)
                         .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                         .frame(width: iconSize, height: iconSize)
                         .accessibilityHidden(true)
                 }
                 Text(destination.rawValue)
-                    .font(.body)
+                    .font(.callout)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 4)
             .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44)
