@@ -157,7 +157,9 @@ struct WalkingNavigationView: View {
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
                 Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
             }
-            .sheet(isPresented: $showingSteps) {
+            .sheet(isPresented: $showingSteps, onDismiss: {
+                if pendingDestination != nil { confirmingDestination = true }
+            }) {
                 NavigationStack {
                     List(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
                         HStack(alignment: .top, spacing: 12) {
@@ -181,7 +183,17 @@ struct WalkingNavigationView: View {
                     }
                         .navigationTitle("Indicaciones")
                         .toolbar { Button("Cerrar") { showingSteps = false } }
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            if openAppDestination != nil {
+                                AppDock(selection: nil) { destination in
+                                    pendingDestination = destination
+                                    showingSteps = false
+                                }
+                            }
+                        }
                 }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
         .preferredColorScheme(testColorScheme)

@@ -33,6 +33,13 @@ struct ContentView: View {
     @State private var simulationStep: Int?
     @State private var categoryFilter: String?
     @AppStorage("journey-recent") private var recentData = Data()
+    @AppStorage("recent-planned-routes") private var recentPlannedData = Data()
+
+    private var recentPlannedRoutes: [CatalogFeature] {
+        let ids = (try? JSONDecoder().decode([String].self, from: recentPlannedData)) ?? []
+        guard let catalog = catalogRepository.catalog else { return [] }
+        return ids.compactMap { id in catalog.features.first { $0.id == id && $0.kind == .route } }
+    }
     @AccessibilityFocusState private var resultFocused: Bool
     private var evaluation: Bool { scenario.fixedOriginID != nil }
     private var isDemo: Bool { scenario.routeID == nil }
@@ -278,6 +285,20 @@ struct ContentView: View {
                 Text("Consultas recientes")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
+                if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                    ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
+                        NavigationLink { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) } label: {
+                            Label(feature.name, systemImage: "bus")
+                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary) }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("recent-planned-\(feature.id)")
+                    }
+                }
                 ForEach(Array(recents.prefix(2).enumerated()), id: \.offset) { item in
                     if let catalog = catalogRepository.catalog,
                        let feature = catalog.features.first(where: { $0.id == item.element.routeID }),
@@ -293,7 +314,7 @@ struct ContentView: View {
                     }
                 }
                 NavigationLink { recentView } label: {
-                    Label(recents.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
+                    Label(recents.isEmpty && recentPlannedRoutes.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .accessibilityIdentifier("Consultas recientes")
@@ -709,7 +730,12 @@ struct ContentView: View {
 
     private var recentView: some View {
         List {
-            if recents.isEmpty { Text("No hay consultas recientes") }
+            if recents.isEmpty && recentPlannedRoutes.isEmpty { Text("No hay consultas recientes") }
+            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                ForEach(recentPlannedRoutes) { feature in
+                    NavigationLink(feature.name) { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) }
+                }
+            }
             ForEach(Array(recents.enumerated()), id: \.offset) { row in
                 if let catalog = catalogRepository.catalog,
                    let feature = catalog.features.first(where: { $0.id == row.element.routeID }),
@@ -733,8 +759,11 @@ struct ContentView: View {
                     }
                 }
             }
-            if !recents.isEmpty {
-                Button("Borrar recientes", role: .destructive) { storeRecents([]) }
+            if !recents.isEmpty || !recentPlannedRoutes.isEmpty {
+                Button("Borrar recientes", role: .destructive) {
+                    storeRecents([])
+                    recentPlannedData = Data()
+                }
             }
         }.navigationTitle("Consultas recientes").toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
     }

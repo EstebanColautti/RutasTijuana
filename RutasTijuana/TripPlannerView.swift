@@ -95,6 +95,8 @@ extension RouteCatalog {
 #endif
 
 struct TripPlannerView: View {
+    @AppStorage("recent-planned-routes") private var recentPlannedData = Data()
+
     let catalog: RouteCatalog
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var textSize
@@ -220,7 +222,13 @@ struct TripPlannerView: View {
                             if let direction = primaryService?.direction, !direction.isEmpty {
                                 Text(direction).font(.subheadline)
                             }
-                            Text("\(trip.transfers) \(trip.transfers == 1 ? "transbordo" : "transbordos") · \(WalkingFormat.distance(trip.walkingMeters)) a pie")
+                            Label("\(trip.transfers) \(trip.transfers == 1 ? "transbordo" : "transbordos") · \(WalkingFormat.distance(trip.walkingMeters)) a pie",
+                                  systemImage: "figure.walk")
+                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                                .foregroundStyle(AppDesign.header)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(AppDesign.accent, in: RoundedRectangle(cornerRadius: 12))
                             if trip.exceedsPreferences {
                                 Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
                             }
@@ -928,6 +936,13 @@ struct TripPlannerView: View {
                 switch result {
                 case .found(let result):
                     trip = result
+                    if let recent = result.legs.compactMap({ leg -> String? in
+                        guard case .ride(let service, _) = leg else { return nil }
+                        return service.catalogRouteID ?? service.id
+                    }).first {
+                        let previous = (try? JSONDecoder().decode([String].self, from: recentPlannedData)) ?? []
+                        recentPlannedData = (try? JSONEncoder().encode(Array(([recent] + previous.filter { $0 != recent }).prefix(12)))) ?? recentPlannedData
+                    }
                     paused = false
                     showTrip(result, origin: origin, destination: destination)
                 case .paused: paused = true; message = "La búsqueda necesita continuar."

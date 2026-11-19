@@ -7,6 +7,8 @@ struct CatalogView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
+    @FocusState private var routeSearchFocused: Bool
+    @State private var showingRouteSearch = false
     @ObservedObject private var repository = CatalogRepository.shared
     @AppStorage("favorite-routes") private var favoriteData = Data()
     @AppStorage("route-lists") private var listData = Data()
@@ -184,6 +186,7 @@ struct CatalogView: View {
             if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
+        .sheet(isPresented: $showingRouteSearch) { routeSearchSheet }
         .sheet(isPresented: $savingToLists) { if let selection { listEditor(routeID: selection.id) } }
         .sheet(isPresented: $showingLists, onDismiss: {
             if let id = routeToUse, let feature = catalog?.features.first(where: { $0.id == id }) {
@@ -409,10 +412,76 @@ struct CatalogView: View {
         .accessibilityIdentifier("catalog-\(feature.id)")
     }
 
+    private var routeSearchSheet: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    TextField("Buscar recorridos", text: $query)
+                        .focused($routeSearchFocused)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit { routeSearchFocused = false }
+                        .accessibilityIdentifier("route-search-field")
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    Button("Buscar") { routeSearchFocused = false }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppDesign.primary)
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if matches.isEmpty { emptySearch }
+                        ForEach(matches) { feature in
+                            Button {
+                                routeSearchFocused = false
+                                selectedID = feature.id
+                                fit(feature)
+                                showingRouteSearch = false
+                            } label: {
+                                Label(feature.name, systemImage: feature.kind == .route ? "arrow.triangle.turn.up.right.diamond" : "mappin")
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("route-search-result-\(feature.id)")
+                        }
+                    }
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .padding(16)
+            .navigationTitle("Buscar recorridos")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cerrar") { showingRouteSearch = false }
+                }
+            }
+            .tint(AppDesign.primary)
+        }
+    }
+
     private var filters: some View {
         VStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Buscar nombre, grupo o información").font(.subheadline)
+                HStack {
+                    Text("Buscar nombre, grupo o información").font(.subheadline)
+                    Spacer(minLength: 8)
+                    Button("Buscar") {
+                        searchFocused = false
+                        showingRouteSearch = true
+                    }
+                    .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                    .foregroundStyle(AppDesign.primary)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityIdentifier("catalog-open-search")
+                }
                 TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
                     .focused($searchFocused)
                     .textInputAutocapitalization(.never)

@@ -530,8 +530,15 @@ final class JourneyTests: XCTestCase {
         tap("catalog-information-close")
         capture("Recorridos")
         let search = app.textFields["catalog-search"]
-        search.tap()
+        tap("catalog-open-search")
+        let routeSearch = app.textFields["route-search-field"]
+        XCTAssertTrue(routeSearch.waitForExistence(timeout: 10))
+        routeSearch.tap()
+        routeSearch.typeText("Recorrido")
+        XCTAssertTrue(app.buttons["route-search-result-sample-route"].waitForExistence(timeout: 10))
         capture("Buscar recorridos")
+        tap("Cerrar")
+        search.tap()
         search.typeText("sin coincidencias")
         search.typeText("\n")
         XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 10))
