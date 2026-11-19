@@ -592,9 +592,15 @@ struct TripPlannerView: View {
                             Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44)
                         }.accessibilityLabel("Borrar búsqueda")
                     }
+                    Button("Buscar") { findPlaces() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppDesign.primary)
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
+                        .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                 }
                 .padding(.horizontal, 12).frame(minHeight: 44)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && recentStops.isEmpty {
                     Text("Busca una parada o un lugar.").font(.footnote)
                 } else if query.trimmingCharacters(in: .whitespacesAndNewlines).count == 1 {
@@ -714,7 +720,9 @@ struct TripPlannerView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     TripActionButton("Cancelar") { selectingOnMap = false }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 8) {
                     TripActionButton("Usar punto") {
                         guard let mapPoint else { return }
                         invalidate()
@@ -726,8 +734,16 @@ struct TripPlannerView: View {
                         else { destination = mapPoint; destinationName = "Destino en el mapa"; destinationReference = mapPoint }
                         camera = .automatic
                         selectingOnMap = false
-                    }.disabled(mapPoint == nil)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppDesign.primary)
+                    .disabled(mapPoint == nil)
+                    Text(selectingOrigin ? "Selecciona el origen" : "Selecciona el destino")
+                        .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
                 }
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .background(Color(uiColor: .systemBackground))
             }
         }
         .tint(.blue)

@@ -136,6 +136,9 @@ struct WalkingNavigationView: View {
                 Button("Cancelar", role: .cancel) { pendingDestination = nil }
             }
             .navigationTitle(model.destination.title).navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppDesign.header, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack {
                     Button { confirmEnd = true } label: {

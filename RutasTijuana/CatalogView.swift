@@ -106,7 +106,7 @@ struct CatalogView: View {
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
 
     private var mapFeatures: [CatalogFeature] {
-        if routesTab, let selection { return [selection] }
+        if routesTab || favoritesOnly, let selection { return [selection] }
         var features = matches
         if let index = features.firstIndex(where: { $0.id == selectedID }) {
             features.append(features.remove(at: index))
@@ -122,7 +122,9 @@ struct CatalogView: View {
                         .font(.caption).padding(10).frame(maxWidth: .infinity)
                         .background(.orange.opacity(0.1))
                 }
-                if routesTab {
+                if favoritesOnly {
+                    favoritesContent(catalog)
+                } else if routesTab {
                     ZStack {
                         VStack(spacing: 0) {
                             filters
@@ -155,10 +157,6 @@ struct CatalogView: View {
                 } else {
                     map.frame(minHeight: 180, maxHeight: 310)
                     filters
-                    if favoritesOnly && matches.isEmpty {
-                        NavigationLink("Explorar recorridos") { CatalogView() }
-                            .frame(minHeight: 44)
-                    }
                     Group {
                         if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
                     }
@@ -309,6 +307,55 @@ struct CatalogView: View {
             .overlay {
                 if matches.isEmpty { emptySearch }
             }
+    }
+
+    private func favoritesContent(_ catalog: RouteCatalog) -> some View {
+        Group {
+            if let selection {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        map.frame(height: 220)
+                        detail(selection)
+                    }
+                }
+            } else if matches.isEmpty {
+                ContentUnavailableView {
+                    Label("Sin favoritos", systemImage: "star")
+                } description: {
+                    Text("Aún no tienes rutas guardadas.")
+                } actions: {
+                    NavigationLink("Explorar recorridos") { CatalogView(routesTab: true) }
+                        .frame(minHeight: 44)
+                }
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(matches) { feature in
+                            HStack(spacing: 8) {
+                                row(feature)
+                                if catalog.readyForDistribution {
+                                    NavigationLink {
+                                        TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
+                                    } label: {
+                                        Text("Iniciar ruta")
+                                            .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                            .multilineTextAlignment(.center)
+                                            .padding(.horizontal, 12)
+                                            .frame(minWidth: 44, minHeight: 44)
+                                            .background(AppDesign.primary, in: Capsule())
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                            .padding(10)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary) }
+                        }
+                    }.padding(16)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptySearch: some View {

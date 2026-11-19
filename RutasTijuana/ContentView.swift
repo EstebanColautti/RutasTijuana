@@ -278,6 +278,20 @@ struct ContentView: View {
                 Text("Consultas recientes")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
+                ForEach(Array(recents.prefix(2).enumerated()), id: \.offset) { item in
+                    if let catalog = catalogRepository.catalog,
+                       let feature = catalog.features.first(where: { $0.id == item.element.routeID }),
+                       let match = catalog.journeyScenario(for: feature) {
+                        NavigationLink { ContentView(scenario: match, recent: item.element) } label: {
+                            Label(match.name, systemImage: "bus")
+                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary) }
+                        }.buttonStyle(.plain)
+                    }
+                }
                 NavigationLink { recentView } label: {
                     Label(recents.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
