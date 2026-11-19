@@ -211,24 +211,31 @@ struct WalkingNavigationView: View {
     private var walkingSteps: some View {
         VStack(spacing: 10) {
             ForEach(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
+                let isCurrent = index == model.progress.stepIndex
+                let completed = index < model.progress.stepIndex
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: index == model.progress.stepIndex ? "location.circle.fill" : "circle")
+                    Image(systemName: completed ? "checkmark.circle" : isCurrent ? "location.circle.fill" : "circle")
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(step.instruction)
                             .font(AppDesign.body)
                             .fixedSize(horizontal: false, vertical: true)
                         if model.phase == .navigating {
-                            Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
+                            Text(completed ? "Completado" : isCurrent ? "Paso actual" : "Siguiente")
                                 .font(AppDesign.body)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
+                .fontWeight(isCurrent ? .semibold : .regular)
                 .padding(12)
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(.secondary.opacity(0.45), lineWidth: isCurrent ? 2 : 1)
+                        .allowsHitTesting(false)
+                }
             }
         }.padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)

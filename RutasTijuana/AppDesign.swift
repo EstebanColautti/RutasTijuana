@@ -120,7 +120,7 @@ struct AppDock: View {
                             .frame(width: iconSize, height: iconSize)
                             .accessibilityHidden(true)
                         Text(destination.rawValue)
-                            .font(AppDesign.type(10, relativeTo: .caption2, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                     }

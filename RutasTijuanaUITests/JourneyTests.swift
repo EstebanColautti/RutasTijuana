@@ -325,7 +325,11 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         capture("Buscar origen")
         tap("Cerrar")
-        app.buttons["dock-Inicio"].tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !search.exists && !self.app.keyboards.firstMatch.exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+        tap("dock-Inicio")
         XCTAssertTrue(app.buttons["Explorar recorridos"].waitForExistence(timeout: 10))
     }
 
@@ -376,8 +380,9 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(stop.label.contains("en línea recta"))
         let description = stop.label
         tap("trip-stop-trip-stop-0")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].exists)
         XCTAssertTrue(stop.waitForExistence(timeout: 5))
-        XCTAssertTrue(stop.label.contains(description))
+        XCTAssertEqual(stop.label, description)
         XCTAssertEqual(stop.value as? String, "Seleccionada")
         XCTAssertTrue(app.staticTexts["Paradas cercanas"].exists)
         tap("trip-continue")

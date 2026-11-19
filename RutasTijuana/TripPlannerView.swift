@@ -270,12 +270,14 @@ struct TripPlannerView: View {
                 .transition(reduceMotion ? .identity : .opacity)
                 .scrollDismissesKeyboard(.interactively)
                 .background(Color(uiColor: .systemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .accessibilityIdentifier("trip-panel")
+                VStack(spacing: 8) {
                     primaryAction
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .background(Color(uiColor: .systemBackground))
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(Color(uiColor: .systemBackground))
+                .layoutPriority(1)
             }
             .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectingOrigin)
             .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: trip != nil)
@@ -587,7 +589,7 @@ struct TripPlannerView: View {
                         }
                         Spacer(minLength: 0)
                         if isSelected(item.feature) {
-                            Image(systemName: "checkmark").accessibilityLabel("Seleccionada")
+                            Image(systemName: "checkmark").accessibilityHidden(true)
                         }
                     }
                     .foregroundStyle(.primary)
@@ -665,15 +667,28 @@ struct TripPlannerView: View {
                         searchExpanded = false
                         camera = .automatic
                     } label: {
-                        VStack(alignment: .leading) {
-                            Text(row.element.name ?? "Lugar")
-                            Text(row.element.placemark.title ?? "").font(AppDesign.note)
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(row.element.name ?? "Lugar").font(AppDesign.subtitle)
+                                if let address = row.element.placemark.title, address != row.element.name {
+                                    Text(address).font(AppDesign.note)
+                                }
+                            }
+                            .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "mappin.circle").accessibilityHidden(true)
                         }
+                        .foregroundStyle(.primary)
+                        .padding(10)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(.background, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14)
+                                .strokeBorder(.secondary.opacity(0.45))
+                                .allowsHitTesting(false)
+                        }
                         .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 12)
-                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                     .listRowSeparator(.hidden)
                     .accessibilityIdentifier("trip-place-\(row.offset)")
                     }
@@ -683,7 +698,14 @@ struct TripPlannerView: View {
             .padding(16)
             .navigationTitle(selectingOrigin ? "Buscar origen" : "Buscar destino")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { searchExpanded = false } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cerrar") {
+                        searchFocused = false
+                        searchExpanded = false
+                    }
+                }
+            }
         }
         .tint(.blue)
         .onChange(of: query) { _, text in
