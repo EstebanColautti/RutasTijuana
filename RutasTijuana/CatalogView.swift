@@ -402,7 +402,14 @@ struct CatalogView: View {
                 }
                 if selectedID == feature.id { Image(systemName: "checkmark") }
             }
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(selectedID == feature.id ? AppDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.32) : Color(uiColor: .systemBackground))
+            }
+            .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary) }
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .accessibilityValue([

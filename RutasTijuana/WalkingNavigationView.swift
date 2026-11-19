@@ -100,7 +100,9 @@ struct WalkingNavigationView: View {
                                 }
                                 if model.route != nil {
                                     Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
-                                    Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
+                                    if !model.status.offersStart(phase: model.phase) {
+                                        Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
+                                    }
                                 }
                                 if !model.message.isEmpty {
                                     AppNotice(text: model.message, tone: noticeTone)
@@ -128,14 +130,24 @@ struct WalkingNavigationView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 4) {
                     if !showingSteps && model.status.offersStart(phase: model.phase) {
-                        Button { model.start() } label: {
-                            Text("Iniciar guía")
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                        let actions = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
+                        actions {
+                            Button { showingSteps = true } label: {
+                                Text("Ver pasos")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.primary)
+                            Button { model.start() } label: {
+                                Text("Iniciar guía")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppDesign.primary)
+                            .disabled(model.status.waitingToStart || model.status.calculating)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppDesign.primary)
-                        .disabled(model.status.waitingToStart || model.status.calculating)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 6)
                     }

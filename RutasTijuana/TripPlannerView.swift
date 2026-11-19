@@ -184,12 +184,6 @@ struct TripPlannerView: View {
                             Text(originName.isEmpty ? "Elige desde dónde sales" : originName)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                            TripActionButton("Usar mi ubicación") {
-                                invalidate()
-                                requestingOriginLocation = true
-                                location.request()
-                            }
-                                .frame(minHeight: 44).disabled(location.isRequesting || working)
                         } else {
                             Label(originName.isEmpty ? "Origen" : "Origen: \(originName)", systemImage: "a.circle")
                             Text("A dónde vas").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold)).accessibilityAddTraits(.isHeader)
@@ -206,7 +200,26 @@ struct TripPlannerView: View {
                         }
                         .accessibilityIdentifier("trip-search-toggle")
                         .disabled(working)
-                        selectionMap
+                        if selectingOrigin {
+                            let actions = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                            actions {
+                                selectionMap
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(AppDesign.dock)
+                                TripActionButton("Usar mi ubicación") {
+                                    invalidate()
+                                    requestingOriginLocation = true
+                                    location.request()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(AppDesign.primary)
+                                .disabled(location.isRequesting || working)
+                            }
+                        } else {
+                            selectionMap
+                                .buttonStyle(.bordered)
+                                .tint(AppDesign.primary)
+                        }
                         stopSuggestions
                         if let error = location.message { Text(error) }
                         if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
@@ -724,6 +737,10 @@ struct TripPlannerView: View {
                 }
             }
             .navigationTitle(selectingOrigin ? "Elegir origen" : "Elegir destino")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppDesign.header, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     TripActionButton("Cancelar") { selectingOnMap = false }
