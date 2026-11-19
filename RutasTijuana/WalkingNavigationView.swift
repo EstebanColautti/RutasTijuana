@@ -182,7 +182,19 @@ struct WalkingNavigationView: View {
                             : "")
                     }
                         .navigationTitle("Indicaciones")
-                        .toolbar { Button("Cerrar") { showingSteps = false } }
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            HStack {
+                                Spacer()
+                                Button("Cerrar") { showingSteps = false }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .padding(.horizontal, 16)
+                            .background(Color(uiColor: .systemBackground))
+                        }
                         .safeAreaInset(edge: .bottom, spacing: 0) {
                             if openAppDestination != nil {
                                 AppDock(selection: nil) { destination in

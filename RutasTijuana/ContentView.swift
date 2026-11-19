@@ -641,11 +641,12 @@ struct ContentView: View {
             if isDemo {
                 Label("Datos de evaluación", systemImage: "info.circle")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.black)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(AppDesign.header, in: RoundedRectangle(cornerRadius: 6))
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.gray) }
             }
         }
     }
@@ -770,7 +771,10 @@ struct ContentView: View {
 
     private var searchField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Buscar parada o lugar").font(.subheadline)
+            Text("Buscar parada o lugar")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
             TextField("Buscar parada o lugar", text: $search, prompt: Text(""))
             .accessibilityLabel("Buscar parada o lugar")
             .padding(.horizontal, 12)
@@ -886,9 +890,9 @@ private struct ConsultationButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .fontWeight(.semibold)
-            .foregroundStyle(.white)
+            .foregroundStyle(isEnabled ? Color.white : Color.black)
             .frame(maxWidth: .infinity, minHeight: 52)
-            .background(isEnabled ? AppDesign.primary : Color(white: 0.32),
+            .background(isEnabled ? AppDesign.primary : Color(white: 0.88),
                         in: RoundedRectangle(cornerRadius: 12))
     }
 }
