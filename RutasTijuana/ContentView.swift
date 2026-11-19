@@ -434,7 +434,6 @@ struct ContentView: View {
     private var panel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                demoNotice
                 if !connectivity.isConnected {
                     Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
                         .font(.caption).foregroundStyle(.primary)
@@ -449,6 +448,15 @@ struct ContentView: View {
             .padding(16)
         }
         .frame(maxWidth: .infinity)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if isDemo {
+                demoNotice
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .systemBackground))
+            }
+        }
         .background(Color(uiColor: .systemBackground))
     }
 

@@ -161,25 +161,28 @@ struct WalkingNavigationView: View {
                 if pendingDestination != nil { confirmingDestination = true }
             }) {
                 NavigationStack {
-                    List(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: index < model.progress.stepIndex ? "checkmark.circle" : index == model.progress.stepIndex ? "location.circle.fill" : "circle")
-                                .accessibilityHidden(true)
-                            Text(step.instruction + (model.phase == .navigating
-                                ? "\n" + (index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
-                                : ""))
-                                .font(.body)
-                                .lineSpacing(6)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.vertical, 8)
-                        .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(step.instruction)
-                        .accessibilityValue(model.phase == .navigating
-                            ? (index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
-                            : "")
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            ForEach(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: index < model.progress.stepIndex ? "checkmark.circle" : index == model.progress.stepIndex ? "location.circle.fill" : "circle")
+                                        .accessibilityHidden(true)
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(step.instruction)
+                                        if model.phase == .navigating {
+                                            Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
+                                                .font(.subheadline)
+                                        }
+                                    }
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .fontWeight(index == model.progress.stepIndex ? .semibold : .regular)
+                                .padding(12)
+                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .accessibilityElement(children: .combine)
+                            }
+                        }.padding(16)
                     }
                         .navigationTitle("Indicaciones")
                         .safeAreaInset(edge: .top, spacing: 0) {
