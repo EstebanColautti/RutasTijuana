@@ -92,7 +92,7 @@ struct WalkingNavigationView: View {
                             walkingSteps
                         } else {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text(model.destination.name).font(.headline)
+                                Text(model.destination.name).font(AppDesign.title)
                                 if model.phase == .navigating {
                                     Text(model.instruction).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold)).accessibilityIdentifier("walking-instruction")
                                     Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
@@ -102,7 +102,10 @@ struct WalkingNavigationView: View {
                                     Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
                                     Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
                                 }
-                                if !model.message.isEmpty { Text(model.message).font(.subheadline).accessibilityIdentifier("walking-status") }
+                                if !model.message.isEmpty {
+                                    AppNotice(text: model.message, tone: noticeTone)
+                                        .accessibilityIdentifier("walking-status")
+                                }
                                 if model.phase == .paused { Button("Reanudar") { model.resume() }.buttonStyle(.borderedProminent).controlSize(.large) }
                                 if model.phase == .arrived || model.phase == .ended {
                                     Button("Volver al viaje") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
@@ -187,6 +190,13 @@ struct WalkingNavigationView: View {
         .onChange(of: connectivity.isConnected) { _, value in model.connectivityChanged(value) }
         .onDisappear { model.finish() }
     }
+    private var noticeTone: AppNoticeTone {
+        if model.phase == .arrived { return .success }
+        if !model.status.connected || model.status.error != nil ||
+            model.status.endpointGap > 25 || model.status.location == .imprecise { return .caution }
+        return .information
+    }
+
     private var walkingSteps: some View {
         VStack(spacing: 10) {
             ForEach(Array((model.route?.steps ?? []).enumerated()), id: \.offset) { index, step in
@@ -195,6 +205,7 @@ struct WalkingNavigationView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(step.instruction)
+                            .font(AppDesign.body)
                             .fixedSize(horizontal: false, vertical: true)
                         if model.phase == .navigating {
                             Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")

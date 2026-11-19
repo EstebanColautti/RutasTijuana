@@ -471,7 +471,7 @@ struct CatalogView: View {
         VStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Buscar nombre, grupo o información").font(.subheadline)
+                    Text("Buscar nombre, grupo o información").font(AppDesign.subtitle)
                     Spacer(minLength: 8)
                     Button("Buscar") {
                         searchFocused = false
@@ -572,7 +572,7 @@ struct CatalogView: View {
     private func detail(_ feature: CatalogFeature) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(feature.name).font(.headline)
+                Text(feature.name).font(AppDesign.title)
                 Spacer()
                 if feature.kind == .route && privateCatalog == nil {
                     let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)

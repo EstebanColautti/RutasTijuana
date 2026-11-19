@@ -220,7 +220,7 @@ struct TripPlannerView: View {
                                 .accessibilityIdentifier("trip-result")
                                 .onAppear { resultFocused = true }
                             if let direction = primaryService?.direction, !direction.isEmpty {
-                                Text(direction).font(.subheadline)
+                                Text(direction).font(AppDesign.subtitle)
                             }
                             Label("\(trip.transfers) \(trip.transfers == 1 ? "transbordo" : "transbordos") · \(WalkingFormat.distance(trip.walkingMeters)) a pie",
                                   systemImage: "figure.walk")
@@ -230,13 +230,13 @@ struct TripPlannerView: View {
                                 .padding(12)
                                 .background(AppDesign.accent, in: RoundedRectangle(cornerRadius: 12))
                             if trip.exceedsPreferences {
-                                Text("Este viaje requiere ampliar la caminata o los transbordos preferidos.")
+                                AppNotice(text: "Este viaje requiere ampliar la caminata o los transbordos preferidos.", tone: .caution)
                             }
                             ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
                                 tripLegCard(row.element, index: row.offset, total: trip.legs.count)
                             }
                             Text("El seguimiento utiliza tu ubicación durante el viaje. Los avisos de bajada son opcionales.")
-                                .font(.footnote)
+                                .font(AppDesign.note)
                             Button("Nueva consulta") { resetConsultation() }
                                 .frame(minHeight: 44)
                         }

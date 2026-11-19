@@ -10,6 +10,11 @@ enum AppDesign {
     static let dock = Color(red: 38 / 255, green: 38 / 255, blue: 38 / 255)
     static let danger = Color(red: 215 / 255, green: 0, blue: 21 / 255)
 
+    static var title: Font { type(17, relativeTo: .headline, weight: .semibold) }
+    static var subtitle: Font { type(14, relativeTo: .subheadline, weight: .semibold) }
+    static var body: Font { type(14, relativeTo: .body, weight: .light) }
+    static var note: Font { type(12, relativeTo: .footnote, weight: .light).italic() }
+
     private static let interName: String? = {
         guard let url = Bundle.main.url(forResource: "Inter", withExtension: "ttf", subdirectory: "Typography")
                 ?? Bundle.main.url(forResource: "Inter", withExtension: "ttf"),
@@ -121,5 +126,33 @@ private struct AppGlassSurface<S: Shape>: ViewModifier {
         } else {
             content.background(.regularMaterial, in: shape)
         }
+    }
+}
+
+enum AppNoticeTone {
+    case information, caution, success
+
+    var accent: Color {
+        switch self {
+        case .information: return Color(red: 83 / 255, green: 162 / 255, blue: 183 / 255)
+        case .caution: return Color(red: 244 / 255, green: 162 / 255, blue: 62 / 255)
+        case .success: return Color(red: 0.10, green: 0.62, blue: 0.33)
+        }
+    }
+}
+
+struct AppNotice: View {
+    let text: String
+    let tone: AppNoticeTone
+
+    var body: some View {
+        Text(text)
+            .font(AppDesign.body)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(tone.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(tone.accent, lineWidth: 1) }
     }
 }
