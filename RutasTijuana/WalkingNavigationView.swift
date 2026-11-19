@@ -81,7 +81,7 @@ struct WalkingNavigationView: View {
                                 .font(.body)
                                 .foregroundStyle(.primary)
                                 .frame(minWidth: 44, minHeight: 44)
-                                .background(.regularMaterial, in: Circle())
+                                .appGlass(in: Circle(), interactive: true)
                         }
                         .accessibilityLabel("Recentrar")
                         .padding()

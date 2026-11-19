@@ -365,7 +365,7 @@ struct TripPlannerView: View {
                     } label: {
                         Label("Mostrar viaje completo", systemImage: "arrow.up.left.and.arrow.down.right")
                             .labelStyle(.iconOnly).frame(width: 44, height: 44)
-                            .background(.regularMaterial, in: Circle())
+                            .appGlass(in: Circle(), interactive: true)
                     }
                     .accessibilityLabel("Mostrar viaje completo")
                     .accessibilityIdentifier("trip-show-all")

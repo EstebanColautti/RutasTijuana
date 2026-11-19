@@ -62,7 +62,7 @@ struct AppDock: View {
         }
         .foregroundStyle(.white)
         .padding(4)
-        .background(AppDesign.dock, in: Capsule())
+        .appGlass(in: Capsule(), dark: true)
         .padding(.horizontal, 28)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
@@ -78,5 +78,44 @@ extension EnvironmentValues {
     var openAppDestination: ((AppDestination) -> Void)? {
         get { self[AppDestinationAction.self] }
         set { self[AppDestinationAction.self] = newValue }
+    }
+}
+
+extension View {
+    func appGlass<S: Shape>(in shape: S, dark: Bool = false, interactive: Bool = false) -> some View {
+        modifier(AppGlassSurface(shape: shape, dark: dark, interactive: interactive))
+    }
+}
+
+private struct AppGlassSurface<S: Shape>: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    let shape: S
+    let dark: Bool
+    let interactive: Bool
+
+    func body(content: Content) -> some View {
+        if reduceTransparency || contrast == .increased {
+            content.background(dark ? AppDesign.dock : Color(uiColor: .systemBackground), in: shape)
+        } else {
+            #if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                content.glassEffect(.regular.tint(dark ? AppDesign.dock.opacity(0.85) : nil)
+                    .interactive(interactive), in: shape)
+            } else {
+                fallback(content)
+            }
+            #else
+            fallback(content)
+            #endif
+        }
+    }
+
+    @ViewBuilder private func fallback(_ content: Content) -> some View {
+        if dark {
+            content.background(AppDesign.dock, in: shape)
+        } else {
+            content.background(.regularMaterial, in: shape)
+        }
     }
 }
