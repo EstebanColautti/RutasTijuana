@@ -144,7 +144,12 @@ struct ContentView: View {
                 select(stop.point)
             }
             .onChange(of: stage) { _, next in
-                if next != .home && textSize.isAccessibilitySize { detent = .large }
+                guard next != .home else { return }
+                if #available(iOS 26.0, *) {
+                    detent = .large
+                } else if textSize.isAccessibilitySize {
+                    detent = .large
+                }
             }
             #if os(iOS)
             .onChange(of: location.point) { _, point in
@@ -601,8 +606,11 @@ struct ContentView: View {
             if isDemo {
                 Label("Datos de evaluación", systemImage: "info.circle")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppDesign.header, in: RoundedRectangle(cornerRadius: 6))
             }
         }
     }

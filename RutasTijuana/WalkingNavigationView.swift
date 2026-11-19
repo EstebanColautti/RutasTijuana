@@ -136,15 +136,20 @@ struct WalkingNavigationView: View {
                 Button("Cancelar", role: .cancel) { pendingDestination = nil }
             }
             .navigationTitle(model.destination.title).navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
                     Button { confirmEnd = true } label: {
                         Text("Finalizar")
-                            .foregroundStyle(colorScheme == .dark ? .white : .primary)
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
-                    }.accessibilityIdentifier("walking-finish")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .accessibilityIdentifier("walking-finish")
+                    Spacer()
                 }
+                .padding(.horizontal, 16)
+                .background(Color(uiColor: .systemBackground))
             }
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
                 Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
