@@ -36,7 +36,12 @@ final class CatalogRepository: ObservableObject {
         guard !opened else { await update(force: false); return }
         opened = true
         do {
-            let name = fixture ? "CatalogTests" : testing ? (bundleEnabled ? "CatalogBundleTests" : "CatalogUITests") : "Catalog"
+            #if DEBUG
+            let fullCatalogTest = testing && ProcessInfo.processInfo.arguments.contains("--catalog-full-test")
+            #else
+            let fullCatalogTest = false
+            #endif
+            let name = fullCatalogTest ? "CatalogFullTests" : fixture ? "CatalogTests" : testing ? (bundleEnabled ? "CatalogBundleTests" : "CatalogUITests") : "Catalog"
             let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent(name, isDirectory: true)
             let cache = try SQLiteCatalogCache(url: directory.appendingPathComponent("catalog.sqlite"))
@@ -61,7 +66,7 @@ final class CatalogRepository: ObservableObject {
             catalog = await Task.detached(priority: .userInitiated) {
                 snapshots.lazy.compactMap { try? $0.validated(digest: Self.digest) }.first
             }.value
-            if bundleEnabled, let directory = Bundle.main.url(forResource: "Catalog", withExtension: "bundle") {
+            if bundleEnabled, let directory = Bundle.main.url(forResource: fullCatalogTest ? "CatalogFull" : "Catalog", withExtension: "bundle") {
                 do {
                     let package = try await Task.detached(priority: .userInitiated) {
                         try CatalogPackage.read(at: directory, digest: Self.digest)
