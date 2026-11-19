@@ -6,7 +6,7 @@ import subprocess
 
 def select(paths, event='pull_request', mode='full'):
     if event == 'workflow_dispatch':
-        return {'web': mode != 'native', 'native': True, 'reason': 'Ejecución manual: ' + mode}
+        return {'web': mode not in ('native', 'ui'), 'native': True, 'reason': 'Ejecución manual: ' + mode}
     if event != 'pull_request' or paths is None:
         return {'web': True, 'native': True, 'reason': 'Comprobación completa'}
     web = native = False
