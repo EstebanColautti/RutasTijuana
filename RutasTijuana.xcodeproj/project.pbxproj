@@ -4,7 +4,7 @@
 	};
 	objectVersion = 77;
 	objects = {
-000000000000000000000710 = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Catalog"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "set -eu\nif [ \"${CATALOG_FIXTURE:-NO}\" = YES ]; then\npython3 \"$SRCROOT/scripts/install_catalog.py\" --fixture --destination \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Catalog.bundle\"\nelse\npython3 \"$SRCROOT/scripts/install_catalog.py\" --source \"${CATALOG_PACKAGE_PATH:-$SRCROOT/local-data/app/catalog}\" --destination \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Catalog.bundle\"\nfi\n"; };
+000000000000000000000710 = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Catalog"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "set -eu\nif [ \"${CATALOG_FIXTURE:-NO}\" = YES ]; then\npython3 \"$SRCROOT/scripts/install_catalog.py\" --fixture --destination \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Catalog.bundle\"\nelse\npython3 \"$SRCROOT/scripts/install_catalog.py\" --source \"${CATALOG_PACKAGE_PATH:-$SRCROOT/Catalog}\" --destination \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Catalog.bundle\"\nfi\n"; };
 
 
 000000000000000000000385 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RutasTijuana/NavigationAttributes.swift; sourceTree = "<group>"; };
