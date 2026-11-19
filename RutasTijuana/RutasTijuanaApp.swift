@@ -16,6 +16,7 @@ struct RutasTijuanaApp: App {
     var body: some Scene {
         WindowGroup {
             root
+                .font(AppDesign.body)
                 .task { await NavigationActivityController.clearPreviousSession(); await CatalogRepository.shared.open() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { Task { await CatalogRepository.shared.update(force: false) } }
@@ -73,14 +74,12 @@ private struct MainTabs: View {
                         Text("Empezar viaje").frame(minWidth: 160, minHeight: 44)
                     }
                     .accessibilityIdentifier("map-start")
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppDesign.primary)
+                    .buttonStyle(AppActionStyle())
                 } else {
                     NavigationLink { CatalogView() } label: {
                         Text("Consultar recorridos").frame(minWidth: 160, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppDesign.primary)
+                    .buttonStyle(AppActionStyle())
                 }
             }
             .padding(16)

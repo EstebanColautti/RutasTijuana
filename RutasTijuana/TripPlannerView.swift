@@ -13,7 +13,11 @@ struct TripActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+            Text(title)
+                .font(AppDesign.subtitle)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
     }
 }
@@ -175,7 +179,7 @@ struct TripPlannerView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
-                            Text("Datos de evaluación").font(.footnote)
+                            Text("Datos de evaluación").font(AppDesign.note)
                         }
                         #endif
                         if trip == nil {
@@ -207,15 +211,13 @@ struct TripPlannerView: View {
                             let actions = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
                             actions {
                                 selectionMap
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(AppDesign.dock)
+                                    .buttonStyle(AppActionStyle(fill: AppDesign.dock))
                                 TripActionButton("Usar mi ubicación") {
                                     invalidate()
                                     requestingOriginLocation = true
                                     location.request()
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(AppDesign.primary)
+                                .buttonStyle(AppActionStyle())
                                 .disabled(location.isRequesting || working)
                             }
                         } else {
@@ -238,6 +240,12 @@ struct TripPlannerView: View {
                             if let direction = primaryService?.direction, !direction.isEmpty {
                                 Text(direction).font(AppDesign.subtitle)
                             }
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label(originName.isEmpty ? "Origen" : "Origen: \(originName)", systemImage: "location.circle")
+                                Label(destinationName.isEmpty ? "Destino" : "Destino: \(destinationName)", systemImage: "mappin.circle")
+                            }
+                            .font(AppDesign.body)
+                            .fixedSize(horizontal: false, vertical: true)
                             Label("\(trip.transfers) \(trip.transfers == 1 ? "transbordo" : "transbordos") · \(WalkingFormat.distance(trip.walkingMeters)) a pie",
                                   systemImage: "figure.walk")
                                 .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
@@ -360,10 +368,10 @@ struct TripPlannerView: View {
 
     private func tripLegCard(_ leg: TripLeg, index: Int, total: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Paso \(index + 1) de \(total)").font(.caption).foregroundStyle(.secondary)
+            Text("Paso \(index + 1) de \(total)").font(AppDesign.note).foregroundStyle(.secondary)
             legSummary(leg)
             if selectedLegIndex == index {
-                Label("Etapa seleccionada", systemImage: "checkmark.circle.fill").font(.caption)
+                Label("Etapa seleccionada", systemImage: "checkmark.circle.fill").font(AppDesign.note)
             }
             Button("Mostrar etapa en el mapa") {
                 selectedLegIndex = index
@@ -408,8 +416,7 @@ struct TripPlannerView: View {
                     Button { invalidate() } label: {
                         Text("Cancelar").frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppDesign.danger)
+                    .buttonStyle(AppActionStyle(fill: AppDesign.danger))
                 }
                 Button { travelling = true } label: {
                     Text(textSize.isAccessibilitySize ? "Iniciar" : "Empezar viaje")
@@ -418,7 +425,7 @@ struct TripPlannerView: View {
                 .tint(AppDesign.primary)
                 .accessibilityIdentifier("trip-begin")
                 .disabled(working)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AppActionStyle())
             }
         } else if selectingOrigin {
             Button { selectingOrigin = false } label: {
@@ -426,7 +433,7 @@ struct TripPlannerView: View {
             }
             .accessibilityIdentifier("trip-continue")
             .disabled(origin == nil || working)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppActionStyle())
         } else if working {
             HStack {
                 ProgressView("Calculando itinerario")
@@ -440,7 +447,7 @@ struct TripPlannerView: View {
             }
             .accessibilityIdentifier("trip-calculate")
             .disabled(origin == nil || destination == nil)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppActionStyle())
             if canSearchAll {
                 Button("Buscar en todas las rutas") {
                     requiredRouteID = nil
@@ -545,17 +552,17 @@ struct TripPlannerView: View {
     @ViewBuilder private var stopSuggestions: some View {
         if !catalogHasStops {
             Text("Puedes elegir un lugar o seleccionarlo en el mapa.")
-                .font(.footnote)
+                .font(AppDesign.note)
         } else if (selectingOrigin ? originReference : destinationReference) == nil {
             Text("Elige un punto en el mapa o busca un lugar para ver paradas cercanas.")
-                .font(.footnote)
+                .font(AppDesign.note)
         } else if nearbyStops.isEmpty {
             Text("No hay paradas cercanas a este punto. Puedes elegir otro lugar.")
-                .font(.footnote)
+                .font(AppDesign.note)
         } else {
-            Text("Paradas cercanas").font(.headline).accessibilityAddTraits(.isHeader)
+            Text("Paradas cercanas").font(AppDesign.title).accessibilityAddTraits(.isHeader)
             if selectingOrigin && originReferenceUsesLocation {
-                Text("Al elegir una parada, el viaje comenzará desde ella; no se incluye la caminata desde tu ubicación.").font(.footnote)
+                Text("Al elegir una parada, el viaje comenzará desde ella; no se incluye la caminata desde tu ubicación.").font(AppDesign.note)
             }
             ForEach(nearbyStops) { item in
                 Button {
@@ -576,7 +583,7 @@ struct TripPlannerView: View {
                         Image(systemName: "bus.fill").accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.feature.name).fontWeight(.medium)
-                            Text("A \(WalkingFormat.distance(item.distance)) en línea recta").font(.caption)
+                            Text("A \(WalkingFormat.distance(item.distance)) en línea recta").font(AppDesign.note)
                         }
                         Spacer(minLength: 0)
                         if isSelected(item.feature) {
@@ -610,6 +617,7 @@ struct TripPlannerView: View {
                     TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
                         .focused($searchFocused)
                         .accessibilityIdentifier("trip-place-search")
+                        .appField(focused: searchFocused, invalid: placeSearchFailed)
                         .submitLabel(.search).onSubmit { findPlaces() }
                     if !query.isEmpty {
                         Button { query = ""; searchFocused = true } label: {
@@ -617,8 +625,7 @@ struct TripPlannerView: View {
                         }.accessibilityLabel("Borrar búsqueda")
                     }
                     Button("Buscar") { findPlaces() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppDesign.primary)
+                        .buttonStyle(AppActionStyle())
                         .controlSize(.large)
                         .frame(minHeight: 44)
                         .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
@@ -626,9 +633,9 @@ struct TripPlannerView: View {
                 .padding(.horizontal, 12).frame(minHeight: 44)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && recentStops.isEmpty {
-                    Text("Busca una parada o un lugar.").font(.footnote)
+                    Text("Busca una parada o un lugar.").font(AppDesign.note)
                 } else if query.trimmingCharacters(in: .whitespacesAndNewlines).count == 1 {
-                    Text("Escribe al menos dos caracteres.").font(.footnote)
+                    Text("Escribe al menos dos caracteres.").font(AppDesign.note)
                 }
                 if searchingPlaces { ProgressView("Buscando lugares…") }
                 if !searchMessage.isEmpty { Text(searchMessage).accessibilityIdentifier("trip-search-status") }
@@ -660,7 +667,7 @@ struct TripPlannerView: View {
                     } label: {
                         VStack(alignment: .leading) {
                             Text(row.element.name ?? "Lugar")
-                            Text(row.element.placemark.title ?? "").font(.caption)
+                            Text(row.element.placemark.title ?? "").font(AppDesign.note)
                         }
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .contentShape(Rectangle())
@@ -766,8 +773,7 @@ struct TripPlannerView: View {
                         camera = .automatic
                         selectingOnMap = false
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppDesign.primary)
+                    .buttonStyle(AppActionStyle())
                     .disabled(mapPoint == nil)
                     Text(selectingOrigin ? "Selecciona el origen" : "Selecciona el destino")
                         .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
@@ -786,8 +792,8 @@ struct TripPlannerView: View {
             Label("Camina \(WalkingFormat.distance(route.length)) · \(WalkingFormat.duration(route.duration, arrived: false))", systemImage: "figure.walk")
         case .ride(let service, let stops):
             VStack(alignment: .leading, spacing: 12) {
-                Label(service.name, systemImage: "bus").font(.headline)
-                Text(service.direction ?? "Sentido del recorrido").font(.subheadline)
+                Label(service.name, systemImage: "bus").font(AppDesign.title)
+                Text(service.direction ?? "Sentido del recorrido").font(AppDesign.body)
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
                 layout {
                     boardingPoint(
@@ -800,7 +806,7 @@ struct TripPlannerView: View {
                     )
                 }
                 if stops.contains(where: \.suggested) {
-                    Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
+                    Text("Confirma con el conductor dónde puedes subir y bajar.").font(AppDesign.note)
                 }
                 DisclosureGroup("Información del recorrido") {
                     let feature = catalog.features.first { $0.id == (service.catalogRouteID ?? service.id) }
@@ -812,7 +818,7 @@ struct TripPlannerView: View {
                         if service.section(through: stops) == nil {
                             Text("El seguimiento de esta etapa usa confirmación manual.")
                         }
-                    }.font(.footnote)
+                    }.font(AppDesign.note)
                 }
             }
         }

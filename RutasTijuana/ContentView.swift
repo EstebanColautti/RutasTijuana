@@ -46,6 +46,7 @@ struct ContentView: View {
         return ids.compactMap { id in catalog.features.first { $0.id == id && $0.kind == .route } }
     }
     @AccessibilityFocusState private var resultFocused: Bool
+    @FocusState private var stopSearchFocused: Bool
     private var evaluation: Bool { scenario.fixedOriginID != nil }
     private var isDemo: Bool { scenario.routeID == nil }
     private var journeyFixture: Bool {
@@ -278,7 +279,7 @@ struct ContentView: View {
 
                 if let id = scenario.routeID {
                     Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
-                    Text(scenario.name).font(.headline).accessibilityIdentifier(id)
+                    Text(scenario.name).font(AppDesign.title).accessibilityIdentifier(id)
                 }
                 if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                     NavigationLink { TripPlannerView(catalog: catalog) } label: {
@@ -288,7 +289,7 @@ struct ContentView: View {
                 Divider()
 
                 Text("Consultas recientes")
-                    .font(.headline)
+                    .font(AppDesign.title)
                     .accessibilityAddTraits(.isHeader)
                 if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                     ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
@@ -327,13 +328,13 @@ struct ContentView: View {
                     Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
                 }
                 Text("Puedes elegir tu ubicación manualmente. No se guarda.")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
                 if !evaluation && scenario.routeID == nil && !journeyFixture {
                     if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                         NavigationLink { TripPlannerView(catalog: catalog) } label: {
                             Text("Elegir ubicación inicial").frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AppActionStyle())
                         .tint(AppDesign.primary)
                         .controlSize(.large)
                         .accessibilityIdentifier("Elegir ubicación inicial")
@@ -341,7 +342,7 @@ struct ContentView: View {
                         NavigationLink { CatalogView() } label: {
                             Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AppActionStyle())
                         .tint(AppDesign.primary)
                         .controlSize(.large)
                     }
@@ -402,7 +403,7 @@ struct ContentView: View {
                     }
                     if !connectivity.isConnected {
                         Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                            .font(.caption).padding(8).background(.regularMaterial, in: Capsule())
+                            .font(AppDesign.note).padding(8).background(.regularMaterial, in: Capsule())
                     }
                 }
                 .padding(12).allowsHitTesting(false)
@@ -422,7 +423,7 @@ struct ContentView: View {
             } else {
                 List(Array(notices.enumerated()), id: \.offset) { item in
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "circle.fill").font(.caption).foregroundStyle(.blue).accessibilityHidden(true)
+                        Image(systemName: "circle.fill").font(AppDesign.note).foregroundStyle(.blue).accessibilityHidden(true)
                         Text(item.element)
                     }
                 }
@@ -441,7 +442,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if !connectivity.isConnected {
                     Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                        .font(.caption).foregroundStyle(.primary)
+                        .font(AppDesign.note).foregroundStyle(.primary)
                 }
                 if let step = simulationStep { simulationPanel(step) }
                 else if stage == .origin { originPanel }
@@ -467,7 +468,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if validation == .accepted, let first = trip.first {
                         walkingStartButton(first)
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(AppActionStyle())
                             .tint(AppDesign.primary)
                     }
                     primaryButton("Nueva consulta", action: reset)
@@ -497,7 +498,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(origin == nil ? "Tu ubicación" : "Paradas cercanas").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Toca el mapa o elige una parada. Las distancias son en línea recta.")
-                .font(.subheadline).foregroundStyle(.primary)
+                .font(AppDesign.body).foregroundStyle(.primary)
             #if os(iOS)
             Button { location.request() } label: {
                 Label(location.isRequesting ? "Obteniendo ubicación…" : "Usar mi ubicación", systemImage: "location")
@@ -505,7 +506,7 @@ struct ContentView: View {
             }
             .disabled(location.isRequesting)
             if let message = location.message {
-                Text(message).font(.footnote).foregroundStyle(.primary)
+                Text(message).font(AppDesign.note).foregroundStyle(.primary)
             }
             #endif
             searchField
@@ -528,7 +529,7 @@ struct ContentView: View {
             }
             Text("Bájate en").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Toca el mapa o elige una parada para marcar el destino.")
-                .font(.subheadline).foregroundStyle(.primary)
+                .font(AppDesign.body).foregroundStyle(.primary)
             searchField
             categoryFilters
             choices(point: destination, selectedID: destinationID, isOrigin: false)
@@ -553,14 +554,14 @@ struct ContentView: View {
     private var journeyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(validation.title, systemImage: validation == .accepted ? "checkmark.circle" : "exclamationmark.circle")
-                .font(.headline)
+                .font(AppDesign.title)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($resultFocused)
             Text(route.name).font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             if isDemo {
-                Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.primary)
+                Text("Mapa esquemático entre paradas").font(AppDesign.note).foregroundStyle(.primary)
             } else if validation == .accepted && mappedTrip == nil {
-                Text("El mapa muestra el recorrido completo y sus paradas.").font(.footnote).foregroundStyle(.primary)
+                Text("El mapa muestra el recorrido completo y sus paradas.").font(AppDesign.note).foregroundStyle(.primary)
             }
             VStack(alignment: .leading, spacing: 10) {
                 if let start = route.stops.first(where: { $0.id == originID }) {
@@ -578,22 +579,22 @@ struct ContentView: View {
             .padding(12)
             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
             Text("Sentido: \(scenario.direction ?? "No disponible")")
-                .font(.subheadline).foregroundStyle(.primary)
+                .font(AppDesign.body).foregroundStyle(.primary)
             if let date = scenario.updateDate { Text("Actualización: \(date)") }
             else { Text("Fecha no disponible") }
             if let schedules = scenario.schedules, !schedules.isEmpty {
-                ForEach(Array(schedules.enumerated()), id: \.offset) { item in Text(item.element).font(.footnote) }
+                ForEach(Array(schedules.enumerated()), id: \.offset) { item in Text(item.element).font(AppDesign.note) }
             } else {
-                Text("Horario no disponible").font(.footnote)
+                Text("Horario no disponible").font(AppDesign.note)
             }
             if validation == .accepted, let first = trip.first, let last = trip.last {
                 Label("Camina hasta la parada de subida", systemImage: "figure.walk")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
                 if !textSize.isAccessibilitySize { walkingStartButton(first) }
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
                 DisclosureGroup {
                     ForEach(trip) { stop in Text(stop.name) }
                 } label: {
@@ -611,11 +612,11 @@ struct ContentView: View {
                 primaryButton("Cambiar destino", action: back)
             }
             if let stop = route.stops.first(where: { $0.id == selectedStop }) {
-                Label(stop.name, systemImage: "bus").font(.subheadline)
+                Label(stop.name, systemImage: "bus").font(AppDesign.body)
             }
             if isDemo {
                 Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
             if !textSize.isAccessibilitySize { primaryButton("Nueva consulta", action: reset) }
         }
@@ -633,7 +634,7 @@ struct ContentView: View {
                     Button { selectStop(stop, isOrigin: isOrigin) } label: {
                         VStack(alignment: .leading) {
                             Label(place.name, systemImage: place.symbol)
-                            Text("Referencia de evaluación · \(stop.name)").font(.caption).foregroundStyle(.primary)
+                            Text("Referencia de evaluación · \(stop.name)").font(AppDesign.note).foregroundStyle(.primary)
                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.horizontal, 10)
                     }.buttonStyle(.plain).accessibilityIdentifier("place-\(place.id)")
                 }
@@ -645,7 +646,7 @@ struct ContentView: View {
             let nearby = route.nearbyStops(to: point)
             if nearby.isEmpty {
                 Text("No hay paradas de evaluación dentro del área de consulta. Elige otra en la lista.")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
             ForEach(nearby) { option in
                 Button {
@@ -654,7 +655,7 @@ struct ContentView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(option.stop.name).fontWeight(.medium)
-                            Text(distanceText(option.distance)).font(.caption).foregroundStyle(.primary)
+                            Text(distanceText(option.distance)).font(AppDesign.note).foregroundStyle(.primary)
                         }
                         Spacer()
                         if selectedID == option.id { Image(systemName: "checkmark").foregroundStyle(.blue) }
@@ -821,7 +822,7 @@ struct ContentView: View {
     private var searchField: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Buscar parada o lugar")
-                .font(.subheadline.weight(.semibold))
+                .font(AppDesign.subtitle)
                 .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -829,11 +830,8 @@ struct ContentView: View {
                 .background(colorScheme == .dark ? Color.black : Color.white)
             TextField("Buscar parada o lugar", text: $search, prompt: Text(""))
             .accessibilityLabel("Buscar parada o lugar")
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background(.background, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-            .contentShape(Rectangle())
+            .focused($stopSearchFocused)
+            .appField(focused: stopSearchFocused, invalid: invalidDestination)
             .autocorrectionDisabled()
             .accessibilityIdentifier("journey-search")
         }
@@ -875,7 +873,7 @@ struct ContentView: View {
     }
 
     private func pin(_ text: String, color: Color) -> some View {
-        Text(text).font(.headline).foregroundStyle(.white).frame(width: 32, height: 32)
+        Text(text).font(AppDesign.title).foregroundStyle(.white).frame(width: 32, height: 32)
             .background(color, in: Circle()).accessibilityLabel(text == "A" ? "Origen" : "Destino")
     }
 
@@ -883,7 +881,7 @@ struct ContentView: View {
         Label {
             VStack(alignment: .leading) {
                 Text(title).fontWeight(.medium)
-                if let point { Text(distanceText(point.distance(to: stop.point))).font(.caption).foregroundStyle(.primary) }
+                if let point { Text(distanceText(point.distance(to: stop.point))).font(AppDesign.note).foregroundStyle(.primary) }
             }
         } icon: { Image(systemName: symbol).foregroundStyle(.blue) }
     }
@@ -941,11 +939,17 @@ private struct ConsultationButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .fontWeight(.semibold)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .font(AppDesign.subtitle)
             .foregroundStyle(isEnabled ? Color.white : Color.black)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(isEnabled ? AppDesign.primary : Color(white: 0.88),
-                        in: RoundedRectangle(cornerRadius: 12))
+            .padding(.vertical, 4)
+            .background(isEnabled ? AppDesign.primary : Color(white: 0.88), in: Capsule())
+            .overlay {
+                if configuration.isPressed && isEnabled {
+                    Capsule().fill(.black.opacity(0.16)).allowsHitTesting(false)
+                }
+            }
+            .contentShape(Capsule())
     }
 }
 

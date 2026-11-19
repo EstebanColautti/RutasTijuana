@@ -121,7 +121,7 @@ struct CatalogView: View {
             if let catalog {
                 if !catalog.readyForDistribution {
                     Label("Catálogo local", systemImage: "info.circle")
-                        .font(.caption).padding(10).frame(maxWidth: .infinity)
+                        .font(AppDesign.note).padding(10).frame(maxWidth: .infinity)
                         .background(.orange.opacity(0.1))
                 }
                 if favoritesOnly {
@@ -171,19 +171,19 @@ struct CatalogView: View {
                 } description: {
                     Text("Descarga el catálogo para consultar sus recorridos y referencias.")
                 } actions: {
-                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(.borderedProminent).disabled(repository.isUpdating)
+                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(AppActionStyle()).disabled(repository.isUpdating)
                 }
             }
             if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
             if !favoriteNotice.isEmpty {
-                Text(favoriteNotice).font(.footnote).padding(10)
+                Text(favoriteNotice).font(AppDesign.note).padding(10)
                     .accessibilityIdentifier("favorite-notice")
                     .task(id: favoriteNotice) {
                         do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
                         favoriteNotice = ""
                     }
             }
-            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
+            if let message = repository.message { Text(message).font(AppDesign.note).foregroundStyle(.primary).padding(10) }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
         .sheet(isPresented: $showingRouteSearch) { routeSearchSheet }
@@ -392,13 +392,13 @@ struct CatalogView: View {
                     .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
-                    Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
+                    Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(AppDesign.note).foregroundStyle(.primary)
                     if routesTab, let direction = feature.routeDetails?.direction, direction != feature.name {
-                        Text(direction).font(.caption).foregroundStyle(.secondary)
+                        Text(direction).font(AppDesign.note).foregroundStyle(.secondary)
                     }
                     if let reference, let distance = feature.distance(to: reference) {
                         Text(distanceCaption(feature, meters: distance))
-                            .font(.caption).foregroundStyle(.primary)
+                            .font(AppDesign.note).foregroundStyle(.primary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -435,12 +435,9 @@ struct CatalogView: View {
                         .submitLabel(.search)
                         .onSubmit { routeSearchFocused = false }
                         .accessibilityIdentifier("route-search-field")
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
-                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .appField(focused: routeSearchFocused)
                     Button("Buscar") { routeSearchFocused = false }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppDesign.primary)
+                        .buttonStyle(AppActionStyle())
                         .controlSize(.large)
                         .frame(minHeight: 44)
                 }
@@ -454,11 +451,22 @@ struct CatalogView: View {
                                 fit(feature)
                                 showingRouteSearch = false
                             } label: {
-                                Label(feature.name, systemImage: feature.kind == .route ? "arrow.triangle.turn.up.right.diamond" : "mappin")
-                                    .multilineTextAlignment(.leading)
-                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                Label {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(feature.name).font(AppDesign.subtitle)
+                                        if let direction = feature.routeDetails?.direction,
+                                           !direction.isEmpty, direction != feature.name {
+                                            Text(direction).font(AppDesign.note)
+                                        }
+                                    }
+                                    .fixedSize(horizontal: false, vertical: true)
+                                } icon: {
+                                    Image(systemName: feature.kind == .route ? "arrow.triangle.turn.up.right.diamond" : "mappin")
+                                }
+                                .multilineTextAlignment(.leading)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("route-search-result-\(feature.id)")
@@ -502,11 +510,7 @@ struct CatalogView: View {
                     .onSubmit { searchFocused = false }
                     .accessibilityLabel("Buscar nombre, grupo o información")
                     .accessibilityIdentifier("catalog-search")
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-                    .contentShape(Rectangle())
+                    .appField(focused: searchFocused)
             }
             HStack {
                 Text("Filtros").font(AppDesign.subtitle)
@@ -523,11 +527,11 @@ struct CatalogView: View {
                 }
             }
             HStack {
-                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.primary)
+                Text("Resultados: \(matches.count)").font(AppDesign.note).foregroundStyle(.primary)
                 Spacer()
                 if reference != nil {
                     Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
-                        .font(.caption)
+                        .font(AppDesign.note)
                 }
             }
         }.padding(12)
@@ -572,11 +576,11 @@ struct CatalogView: View {
             .overlay(alignment: .topLeading) {
                 if routesTab, let selection {
                     Text(zone(selection))
-                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                         .padding(10).allowsHitTesting(false)
                 } else {
                     Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
-                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                         .padding(10).allowsHitTesting(false)
                 }
             }
@@ -619,14 +623,14 @@ struct CatalogView: View {
                     .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
-                .font(.caption).foregroundStyle(.primary)
+                .font(AppDesign.note).foregroundStyle(.primary)
             if feature.kind == .stop, case .point(let point) = feature.geometry {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
                 if routesTab {
-                    Text("Zona: " + zone(feature)).font(.caption)
-                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(.caption) }
+                    Text("Zona: " + zone(feature)).font(AppDesign.note)
+                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(AppDesign.note) }
                     Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
                         fit(feature)
                     }.frame(minHeight: 44)
@@ -641,7 +645,7 @@ struct CatalogView: View {
                     }.frame(minHeight: 44)
                 }
                 Text("Distancia al trazado en línea recta.")
-                    .font(.caption).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
             if feature.kind == .route || feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
                 Button("Ver información disponible") { showingInformation = true }
@@ -748,7 +752,7 @@ struct CatalogView: View {
                         }
                         ForEach(Array(fields.enumerated()), id: \.offset) { item in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(item.element.label).font(.headline)
+                                Text(item.element.label).font(AppDesign.title)
                                 Text(item.element.value).textSelection(.enabled)
                             }
                         }

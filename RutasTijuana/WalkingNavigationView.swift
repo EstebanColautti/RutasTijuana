@@ -59,7 +59,7 @@ struct WalkingNavigationView: View {
                     .overlay(alignment: .topLeading) {
                         if ProcessInfo.processInfo.arguments.contains("--walking-live-directions") {
                             Text("Ubicación simulada · Camino calculado por Apple")
-                                .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).padding(8)
+                                .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).padding(8)
                         }
                     }
                     #endif
@@ -96,7 +96,7 @@ struct WalkingNavigationView: View {
                                 if model.phase == .navigating {
                                     Text(model.instruction).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold)).accessibilityIdentifier("walking-instruction")
                                     Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
-                                    if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(.caption) }
+                                    if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(AppDesign.note) }
                                 }
                                 if model.route != nil {
                                     Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
@@ -108,16 +108,16 @@ struct WalkingNavigationView: View {
                                     AppNotice(text: model.message, tone: noticeTone)
                                         .accessibilityIdentifier("walking-status")
                                 }
-                                if model.phase == .paused { Button("Reanudar") { model.resume() }.buttonStyle(.borderedProminent).controlSize(.large) }
+                                if model.phase == .paused { Button("Reanudar") { model.resume() }.buttonStyle(AppActionStyle()).controlSize(.large) }
                                 if model.phase == .arrived || model.phase == .ended {
-                                    Button("Volver al viaje") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
+                                    Button("Volver al viaje") { dismiss() }.buttonStyle(AppActionStyle()).controlSize(.large)
                                 } else {
                                     if model.offersRetry {
-                                        Button("Reintentar") { model.retry() }.buttonStyle(.borderedProminent).controlSize(.large)
+                                        Button("Reintentar") { model.retry() }.buttonStyle(AppActionStyle()).controlSize(.large)
                                             .disabled(!model.retryAvailable || !model.status.connected)
-                                        if !model.retryAvailable { Text("Espera un momento antes de reintentar.").font(.caption) }
+                                        if !model.retryAvailable { Text("Espera un momento antes de reintentar.").font(AppDesign.note) }
                                     }
-                                    Button("Abrir en Apple Maps") { openMaps() }.font(.footnote).frame(minHeight: 44)
+                                    Button("Abrir en Apple Maps") { openMaps() }.font(AppDesign.note).frame(minHeight: 44)
                                 }
                             }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -144,8 +144,7 @@ struct WalkingNavigationView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, minHeight: 44)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(AppDesign.primary)
+                            .buttonStyle(AppActionStyle())
                             .disabled(model.status.waitingToStart || model.status.calculating)
                         }
                         .padding(.horizontal, 16)
@@ -221,7 +220,7 @@ struct WalkingNavigationView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         if model.phase == .navigating {
                             Text(index < model.progress.stepIndex ? "Completado" : index == model.progress.stepIndex ? "Paso actual" : "Siguiente")
-                                .font(.subheadline)
+                                .font(AppDesign.body)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }

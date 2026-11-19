@@ -339,7 +339,7 @@ struct TripTravelView: View {
     private var stageProgress: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
-                .font(.subheadline.weight(.semibold))
+                .font(AppDesign.subtitle)
             ProgressView(value: Double(model.index), total: Double(max(1, model.trip.legs.count)))
                 .accessibilityLabel("Progreso por etapas del viaje")
                 .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
@@ -399,8 +399,7 @@ struct TripTravelView: View {
                     TripActionButton("Iniciar caminata") {
                         walking = .init(id: "leg-\(model.index)", name: walkingTarget, point: target, purpose: walkingPurpose)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppDesign.primary)
+                    .buttonStyle(AppActionStyle())
                     .accessibilityIdentifier("trip-walk")
                     TripActionButton("Ya llegué") { model.advance(from: stage) }
                         .accessibilityIdentifier("trip-walk-arrived")
@@ -415,13 +414,11 @@ struct TripTravelView: View {
                     if model.aboard {
                         TripActionButton("Ya bajé") { model.advance(from: stage) }
                             .accessibilityIdentifier("trip-alight")
-                            .buttonStyle(.borderedProminent)
-                            .tint(AppDesign.primary)
+                            .buttonStyle(AppActionStyle())
                     } else {
                         TripActionButton("Ya subí") { model.board(from: stage) }
                             .accessibilityIdentifier("trip-board")
-                            .buttonStyle(.borderedProminent)
-                            .tint(AppDesign.primary)
+                            .buttonStyle(AppActionStyle())
                     }
                 }
             }
@@ -447,7 +444,7 @@ struct TripTravelView: View {
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                             #if DEBUG
                             if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
-                                Text("Datos de evaluación").font(.footnote)
+                                Text("Datos de evaluación").font(AppDesign.note)
                             }
                             #endif
                             if model.finished {
@@ -459,7 +456,7 @@ struct TripTravelView: View {
                                 switch leg {
                                 case .walk(_, _, let route):
                                     stageProgress
-                                    Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(.title2)
+                                    Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(AppDesign.title)
                                         .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                         .onAppear { stageFocused = true }
                                     Text(WalkingFormat.distance(route.length))
@@ -467,18 +464,18 @@ struct TripTravelView: View {
                                     Text(service.name).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
                                         .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                         .onAppear { stageFocused = true }
-                                    Text(service.direction ?? "Sigue el sentido indicado en el recorrido").font(.subheadline)
+                                    Text(service.direction ?? "Sigue el sentido indicado en el recorrido").font(AppDesign.body)
                                     stageProgress
                                     VStack(alignment: .leading, spacing: 12) {
                                         Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
-                                            .font(.headline)
+                                            .font(AppDesign.title)
                                         Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "bus.fill")
-                                            .font(.subheadline)
+                                            .font(AppDesign.body)
                                     }
                                     .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                                     .background(.background, in: RoundedRectangle(cornerRadius: 16))
                                     if stops.contains(where: \.suggested) {
-                                        Text("Confirma con el conductor dónde puedes subir y bajar.").font(.footnote)
+                                        Text("Confirma con el conductor dónde puedes subir y bajar.").font(AppDesign.note)
                                     }
                                     if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
                                 }
