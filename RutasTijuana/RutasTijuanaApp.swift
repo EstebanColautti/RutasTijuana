@@ -29,28 +29,29 @@ private struct MainTabs: View {
     @ObservedObject private var repository = CatalogRepository.shared
 
     var body: some View {
-        TabView(selection: $selected) {
-            NavigationStack {
-                CatalogView(routesTab: true)
-                    .toolbarBackground(AppDesign.header, for: .navigationBar)
-                    .toolbarBackground(.visible, for: .navigationBar)
-                    .toolbarColorScheme(.dark, for: .navigationBar)
-            }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(AppDestination.routes)
-
-            ContentView()
+        VStack(spacing: 0) {
+            TabView(selection: $selected) {
+                NavigationStack {
+                    CatalogView(routesTab: true)
+                        .toolbarBackground(AppDesign.header, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
+                }
                 .toolbar(.hidden, for: .tabBar)
-                .tag(AppDestination.home)
+                .tag(AppDestination.routes)
 
-            NavigationStack {
-                mapHome
+                ContentView()
+                    .toolbar(.hidden, for: .tabBar)
+                    .tag(AppDestination.home)
+
+                NavigationStack {
+                    mapHome
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(AppDestination.map)
             }
-            .toolbar(.hidden, for: .tabBar)
-            .tag(AppDestination.map)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
             AppDock(selection: selected) { selected = $0 }
+                .layoutPriority(1)
         }
         .environment(\.openAppDestination) { selected = $0 }
         .tint(AppDesign.primary)
@@ -83,8 +84,10 @@ private struct MainTabs: View {
                 }
             }
             .padding(16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .padding(20)
+            .foregroundStyle(.primary)
+            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
         }
         .navigationTitle("Rutas Tijuana")
         .navigationBarTitleDisplayMode(.inline)

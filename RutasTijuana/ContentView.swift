@@ -173,9 +173,21 @@ struct ContentView: View {
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 52)
                 .frame(maxWidth: .infinity, minHeight: 56)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-title")
+        }
+        .overlay(alignment: .trailing) {
+            NavigationLink { CatalogView(favoritesOnly: true) } label: {
+                Image(systemName: "star")
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Favoritos")
+            .accessibilityIdentifier("Favoritos")
+            .padding(.trailing, 8)
         }
         .background { Rectangle().fill(AppDesign.header) }
     }
@@ -190,30 +202,45 @@ struct ContentView: View {
                     .background(AppDesign.accent, in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityAddTraits(.isHeader)
 
-                NavigationLink {
-                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
-                        TripPlannerView(catalog: catalog)
-                    } else {
-                        CatalogView()
-                    }
-                } label: {
-                    Rectangle()
-                        .fill(.clear)
-                        .frame(height: textSize.isAccessibilitySize ? 220 : 280)
-                        .background {
-                            Map(initialPosition: .region(MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                            )))
-                            .mapStyle(.standard(elevation: .flat))
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                ZStack(alignment: .bottom) {
+                    NavigationLink {
+                        if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                            TripPlannerView(catalog: catalog)
+                        } else {
+                            CatalogView()
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .contentShape(Rectangle())
+                    } label: {
+                        Rectangle()
+                            .fill(.clear)
+                            .frame(height: textSize.isAccessibilitySize ? 220 : 280)
+                            .background {
+                                Map(initialPosition: .region(MKCoordinateRegion(
+                                    center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
+                                    span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                                )))
+                                .mapStyle(.standard(elevation: .flat))
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 24))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
+                    if scenario.routeID == nil {
+                        NavigationLink { CatalogView() } label: {
+                            Text("Recorridos")
+                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 140, minHeight: 44)
+                                .padding(.horizontal, 12)
+                                .background(AppDesign.primary, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("Explorar recorridos")
+                        .padding(.bottom, 14)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
 
                 if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
                 #if DEBUG
@@ -235,15 +262,6 @@ struct ContentView: View {
                 if let id = scenario.routeID {
                     Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
                     Text(scenario.name).font(.headline).accessibilityIdentifier(id)
-                } else {
-                    NavigationLink { CatalogView() } label: {
-                        Label("Explorar recorridos", systemImage: "map")
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(actionTint)
-                    .accessibilityIdentifier("Explorar recorridos")
                 }
                 if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                     NavigationLink { TripPlannerView(catalog: catalog) } label: {
@@ -251,12 +269,7 @@ struct ContentView: View {
                     }
                 }
                 Divider()
-                NavigationLink { CatalogView(favoritesOnly: true) } label: {
-                    Label("Favoritos", systemImage: "star")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                }
-                .foregroundStyle(actionTint)
-                .accessibilityIdentifier("Favoritos")
+
                 Text("Consultas recientes")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)

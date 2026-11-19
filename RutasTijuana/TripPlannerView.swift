@@ -73,17 +73,19 @@ struct TripActionButton: View {
 
 extension RouteCatalog {
     static var tripSample: RouteCatalog {
-        let stops = (0..<3).map { index in
-            CatalogFeature(id: "trip-stop-\(index)", name: "Parada \(index + 1)", groupID: "g", kind: .stop,
-                color: "#164B85", verified: false,
-                geometry: .point(.init(longitude: -117, latitude: 32.5 + Double(index) * 0.01)))
+        let stops: [CatalogFeature] = (0..<3).map { index in
+            let latitude = 32.5 + Double(index) * 0.01
+            let position = CatalogPosition(longitude: -117, latitude: latitude)
+            return CatalogFeature(id: "trip-stop-\(index)", name: "Parada \(index + 1)", groupID: "g", kind: .stop,
+                color: "#164B85", verified: false, geometry: .point(position))
         }
-        let routes = (0..<2).map { index in
-            CatalogFeature(id: "trip-route-\(index)", name: "Recorrido \(index + 1)", groupID: "g", kind: .route,
-                color: "#164B85", verified: false,
-                geometry: .line([.init(longitude: -117, latitude: 32.5 + Double(index) * 0.01),
-                                       .init(longitude: -117, latitude: 32.5 + Double(index + 1) * 0.01)]),
-                itinerary: .init(stopIDs: ["trip-stop-\(index)", "trip-stop-\(index + 1)"],
+        let routes: [CatalogFeature] = (0..<2).map { index in
+            let next = index + 1
+            let start = CatalogPosition(longitude: -117, latitude: 32.5 + Double(index) * 0.01)
+            let end = CatalogPosition(longitude: -117, latitude: 32.5 + Double(next) * 0.01)
+            return CatalogFeature(id: "trip-route-\(index)", name: "Recorrido \(next)", groupID: "g", kind: .route,
+                color: "#164B85", verified: false, geometry: .line([start, end]),
+                itinerary: .init(stopIDs: ["trip-stop-\(index)", "trip-stop-\(next)"],
                                  circular: false, direction: "Sentido de ejemplo", updatedAt: "2026-11-07"))
         }
         return .init(schemaVersion: 1, version: "trip-example", publishable: true, licenseStatus: "published",
