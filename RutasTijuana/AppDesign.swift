@@ -73,32 +73,61 @@ private struct DockIcon: Shape {
         let path = Path { path in
             switch destination {
             case .routes:
-                path.move(to: CGPoint(x: 2, y: 4))
-                path.addLines([CGPoint(x: 8, y: 2), CGPoint(x: 16, y: 5), CGPoint(x: 22, y: 3),
-                               CGPoint(x: 22, y: 20), CGPoint(x: 16, y: 22), CGPoint(x: 8, y: 19),
-                               CGPoint(x: 2, y: 21)])
+                path.addEllipse(in: CGRect(x: 1.75, y: 1.75, width: 20.5, height: 20.5))
+                path.addLines([CGPoint(x: 16.5, y: 7.5), CGPoint(x: 14.2, y: 14.2),
+                               CGPoint(x: 7.5, y: 16.5), CGPoint(x: 9.8, y: 9.8)])
                 path.closeSubpath()
-                path.move(to: CGPoint(x: 8, y: 2))
-                path.addLine(to: CGPoint(x: 8, y: 19))
-                path.move(to: CGPoint(x: 16, y: 5))
-                path.addLine(to: CGPoint(x: 16, y: 22))
             case .home:
-                path.addLines([CGPoint(x: 2, y: 11), CGPoint(x: 12, y: 2), CGPoint(x: 22, y: 11)])
-                path.move(to: CGPoint(x: 5, y: 9))
-                path.addLines([CGPoint(x: 5, y: 22), CGPoint(x: 10, y: 22), CGPoint(x: 10, y: 15),
-                               CGPoint(x: 14, y: 15), CGPoint(x: 14, y: 22), CGPoint(x: 19, y: 22),
-                               CGPoint(x: 19, y: 9)])
+                path.addLines([CGPoint(x: 2.25, y: 10), CGPoint(x: 12, y: 2),
+                               CGPoint(x: 21.75, y: 10), CGPoint(x: 21.75, y: 20)])
+                path.addQuadCurve(to: CGPoint(x: 19.75, y: 22), control: CGPoint(x: 21.75, y: 22))
+                path.addLine(to: CGPoint(x: 4.25, y: 22))
+                path.addQuadCurve(to: CGPoint(x: 2.25, y: 20), control: CGPoint(x: 2.25, y: 22))
+                path.closeSubpath()
+                path.addLines([CGPoint(x: 8.75, y: 22), CGPoint(x: 8.75, y: 12),
+                               CGPoint(x: 15.25, y: 12), CGPoint(x: 15.25, y: 22)])
             case .map:
                 path.move(to: CGPoint(x: 12, y: 22))
-                path.addQuadCurve(to: CGPoint(x: 4, y: 10), control: CGPoint(x: 4, y: 15))
-                path.addQuadCurve(to: CGPoint(x: 12, y: 2), control: CGPoint(x: 4, y: 2))
-                path.addQuadCurve(to: CGPoint(x: 20, y: 10), control: CGPoint(x: 20, y: 2))
-                path.addQuadCurve(to: CGPoint(x: 12, y: 22), control: CGPoint(x: 20, y: 15))
+                path.addCurve(to: CGPoint(x: 3, y: 10.5), control1: CGPoint(x: 9.3, y: 20.1),
+                              control2: CGPoint(x: 3, y: 15.4))
+                path.addCurve(to: CGPoint(x: 12, y: 1.75), control1: CGPoint(x: 3, y: 5.7),
+                              control2: CGPoint(x: 7, y: 1.75))
+                path.addCurve(to: CGPoint(x: 21, y: 10.5), control1: CGPoint(x: 17, y: 1.75),
+                              control2: CGPoint(x: 21, y: 5.7))
+                path.addCurve(to: CGPoint(x: 12, y: 22), control1: CGPoint(x: 21, y: 15.4),
+                              control2: CGPoint(x: 14.7, y: 20.1))
                 path.closeSubpath()
-                path.addEllipse(in: CGRect(x: 10, y: 7, width: 4, height: 4))
+                path.addEllipse(in: CGRect(x: 9, y: 7.25, width: 6, height: 6))
             }
         }
         return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+    }
+}
+
+struct AppFavoriteIcon: View {
+    var filled = false
+    @ScaledMetric(relativeTo: .body) private var size = 19.0
+
+    var body: some View {
+        let star = Path { path in
+            path.addLines([
+                CGPoint(x: 12, y: 1), CGPoint(x: 15.1, y: 8.1), CGPoint(x: 23, y: 9),
+                CGPoint(x: 17.2, y: 14.2), CGPoint(x: 18.7, y: 22), CGPoint(x: 12, y: 18.1),
+                CGPoint(x: 5.3, y: 22), CGPoint(x: 6.8, y: 14.2), CGPoint(x: 1, y: 9),
+                CGPoint(x: 8.9, y: 8.1)
+            ])
+            path.closeSubpath()
+        }.applying(CGAffineTransform(scaleX: size / 24, y: size / 24))
+
+        Group {
+            if filled {
+                star.fill(.foreground)
+            } else {
+                star.stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 

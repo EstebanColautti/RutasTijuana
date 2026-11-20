@@ -199,7 +199,7 @@ struct ContentView: View {
         }
         .overlay(alignment: .trailing) {
             NavigationLink { CatalogView(favoritesOnly: true) } label: {
-                Image(systemName: "star")
+                AppFavoriteIcon()
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
