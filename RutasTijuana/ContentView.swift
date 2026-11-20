@@ -253,7 +253,7 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .frame(minWidth: 140, minHeight: 44)
                                 .padding(.horizontal, 12)
-                                .background(AppDesign.primary, in: Capsule())
+                                .background { AppDesign.raisedAction(Capsule(), fill: AppDesign.primary, raised: true) }
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("Explorar recorridos")

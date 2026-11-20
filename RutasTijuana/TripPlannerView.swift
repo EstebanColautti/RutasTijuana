@@ -103,6 +103,7 @@ struct TripPlannerView: View {
 
     let catalog: RouteCatalog
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openAppDestination) private var openAppDestination
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var location = LocationService()
@@ -776,14 +777,9 @@ struct TripPlannerView: View {
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    TripActionButton("Cancelar") { selectingOnMap = false }
-                }
-            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 8) {
-                    TripActionButton("Usar punto") {
+                    TripActionButton("Seleccionar") {
                         guard let mapPoint else { return }
                         invalidate()
                         search?.cancel()
@@ -797,12 +793,44 @@ struct TripPlannerView: View {
                     }
                     .buttonStyle(AppActionStyle())
                     .disabled(mapPoint == nil)
-                    Text(selectingOrigin ? "Selecciona el origen" : "Selecciona el destino")
-                        .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                    .padding(.bottom, 8)
+
+                    VStack(spacing: 4) {
+                        Text(selectingOrigin ? "Selecciona el origen" : "Selecciona el destino")
+                            .font(AppDesign.subtitle)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 54)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .accessibilityAddTraits(.isHeader)
+                            .overlay(alignment: .leading) {
+                                Button {
+                                    selectingOnMap = false
+                                } label: {
+                                    Image(systemName: "arrow.left")
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Cancelar")
+                                .padding(.leading, 8)
+                            }
+                        if let openAppDestination {
+                            AppDock(selection: nil) { destination in
+                                selectingOnMap = false
+                                openAppDestination(destination)
+                            }
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.vertical, 6)
+                    .background {
+                        UnevenRoundedRectangle(topLeadingRadius: AppDesign.panelRadius, topTrailingRadius: AppDesign.panelRadius)
+                            .fill(Color(uiColor: .systemBackground))
+                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: -2)
+                            .ignoresSafeArea(edges: .bottom)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(12)
-                .background(Color(uiColor: .systemBackground))
             }
         }
         .tint(.blue)

@@ -2,6 +2,13 @@ import CoreText
 import SwiftUI
 
 enum AppDesign {
+    static let panelRadius: CGFloat = 24
+
+    static func raisedAction(_ shape: Capsule, fill: Color, raised: Bool) -> some View {
+        shape.fill(fill)
+            .shadow(color: .black.opacity(raised ? 0.24 : 0), radius: 3, x: 0, y: 3)
+    }
+
     static let navigationMotion = Animation.easeInOut(duration: 0.20)
     static let selectionMotion = Animation.easeOut(duration: 0.16)
     static let header = Color(red: 23 / 255, green: 25 / 255, blue: 30 / 255)
@@ -146,7 +153,7 @@ struct AppDock: View {
         .frame(maxWidth: .infinity)
         .foregroundStyle(.white)
         .padding(4)
-        .appGlass(in: RoundedRectangle(cornerRadius: 26), dark: true)
+        .appGlass(in: Capsule(), dark: true)
         .padding(.horizontal, 28)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
@@ -265,7 +272,8 @@ struct AppActionStyle: ButtonStyle {
             .padding(.vertical, 8)
             .frame(minWidth: 44, minHeight: 44)
             .background {
-                Capsule().fill(isEnabled ? fill : Color(white: 0.88))
+                AppDesign.raisedAction(Capsule(), fill: isEnabled ? fill : Color(white: 0.88),
+                                       raised: isEnabled && !configuration.isPressed)
             }
             .overlay {
                 if configuration.isPressed && isEnabled {
