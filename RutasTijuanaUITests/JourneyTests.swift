@@ -667,7 +667,6 @@ final class JourneyTests: XCTestCase {
                 capture("Rutas por zona con catálogo completo")
                 tap("Todas")
                 capture("Todas las rutas con catálogo completo")
-
             }
             let search = app.textFields["catalog-search"]
             search.tap()
@@ -677,6 +676,19 @@ final class JourneyTests: XCTestCase {
                 capture("Búsqueda con catálogo completo")
                 tap("catalog-centro-murua")
                 capture("Centro a Murúa")
+            } else {
+                app.terminate()
+                app.launch()
+                tap("dock-Rutas")
+                let fullSearch = app.textFields["catalog-search"]
+                XCTAssertTrue(fullSearch.waitForExistence(timeout: 10))
+                fullSearch.tap()
+                fullSearch.typeText("Fundadores\n")
+                tap("catalog-feature_7eb377470e968bbdb36536f6")
+                capture("Ficha con datos de servicio")
+                tap("catalog-information")
+                XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Horario:")).firstMatch.waitForExistence(timeout: 5))
+                capture("Información del recorrido")
             }
             app.terminate()
         }
@@ -692,7 +704,6 @@ final class JourneyTests: XCTestCase {
             tap("catalog-sample-route")
             tap("catalog-information")
             XCTAssertTrue(app.images["catalog-photo"].waitForExistence(timeout: 10))
-            capture("Catálogo incluido sin conexión")
             app.terminate()
         }
     }
