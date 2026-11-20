@@ -63,9 +63,15 @@ final class JourneyTests: XCTestCase {
         try audit("Inicio")
         tap("Elegir ubicación inicial")
         try audit("Origen")
-        app.scrollViews.containing(.button, identifier: "stop-demo-3").firstMatch.swipeUp()
+        let panel = app.scrollViews["consultation-scroll"]
+        let header = app.navigationBars["Desde dónde sales"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.14)))
+        try audit("Origen expandido")
+        panel.swipeUp(.slow)
         try audit("Origen desplazado")
-        app.scrollViews.containing(.button, identifier: "stop-demo-1").firstMatch.swipeDown()
+        panel.swipeDown(.slow)
         tap("stop-demo-1")
         tap("Continuar")
         XCTAssertFalse(app.buttons["Ver trayecto"].isEnabled)

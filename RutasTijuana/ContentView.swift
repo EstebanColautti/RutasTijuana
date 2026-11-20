@@ -465,6 +465,8 @@ struct ContentView: View {
                 .padding(16)
             }
             .frame(maxWidth: .infinity)
+            .clipped()
+            .accessibilityIdentifier("consultation-scroll")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if textSize.isAccessibilitySize, stage == .journey, simulationStep == nil {
@@ -499,7 +501,13 @@ struct ContentView: View {
 
     private var originPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(origin == nil ? "Tu ubicación" : "Paradas cercanas").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
+            Text(origin == nil ? "Tu ubicación" : "Paradas cercanas")
+                .font(AppDesign.title)
+                .foregroundStyle(Color.primary)
+                .padding(.vertical, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .systemBackground))
+                .accessibilityAddTraits(.isHeader)
             Text("Toca el mapa o elige una parada. Las distancias son en línea recta.")
                 .font(AppDesign.body).foregroundStyle(.primary)
             #if os(iOS)
