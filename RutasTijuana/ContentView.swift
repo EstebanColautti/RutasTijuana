@@ -118,16 +118,12 @@ struct ContentView: View {
                 NavigationStack {
                     panel
                         .navigationTitle(title)
+                        .modifier(AppFavoritesToolbar(confirmBeforeOpening: simulationStep != nil))
                         .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button(action: back) {
-                                    Label(stage == .destination && !evaluation ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
-                                        .frame(minWidth: 44, minHeight: 44)
-                                        .contentShape(Rectangle())
-                                }
-                            }
-                        }
+                        .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
+                        .toolbarBackground(AppDesign.header, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .tint(actionTint)
@@ -452,6 +448,10 @@ struct ContentView: View {
 
     private var panel: some View {
         VStack(spacing: 0) {
+            AppPanelHeading(title: title, backLabel: stage == .destination && !evaluation ? "Cambiar origen" : "Regresar",
+                            back: back) { EmptyView() }
+                .padding(.horizontal, 8)
+                .layoutPriority(1)
             if isDemo {
                 demoNotice
                     .padding(.horizontal, 16)
@@ -838,7 +838,7 @@ struct ContentView: View {
                     recentPlannedData = Data()
                 }
             }
-        }.navigationTitle("Consultas recientes").toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
+        }.navigationTitle("Consultas recientes").modifier(AppFavoritesToolbar(darkHeader: false)).toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
     }
 
     private var searchField: some View {

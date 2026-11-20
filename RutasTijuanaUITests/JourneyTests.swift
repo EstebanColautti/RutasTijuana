@@ -322,11 +322,15 @@ final class JourneyTests: XCTestCase {
         XCTAssertLessThan(mapStart.frame.maxY, mapDockButton.frame.minY)
         let cityMap = app.maps.firstMatch
         if cityMap.exists { XCTAssertGreaterThanOrEqual(cityMap.frame.maxY + 2, mapDockButton.frame.maxY) }
+        XCTAssertTrue(app.buttons["Favoritos"].isHittable)
         capture("Mapa")
         app.buttons["dock-Inicio"].tap()
         tap("Abrir mapa para planear viaje")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.buttons["header-favorites"].isHittable)
+        XCTAssertFalse(app.buttons["trip-continue"].exists)
+        capture("Origen inicial desde Inicio")
+        tap("Regresar")
         app.buttons["dock-Rutas"].tap()
         XCTAssertTrue(app.navigationBars["Rutas"].waitForExistence(timeout: 10))
         app.buttons["dock-Mapa"].tap()
@@ -662,6 +666,7 @@ final class JourneyTests: XCTestCase {
         let route = app.buttons["catalog-sample-route"]
         XCTAssertTrue(route.waitForExistence(timeout: 10))
         XCTAssertTrue((route.value as? String ?? "").contains("Favorito"))
+        XCTAssertFalse(app.navigationBars["Favoritos"].buttons["header-favorites"].exists)
         capture("Favoritos guardados")
         tap("catalog-sample-route")
         tap("favorite-toggle")

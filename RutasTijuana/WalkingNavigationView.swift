@@ -226,6 +226,7 @@ struct WalkingNavigationView: View {
                 Button("Cancelar", role: .cancel) { pendingDestination = nil }
             }
             .navigationTitle(showingSteps ? "Indicaciones" : model.destination.title)
+            .modifier(AppFavoritesToolbar(confirmBeforeOpening: model.phase == .navigating))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
             .toolbarBackground(AppDesign.header, for: .navigationBar)

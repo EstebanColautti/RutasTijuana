@@ -135,15 +135,17 @@ struct AppPanelHeading<Trailing: View>: View {
     let title: String
     var backLabel: String = "Regresar"
     var back: (() -> Void)?
+    var centered = true
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         Text(title)
             .font(AppDesign.title)
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(centered ? .center : .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 50)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.leading, 48)
+            .padding(.trailing, centered ? 48 : 12)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: centered ? .center : .leading)
             .accessibilityAddTraits(.isHeader)
             .overlay(alignment: .leading) {
                 if let back {
@@ -158,6 +160,66 @@ struct AppPanelHeading<Trailing: View>: View {
             }
             .overlay(alignment: .trailing, content: trailing)
             .foregroundStyle(.primary)
+    }
+}
+
+struct AppFavoritesToolbar: ViewModifier {
+    @Environment(\.insideFavorites) private var insideFavorites
+    var enabled = true
+    var darkHeader = true
+    var confirmBeforeOpening = false
+    @State private var showingFavorites = false
+    @State private var confirming = false
+
+    init(enabled: Bool = true, darkHeader: Bool = true, confirmBeforeOpening: Bool = false) {
+        self.enabled = enabled
+        self.darkHeader = darkHeader
+        self.confirmBeforeOpening = confirmBeforeOpening
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar {
+                if enabled && !insideFavorites {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            if confirmBeforeOpening { confirming = true }
+                            else { showingFavorites = true }
+                        } label: {
+                            AppFavoriteIcon()
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(darkHeader ? Color.white : Color.primary)
+                        .accessibilityLabel("Favoritos")
+                        .accessibilityIdentifier("header-favorites")
+                    }
+                }
+            }
+            .confirmationDialog("¿Abrir Favoritos?", isPresented: $confirming, titleVisibility: .visible) {
+                Button("Abrir Favoritos") { showingFavorites = true }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Podrás volver a la pantalla actual al cerrar Favoritos.")
+            }
+            .sheet(isPresented: $showingFavorites) {
+                NavigationStack {
+                    CatalogView(favoritesOnly: true)
+                }
+                .environment(\.insideFavorites, true)
+            }
+    }
+}
+
+private struct InsideFavorites: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var insideFavorites: Bool {
+        get { self[InsideFavorites.self] }
+        set { self[InsideFavorites.self] = newValue }
     }
 }
 
@@ -410,6 +472,7 @@ struct AppNotice: View {
 struct AppActionStyle: ButtonStyle {
     var fill = AppDesign.primary
     var ink = Color.white
+    var verticalInset: CGFloat = 8
 
     private var pressedFill: Color {
         if fill == AppDesign.primary { return Color(red: 0, green: 56 / 255, blue: 145 / 255) }
@@ -425,7 +488,7 @@ struct AppActionStyle: ButtonStyle {
             .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(isEnabled && !(configuration.isPressed && fill == AppDesign.danger) ? ink : Color.black)
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, verticalInset)
             .frame(minWidth: 44, minHeight: 44)
             .background {
                 AppDesign.raisedAction(Capsule(), fill: isEnabled ? (configuration.isPressed ? pressedFill : fill) : Color(white: 0.88),

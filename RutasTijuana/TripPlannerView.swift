@@ -184,7 +184,8 @@ struct TripPlannerView: View {
                         #endif
                         if trip == nil {
                         AppPanelHeading(title: selectingOrigin ? "¿Desde dónde sales?" : "¿A dónde vas?",
-                                        back: { if selectingOrigin { dismiss() } else { selectingOrigin = true } }) {
+                                        back: { if selectingOrigin { dismiss() } else { selectingOrigin = true } },
+                                        centered: false) {
                             EmptyView()
                         }
                         if selectingOrigin, !originName.isEmpty {
@@ -193,13 +194,18 @@ struct TripPlannerView: View {
                         Button {
                             searchExpanded = true
                         } label: {
-                            Label(selectingOrigin ? "Buscar origen" : "Buscar destino", systemImage: "magnifyingglass")
+                            Text(selectingOrigin ? "Buscar origen…" : "Buscar destino…")
+                                .font(AppDesign.note)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 14)
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .background {
+                                    Capsule().fill(Color(uiColor: .tertiarySystemFill)).padding(.vertical, 2)
+                                }
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, 12)
-                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, 14)
                         .accessibilityIdentifier("trip-search-toggle")
                         .disabled(working)
                         if !selectingOrigin {
@@ -211,18 +217,20 @@ struct TripPlannerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if selectingOrigin {
-                            let actions = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                            let actions = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 14))
                             actions {
                                 selectionMap
-                                    .buttonStyle(AppActionStyle(fill: AppDesign.dock))
-                                TripActionButton("Usar mi ubicación") {
+                                    .buttonStyle(AppActionStyle(fill: AppDesign.header, verticalInset: 0))
+                                TripActionButton("Usar ubicación") {
                                     invalidate()
                                     requestingOriginLocation = true
                                     location.request()
                                 }
-                                .buttonStyle(AppActionStyle())
+                                .accessibilityLabel("Usar mi ubicación")
+                                .buttonStyle(AppActionStyle(verticalInset: 0))
                                 .disabled(location.isRequesting || working)
                             }
+                            .frame(maxWidth: .infinity)
                         } else {
                             selectionMap
                                 .buttonStyle(AppActionStyle(fill: AppDesign.dock))
@@ -241,13 +249,13 @@ struct TripPlannerView: View {
                 .accessibilityIdentifier("trip-panel")
                 .background { AppDesign.panelSurface() }
                 .padding(.top, -AppDesign.panelOverlap)
-                VStack(spacing: 8) {
-                    primaryAction
+                if (selectingOrigin ? origin != nil : destination != nil) || working || trip != nil {
+                    VStack(spacing: 8) { primaryAction }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Color(uiColor: .systemBackground))
+                        .layoutPriority(1)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-                .background(Color(uiColor: .systemBackground))
-                .layoutPriority(1)
             }
             .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectingOrigin)
             .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: trip != nil)
@@ -256,6 +264,7 @@ struct TripPlannerView: View {
         .preferredColorScheme(testColorScheme)
         .navigationTitle(trip != nil ? "Tu trayecto" : selectingOrigin ? "Desde dónde sales" : "A dónde vas")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -279,6 +288,7 @@ struct TripPlannerView: View {
             }
         }
         .tint(.white)
+        .modifier(AppFavoritesToolbar())
         .sheet(isPresented: $selectingOnMap) { mapSelection }
         .sheet(isPresented: $searchExpanded, onDismiss: {
             searchDelay?.cancel()
@@ -345,6 +355,7 @@ struct TripPlannerView: View {
 
     private func tripResult(_ trip: PlannedTrip) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            AppPanelHeading(title: "Tu trayecto", back: { invalidate() }) { EmptyView() }
             if let error = location.message { Text(error) }
             if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
             let layout = textSize.isAccessibilitySize
@@ -426,7 +437,11 @@ struct TripPlannerView: View {
     }
 
     private func tripMap(height: CGFloat) -> some View {
-        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : trip != nil ? (height < 700 ? 0.31 : 0.40) : height < 700 ? 0.38 : 0.59
+        let fraction: CGFloat
+        if textSize.isAccessibilitySize { fraction = 0.26 }
+        else if trip != nil { fraction = 0.43 }
+        else if selectingOrigin && origin == nil { fraction = height < 560 ? 0.59 : 0.69 }
+        else { fraction = height < 560 ? 0.38 : 0.53 }
         return Map(position: $camera) { mapContents }
             .mapStyle(.standard(elevation: .flat))
             .frame(height: height * fraction + AppDesign.panelOverlap)
@@ -619,6 +634,8 @@ struct TripPlannerView: View {
         if !catalogHasStops {
             Text("Puedes elegir un lugar o seleccionarlo en el mapa.")
                 .font(AppDesign.note)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
         } else if (selectingOrigin ? originReference : destinationReference) == nil {
             Text("Elige un punto en el mapa o busca un lugar para ver paradas cercanas.")
                 .font(AppDesign.note)
@@ -681,6 +698,11 @@ struct TripPlannerView: View {
     private var searchSheet: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
+                AppPanelHeading(title: selectingOrigin ? "Buscar origen" : "Buscar destino", backLabel: "Cerrar",
+                                back: {
+                                    searchFocused = false
+                                    searchExpanded = false
+                                }) { EmptyView() }
                 HStack {
                     TextField(selectingOrigin ? "Buscar origen" : "Buscar destino", text: $query)
                         .focused($searchFocused)
@@ -763,20 +785,12 @@ struct TripPlannerView: View {
             }
             .padding(16)
             .navigationTitle(selectingOrigin ? "Buscar origen" : "Buscar destino")
+            .modifier(AppFavoritesToolbar())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        searchFocused = false
-                        searchExpanded = false
-                    } label: {
-                        Image(systemName: "arrow.left")
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Cerrar")
-                }
-            }
+            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
+            .toolbarBackground(AppDesign.header, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .tint(.blue)
         .onChange(of: query) { _, text in
@@ -843,6 +857,7 @@ struct TripPlannerView: View {
                 }
             }
             .navigationTitle(selectingOrigin ? "Elegir origen" : "Elegir destino")
+            .modifier(AppFavoritesToolbar())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
             .toolbarBackground(AppDesign.header, for: .navigationBar)

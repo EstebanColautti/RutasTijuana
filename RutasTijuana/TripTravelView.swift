@@ -546,6 +546,7 @@ struct TripTravelView: View {
                 Button("Cancelar", role: .cancel) { pendingDestination = nil }
             }
             .navigationTitle(model.finished ? "Viaje finalizado" : "Trayecto en curso")
+            .modifier(AppFavoritesToolbar(confirmBeforeOpening: !model.finished))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
             .confirmationDialog("¿Finalizar el viaje?", isPresented: $confirmFinish, titleVisibility: .visible) {

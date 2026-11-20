@@ -5,6 +5,7 @@ import Accessibility
 
 struct CatalogView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.insideFavorites) private var insideFavorites
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
@@ -235,12 +236,16 @@ struct CatalogView: View {
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle(favoritesOnly ? "Favoritos" : routesTab ? "Rutas" : filter == .stops ? "Paradas" : "Recorridos")
+        .navigationBarBackButtonHidden(catalog != nil && !routesTab)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
         .tint(.white)
+        .modifier(AppFavoritesToolbar(enabled: !favoritesOnly))
+        .environment(\.insideFavorites, insideFavorites || favoritesOnly)
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             ToolbarItem {
@@ -312,6 +317,7 @@ struct CatalogView: View {
             }
         }
         .navigationTitle("Servicios")
+        .modifier(AppFavoritesToolbar(darkHeader: false))
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
     }
 
@@ -466,6 +472,10 @@ struct CatalogView: View {
     private var routeSearchSheet: some View {
         NavigationStack {
             VStack(spacing: 12) {
+                AppPanelHeading(title: "Buscar recorridos", backLabel: "Cerrar", back: {
+                    routeSearchFocused = false
+                    showingRouteSearch = false
+                }) { EmptyView() }
                 HStack(spacing: 10) {
                     TextField("Buscar recorridos", text: $query)
                         .focused($routeSearchFocused)
@@ -521,18 +531,12 @@ struct CatalogView: View {
             }
             .padding(16)
             .navigationTitle("Buscar recorridos")
+            .modifier(AppFavoritesToolbar())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        routeSearchFocused = false
-                        showingRouteSearch = false
-                    } label: {
-                        Image(systemName: "arrow.left").frame(minWidth: 44, minHeight: 44)
-                    }
-                    .accessibilityLabel("Cerrar")
-                }
-            }
+            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
+            .toolbarBackground(AppDesign.header, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .tint(AppDesign.primary)
         }
     }
@@ -754,6 +758,7 @@ struct CatalogView: View {
                 }
             }
             .navigationTitle(routeID == nil ? "Mis listas" : "Guardar en listas")
+            .modifier(AppFavoritesToolbar(darkHeader: false))
             .toolbar { Button("Listo") { savingToLists = false; showingLists = false } }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
@@ -814,6 +819,7 @@ struct CatalogView: View {
                 .padding(20)
             }
             .navigationTitle("Información")
+            .modifier(AppFavoritesToolbar(darkHeader: false))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
