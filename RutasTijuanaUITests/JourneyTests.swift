@@ -659,14 +659,25 @@ final class JourneyTests: XCTestCase {
     func testFullCatalogOffline() {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--catalog-full-test", "--offline"]
-        for _ in 0..<2 {
+        for attempt in 0..<2 {
             app.launch()
             app.buttons["dock-Rutas"].tap()
             XCTAssertTrue(app.staticTexts["Resultados: 182"].waitForExistence(timeout: 25))
+            if attempt == 0 {
+                capture("Rutas por zona con catálogo completo")
+                tap("Todas")
+                capture("Todas las rutas con catálogo completo")
+
+            }
             let search = app.textFields["catalog-search"]
             search.tap()
             search.typeText("Murua\n")
             XCTAssertTrue(app.buttons["catalog-centro-murua"].waitForExistence(timeout: 10))
+            if attempt == 0 {
+                capture("Búsqueda con catálogo completo")
+                tap("catalog-centro-murua")
+                capture("Centro a Murúa")
+            }
             app.terminate()
         }
     }
