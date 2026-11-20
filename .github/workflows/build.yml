@@ -142,14 +142,14 @@ jobs:
     name: Interfaz iPhone
     needs: changes
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.device == 'compact' && 'macos-15' || 'macos-26' }}
     timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
         device: [standard, compact]
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.device == 'compact' && '/Applications/Xcode_16.4.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
     outputs:
       seconds: ${{ steps.elapsed.outputs.seconds }}
     steps:
@@ -169,7 +169,7 @@ jobs:
             fi
             simulator=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
           else
-            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-26" in k for v in d[k] if v["name"] == "iPhone 17"))')
           fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
@@ -190,9 +190,21 @@ jobs:
         run: |
           if [ -d "$RUNNER_TEMP/UITests.xcresult" ]; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/UITests.xcresult" > "$RUNNER_TEMP/ui-summary.json"
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UITests.xcresult" --output-path "$RUNNER_TEMP/ui-captures"
-            python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-summary.json" "$GITHUB_STEP_SUMMARY"
           fi
+          python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-summary.json" "$GITHUB_STEP_SUMMARY" "${{ matrix.device }}"
+      - name: Exportar capturas
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/UITests.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UITests.xcresult" --output-path "$RUNNER_TEMP/ui-captures"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: iPhone-summary-${{ matrix.device }}
+          path: ${{ runner.temp }}/ui-summary.json
+          overwrite: true
+          retention-days: 7
       - id: elapsed
         if: always()
         env:
@@ -228,7 +240,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: ${{ needs.ui.result != 'skipped' }}
+        with:
+          pattern: iPhone-summary-*
+          path: ${{ runner.temp }}/ui-reports
+      - name: Diagnóstico de interfaz
+        if: ${{ !cancelled() && needs.ui.result != 'skipped' }}
+        run: python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-reports" "$GITHUB_STEP_SUMMARY"
       - name: Resumen
+        if: always()
         env:
           JOB_RESULTS: ${{ toJSON(needs) }}
         run: python3 scripts/ci_summary.py

@@ -33,7 +33,22 @@ struct ContentView: View {
     @State private var simulationStep: Int?
     @State private var categoryFilter: String?
     @AppStorage("journey-recent") private var recentData = Data()
+    @AppStorage("recent-planned-routes") private var recentPlannedData = Data()
+
+    private var recentPlannedRoutes: [CatalogFeature] {
+        let stored = (try? JSONDecoder().decode([String].self, from: recentPlannedData)) ?? []
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        let ids = arguments.contains("--gallery") ? RouteCatalog.galleryRouteIDs
+            : arguments.contains("--catalog-recent-sample") ? ["sample-route"] : stored
+        #else
+        let ids = stored
+        #endif
+        guard let catalog = catalogRepository.catalog else { return [] }
+        return ids.compactMap { id in catalog.features.first { $0.id == id && $0.kind == .route } }
+    }
     @AccessibilityFocusState private var resultFocused: Bool
+    @FocusState private var stopSearchFocused: Bool
     private var evaluation: Bool { scenario.fixedOriginID != nil }
     private var isDemo: Bool { scenario.routeID == nil }
     private var journeyFixture: Bool {
@@ -82,7 +97,7 @@ struct ContentView: View {
     }
 
     private var actionTint: Color {
-        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57)
+        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary
     }
 
     private var mappedTrip: [GeoPoint]? { scenario.mappedSection(for: trip) }
@@ -103,20 +118,16 @@ struct ContentView: View {
                 NavigationStack {
                     panel
                         .navigationTitle(title)
+                        .modifier(AppFavoritesToolbar(confirmBeforeOpening: simulationStep != nil))
                         .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button(action: back) {
-                                    Label(stage == .destination && !evaluation ? "Cambiar origen" : "Regresar", systemImage: "chevron.left")
-                                        .frame(minWidth: 44, minHeight: 44)
-                                        .contentShape(Rectangle())
-                                }
-                            }
-                        }
+                        .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
+                        .toolbarBackground(AppDesign.header, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
                 }
                 .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
                 .tint(actionTint)
-                .presentationBackground(Color(uiColor: .secondarySystemBackground))
+                .presentationBackground(Color(uiColor: .systemBackground))
                 .presentationDetents([.medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
@@ -144,7 +155,12 @@ struct ContentView: View {
                 select(stop.point)
             }
             .onChange(of: stage) { _, next in
-                if next != .home && textSize.isAccessibilitySize { detent = .large }
+                guard next != .home else { return }
+                if #available(iOS 26.0, *) {
+                    detent = .large
+                } else if textSize.isAccessibilitySize {
+                    detent = .large
+                }
             }
             #if os(iOS)
             .onChange(of: location.point) { _, point in
@@ -161,6 +177,8 @@ struct ContentView: View {
                 ScrollView {
                     welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
                 }
+                .contentMargins(.bottom, 14, for: .scrollContent)
+                .accessibilityIdentifier("home-scroll")
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .top))
@@ -169,24 +187,41 @@ struct ContentView: View {
     private var welcomeHeader: some View {
         HStack(spacing: 0) {
             Text("Rutas Tijuana")
-                .font(.title.bold())
+                .font(AppDesign.type(17, relativeTo: .headline, weight: .semibold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 88)
+                .padding(.horizontal, 52)
+                .frame(maxWidth: .infinity, minHeight: 56)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-title")
         }
-        .background { Rectangle().fill(.black) }
+        .overlay(alignment: .trailing) {
+            NavigationLink { CatalogView(favoritesOnly: true) } label: {
+                AppFavoriteIcon()
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Favoritos")
+            .accessibilityIdentifier("Favoritos")
+            .padding(.trailing, 8)
+        }
+        .background { AppDesign.header.ignoresSafeArea(edges: .top) }
     }
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("¿A dónde quieres ir hoy?")
-                    .font(.title2.bold())
-                    .accessibilityAddTraits(.isHeader)
-
+            Text("¿A dónde quieres ir hoy?")
+                .font(AppDesign.title)
+                .foregroundStyle(AppDesign.header)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .background(AppDesign.accent)
+                .accessibilityAddTraits(.isHeader)
+            ZStack(alignment: .bottom) {
                 NavigationLink {
                     if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                         TripPlannerView(catalog: catalog)
@@ -196,25 +231,38 @@ struct ContentView: View {
                 } label: {
                     Rectangle()
                         .fill(.clear)
-                        .frame(height: textSize.isAccessibilitySize ? 220 : 280)
+                        .frame(height: textSize.isAccessibilitySize ? 190 : 250)
                         .background {
-                            Map(initialPosition: .region(MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                            )))
-                            .mapStyle(.standard(elevation: .flat))
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                            Map(initialPosition: .region(AppDesign.city))
+                                .mapStyle(.standard(elevation: .flat))
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 22, bottomTrailingRadius: 22))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
+                if scenario.routeID == nil {
+                    NavigationLink { CatalogView() } label: {
+                        Text("Recorridos")
+                            .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 176, minHeight: 44)
+                            .padding(.horizontal, 14)
+                            .background { AppDesign.raisedAction(Capsule(), fill: AppDesign.primary, raised: true) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("Explorar recorridos")
+                    .offset(y: 12)
+                }
+            }
+            .padding(.bottom, 18)
 
+            VStack(alignment: .leading, spacing: 16) {
                 if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
                 #if DEBUG
-                if isDemo && !ProcessInfo.processInfo.arguments.contains("--capture-catalog") {
+                if isDemo && !ProcessInfo.processInfo.arguments.contains(where: { $0 == "--capture-catalog" || $0 == "--gallery" }) {
                     Button { importing = true } label: {
                         Text("Abrir datos de evaluación").frame(minHeight: 44)
                     }
@@ -231,16 +279,7 @@ struct ContentView: View {
 
                 if let id = scenario.routeID {
                     Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
-                    Text(scenario.name).font(.headline).accessibilityIdentifier(id)
-                } else {
-                    NavigationLink { CatalogView() } label: {
-                        Label("Explorar recorridos", systemImage: "map")
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(actionTint)
-                    .accessibilityIdentifier("Explorar recorridos")
+                    Text(scenario.name).font(AppDesign.title).accessibilityIdentifier(id)
                 }
                 if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                     NavigationLink { TripPlannerView(catalog: catalog) } label: {
@@ -248,48 +287,80 @@ struct ContentView: View {
                     }
                 }
                 Divider()
-                NavigationLink { CatalogView(favoritesOnly: true) } label: {
-                    Label("Favoritos", systemImage: "star")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                }
-                .foregroundStyle(actionTint)
-                .accessibilityIdentifier("Favoritos")
+
                 Text("Consultas recientes")
                     .font(.headline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
+                if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                    ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
+                        NavigationLink { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) } label: {
+                            recentRouteCard(feature.name, detail: feature.routeDetails?.direction)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("recent-planned-\(feature.id)")
+                    }
+                }
+                ForEach(Array(recents.prefix(2).enumerated()), id: \.offset) { item in
+                    if let catalog = catalogRepository.catalog,
+                       let feature = catalog.features.first(where: { $0.id == item.element.routeID }),
+                       let match = catalog.journeyScenario(for: feature) {
+                        NavigationLink { ContentView(scenario: match, recent: item.element) } label: {
+                            recentRouteCard(match.name, detail: match.direction)
+                        }.buttonStyle(.plain)
+                    }
+                }
                 NavigationLink { recentView } label: {
-                    Label(recents.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
+                    Label(recents.isEmpty && recentPlannedRoutes.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .accessibilityIdentifier("Consultas recientes")
-                if isDemo && !evaluation && !journeyFixture {
+                if isDemo && !evaluation && !journeyFixture && !ProcessInfo.processInfo.arguments.contains("--gallery") {
                     Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
                 }
                 Text("Puedes elegir tu ubicación manualmente. No se guarda.")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
                 if !evaluation && scenario.routeID == nil && !journeyFixture {
                     if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                         NavigationLink { TripPlannerView(catalog: catalog) } label: {
-                            Text("Elegir ubicación inicial").frame(maxWidth: .infinity, minHeight: 44)
+                            Text("Elegir ubicación inicial")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                        .controlSize(.large)
+                        .tint(actionTint)
                         .accessibilityIdentifier("Elegir ubicación inicial")
                     } else {
                         NavigationLink { CatalogView() } label: {
                             Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
+                        .buttonStyle(AppActionStyle())
+                        .tint(AppDesign.primary)
                         .controlSize(.large)
                     }
                 } else {
                     primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
                 }
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
+    }
+
+    private func recentRouteCard(_ name: String, detail: String?) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(AppDesign.subtitle)
+                if let detail, !detail.isEmpty, detail != name { Text(detail).font(AppDesign.note) }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            AppGlyph(icon: .vehicle, size: 30)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.42)) }
     }
 
     private var routeMap: some View {
@@ -341,7 +412,7 @@ struct ContentView: View {
                     }
                     if !connectivity.isConnected {
                         Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                            .font(.caption).padding(8).background(.regularMaterial, in: Capsule())
+                            .font(AppDesign.note).padding(8).background(.regularMaterial, in: Capsule())
                     }
                 }
                 .padding(12).allowsHitTesting(false)
@@ -361,7 +432,7 @@ struct ContentView: View {
             } else {
                 List(Array(notices.enumerated()), id: \.offset) { item in
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "circle.fill").font(.caption).foregroundStyle(.blue).accessibilityHidden(true)
+                        Image(systemName: "circle.fill").font(AppDesign.note).foregroundStyle(.blue).accessibilityHidden(true)
                         Text(item.element)
                     }
                 }
@@ -369,35 +440,86 @@ struct ContentView: View {
         }
         .navigationTitle("Avisos")
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .tint(.white)
     }
 
     private var panel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
+            AppPanelHeading(title: title, backLabel: stage == .destination && !evaluation ? "Cambiar origen" : "Regresar",
+                            back: back) { EmptyView() }
+                .padding(.horizontal, 8)
+                .layoutPriority(1)
+            if isDemo {
                 demoNotice
-                if !connectivity.isConnected {
-                    Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                        .font(.caption).foregroundStyle(.primary)
-                }
-                if let step = simulationStep { simulationPanel(step) }
-                else if stage == .origin { originPanel }
-                else if stage == .destination { destinationPanel }
-                else { journeyPanel }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
             }
-            .padding(16)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !connectivity.isConnected {
+                        Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
+                            .font(AppDesign.note).foregroundStyle(.primary)
+                    }
+                    if let step = simulationStep { simulationPanel(step) }
+                    else if stage == .origin { originPanel }
+                    else if stage == .destination { destinationPanel }
+                    else { journeyPanel }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            }
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .accessibilityIdentifier("consultation-scroll")
         }
-        .frame(maxWidth: .infinity).background(Color(uiColor: .secondarySystemBackground))
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if textSize.isAccessibilitySize, stage == .journey, simulationStep == nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    if validation == .accepted, let first = trip.first {
+                        walkingStartButton(first)
+                            .buttonStyle(AppActionStyle())
+                            .tint(AppDesign.primary)
+                    }
+                    primaryButton("Nueva consulta", action: reset)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .systemBackground))
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+    }
+
+    private func walkingStartButton(_ first: TransitStop) -> some View {
+        Button {
+            walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point)
+        } label: {
+            Text("Ir a la parada")
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("walking-start")
     }
 
     private var originPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(origin == nil ? "Tu ubicación" : "Paradas cercanas").font(.title3.bold())
+            Text(origin == nil ? "Tu ubicación" : "Paradas cercanas")
+                .font(AppDesign.title)
+                .foregroundStyle(Color.primary)
+                .padding(.vertical, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .systemBackground))
+                .accessibilityAddTraits(.isHeader)
             Text("Toca el mapa o elige una parada. Las distancias son en línea recta.")
-                .font(.subheadline).foregroundStyle(.primary)
+                .font(AppDesign.body).foregroundStyle(.primary)
             #if os(iOS)
             Button { location.request() } label: {
                 Label(location.isRequesting ? "Obteniendo ubicación…" : "Usar mi ubicación", systemImage: "location")
@@ -405,7 +527,7 @@ struct ContentView: View {
             }
             .disabled(location.isRequesting)
             if let message = location.message {
-                Text(message).font(.footnote).foregroundStyle(.primary)
+                Text(message).font(AppDesign.note).foregroundStyle(.primary)
             }
             #endif
             searchField
@@ -426,9 +548,9 @@ struct ContentView: View {
             if let stop = route.stops.first(where: { $0.id == originID }) {
                 Label("Origen: \(stop.name)", systemImage: "a.circle")
             }
-            Text("Bájate en").font(.title3.bold())
+            Text("Bájate en").font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Toca el mapa o elige una parada para marcar el destino.")
-                .font(.subheadline).foregroundStyle(.primary)
+                .font(AppDesign.body).foregroundStyle(.primary)
             searchField
             categoryFilters
             choices(point: destination, selectedID: destinationID, isOrigin: false)
@@ -453,39 +575,47 @@ struct ContentView: View {
     private var journeyPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(validation.title, systemImage: validation == .accepted ? "checkmark.circle" : "exclamationmark.circle")
-                .font(.headline)
+                .font(AppDesign.title)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($resultFocused)
-            Text(route.name).font(.title3.bold())
+            Text(route.name).font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             if isDemo {
-                Text("Mapa esquemático entre paradas").font(.footnote).foregroundStyle(.primary)
+                Text("Mapa esquemático entre paradas").font(AppDesign.note).foregroundStyle(.primary)
             } else if validation == .accepted && mappedTrip == nil {
-                Text("El mapa muestra el recorrido completo y sus paradas.").font(.footnote).foregroundStyle(.primary)
+                Text("El mapa muestra el recorrido completo y sus paradas.").font(AppDesign.note).foregroundStyle(.primary)
             }
-            if let start = route.stops.first(where: { $0.id == originID }) { Text("Origen: \(start.name)") }
-            if let end = route.stops.first(where: { $0.id == destinationID }) { Text("Destino: \(end.name)") }
+            VStack(alignment: .leading, spacing: 10) {
+                if let start = route.stops.first(where: { $0.id == originID }) {
+                    Label("Origen: \(start.name)", systemImage: "a.circle")
+                }
+                if validation == .accepted && !trip.isEmpty {
+                    Label("Paradas principales: \(trip.count)", systemImage: "bus")
+                }
+                if let end = route.stops.first(where: { $0.id == destinationID }) {
+                    Label("Destino: \(end.name)", systemImage: "b.circle")
+                }
+            }
+            .font(AppDesign.subtitle)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
             Text("Sentido: \(scenario.direction ?? "No disponible")")
-                .font(.subheadline).foregroundStyle(.primary)
+                .font(AppDesign.body).foregroundStyle(.primary)
             if let date = scenario.updateDate { Text("Actualización: \(date)") }
             else { Text("Fecha no disponible") }
             if let schedules = scenario.schedules, !schedules.isEmpty {
-                ForEach(Array(schedules.enumerated()), id: \.offset) { item in Text(item.element).font(.footnote) }
+                ForEach(Array(schedules.enumerated()), id: \.offset) { item in Text(item.element).font(AppDesign.note) }
             } else {
-                Text("Horario no disponible").font(.footnote)
+                Text("Horario no disponible").font(AppDesign.note)
             }
             if validation == .accepted, let first = trip.first, let last = trip.last {
                 Label("Camina hasta la parada de subida", systemImage: "figure.walk")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
                 journeyRow("Sube en \(first.name)", point: origin, stop: first, symbol: "a.circle.fill")
-                Button {
-                    walkingDestination = WalkingDestination(id: first.id, name: first.name, point: first.point)
-                } label: {
-                    Text("Ir a la parada").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                }
-                    .accessibilityIdentifier("walking-start")
+                if !textSize.isAccessibilitySize { walkingStartButton(first) }
                 journeyRow("Bájate en \(last.name)", point: destination, stop: last, symbol: "b.circle.fill")
                 Label("Continúa al destino · Camino peatonal no disponible", systemImage: "figure.walk")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
                 DisclosureGroup {
                     ForEach(trip) { stop in Text(stop.name) }
                 } label: {
@@ -503,13 +633,13 @@ struct ContentView: View {
                 primaryButton("Cambiar destino", action: back)
             }
             if let stop = route.stops.first(where: { $0.id == selectedStop }) {
-                Label(stop.name, systemImage: "bus").font(.subheadline)
+                Label(stop.name, systemImage: "bus").font(AppDesign.body)
             }
             if isDemo {
                 Text("El trayecto de transporte es una simulación. La guía a pie se abre por separado.")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
-            primaryButton("Nueva consulta", action: reset)
+            if !textSize.isAccessibilitySize { primaryButton("Nueva consulta", action: reset) }
         }
         .onAppear { resultFocused = true }
     }
@@ -525,7 +655,7 @@ struct ContentView: View {
                     Button { selectStop(stop, isOrigin: isOrigin) } label: {
                         VStack(alignment: .leading) {
                             Label(place.name, systemImage: place.symbol)
-                            Text("Referencia de evaluación · \(stop.name)").font(.caption).foregroundStyle(.primary)
+                            Text("Referencia de evaluación · \(stop.name)").font(AppDesign.note).foregroundStyle(.primary)
                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.horizontal, 10)
                     }.buttonStyle(.plain).accessibilityIdentifier("place-\(place.id)")
                 }
@@ -537,7 +667,7 @@ struct ContentView: View {
             let nearby = route.nearbyStops(to: point)
             if nearby.isEmpty {
                 Text("No hay paradas de evaluación dentro del área de consulta. Elige otra en la lista.")
-                    .font(.footnote).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
             ForEach(nearby) { option in
                 Button {
@@ -546,7 +676,7 @@ struct ContentView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(option.stop.name).fontWeight(.medium)
-                            Text(distanceText(option.distance)).font(.caption).foregroundStyle(.primary)
+                            Text(distanceText(option.distance)).font(AppDesign.note).foregroundStyle(.primary)
                         }
                         Spacer()
                         if selectedID == option.id { Image(systemName: "checkmark").foregroundStyle(.blue) }
@@ -571,9 +701,10 @@ struct ContentView: View {
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .padding(.horizontal, 12)
-                .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityIdentifier("stop-\(stop.id)")
     }
 
@@ -581,7 +712,13 @@ struct ContentView: View {
         Group {
             if isDemo {
                 Label("Datos de evaluación", systemImage: "info.circle")
-                    .font(.caption).foregroundStyle(.primary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.black)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.gray) }
             }
         }
     }
@@ -633,7 +770,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             let finished = step >= trip.count
             Label(finished ? "Viaje finalizado" : "Trayecto en curso", systemImage: finished ? "checkmark.circle" : "bus")
-                .font(.title3.bold())
+                .font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             Text("Progreso simulado · Tiempo de llegada no disponible")
             if !finished {
                 Text(trip[step].name)
@@ -666,7 +803,12 @@ struct ContentView: View {
 
     private var recentView: some View {
         List {
-            if recents.isEmpty { Text("No hay consultas recientes") }
+            if recents.isEmpty && recentPlannedRoutes.isEmpty { Text("No hay consultas recientes") }
+            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                ForEach(recentPlannedRoutes) { feature in
+                    NavigationLink(feature.name) { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) }
+                }
+            }
             ForEach(Array(recents.enumerated()), id: \.offset) { row in
                 if let catalog = catalogRepository.catalog,
                    let feature = catalog.features.first(where: { $0.id == row.element.routeID }),
@@ -690,22 +832,28 @@ struct ContentView: View {
                     }
                 }
             }
-            if !recents.isEmpty {
-                Button("Borrar recientes", role: .destructive) { storeRecents([]) }
+            if !recents.isEmpty || !recentPlannedRoutes.isEmpty {
+                Button("Borrar recientes", role: .destructive) {
+                    storeRecents([])
+                    recentPlannedData = Data()
+                }
             }
-        }.navigationTitle("Consultas recientes").toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
+        }.navigationTitle("Consultas recientes").modifier(AppFavoritesToolbar(darkHeader: false)).toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
     }
 
     private var searchField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Buscar parada o lugar").font(.subheadline)
+            Text("Buscar parada o lugar")
+                .font(AppDesign.subtitle)
+                .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .background(colorScheme == .dark ? Color.black : Color.white)
             TextField("Buscar parada o lugar", text: $search, prompt: Text(""))
             .accessibilityLabel("Buscar parada o lugar")
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background(.background, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-            .contentShape(Rectangle())
+            .focused($stopSearchFocused)
+            .appField(focused: stopSearchFocused, invalid: invalidDestination)
             .autocorrectionDisabled()
             .accessibilityIdentifier("journey-search")
         }
@@ -747,7 +895,7 @@ struct ContentView: View {
     }
 
     private func pin(_ text: String, color: Color) -> some View {
-        Text(text).font(.headline).foregroundStyle(.white).frame(width: 32, height: 32)
+        Text(text).font(AppDesign.title).foregroundStyle(.white).frame(width: 32, height: 32)
             .background(color, in: Circle()).accessibilityLabel(text == "A" ? "Origen" : "Destino")
     }
 
@@ -755,7 +903,7 @@ struct ContentView: View {
         Label {
             VStack(alignment: .leading) {
                 Text(title).fontWeight(.medium)
-                if let point { Text(distanceText(point.distance(to: stop.point))).font(.caption).foregroundStyle(.primary) }
+                if let point { Text(distanceText(point.distance(to: stop.point))).font(AppDesign.note).foregroundStyle(.primary) }
             }
         } icon: { Image(systemName: symbol).foregroundStyle(.blue) }
     }
@@ -813,11 +961,17 @@ private struct ConsultationButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .fontWeight(.semibold)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(isEnabled ? Color(red: 0.02, green: 0.29, blue: 0.57) : Color(white: 0.32),
-                        in: RoundedRectangle(cornerRadius: 12))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .font(AppDesign.subtitle)
+            .foregroundStyle(isEnabled ? Color.white : Color.black)
+            .padding(.vertical, 4)
+            .background(isEnabled ? AppDesign.primary : Color(white: 0.88), in: Capsule())
+            .overlay {
+                if configuration.isPressed && isEnabled {
+                    Capsule().fill(.black.opacity(0.16)).allowsHitTesting(false)
+                }
+            }
+            .contentShape(Capsule())
     }
 }
 

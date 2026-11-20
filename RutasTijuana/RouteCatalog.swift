@@ -291,6 +291,16 @@ struct RouteCatalog: Codable, Sendable {
         value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "es_MX"))
     }
 
+    #if DEBUG
+    static let galleryRouteIDs = [
+        "feature_7eb377470e968bbdb36536f6",
+        "feature_d1b78bf5a31855b7c9779d33",
+        "feature_9b493c149e4ff64e192afdb2",
+        "feature_03f2347c85ad9f50d1bd89dd",
+        "centro-murua"
+    ]
+    #endif
+
     static var informationSample: RouteCatalog {
         let base = sample
         var feature = base.features[0]

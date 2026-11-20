@@ -4,9 +4,14 @@ import UniformTypeIdentifiers
 import Accessibility
 
 struct CatalogView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.insideFavorites) private var insideFavorites
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
+    @FocusState private var routeSearchFocused: Bool
+    @Environment(\.dynamicTypeSize) private var textSize
+    @State private var showingRouteSearch = false
     @ObservedObject private var repository = CatalogRepository.shared
     @AppStorage("favorite-routes") private var favoriteData = Data()
     @AppStorage("route-lists") private var listData = Data()
@@ -61,7 +66,6 @@ struct CatalogView: View {
     @State private var groupID: String?
     @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
-    @State private var favoritePulse = 0
     @State private var favoriteNotice = ""
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
@@ -88,8 +92,9 @@ struct CatalogView: View {
         if routesTab {
             let term = normalized(query)
             return all.filter { feature in
-                term.isEmpty || normalized(([feature.name, feature.routeDetails?.code ?? "",
-                    feature.routeDetails?.direction ?? "", zone(feature)] + zones(feature)).joined(separator: " ")).contains(term)
+                let fields = [feature.name, feature.routeDetails?.code ?? "",
+                              feature.routeDetails?.direction ?? "", groupName(feature.groupID), zone(feature)]
+                return term.isEmpty || (fields + zones(feature)).contains { normalized($0).contains(term) }
             }.sorted {
                 let order = $0.name.localizedStandardCompare($1.name)
                 return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
@@ -106,7 +111,7 @@ struct CatalogView: View {
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
 
     private var mapFeatures: [CatalogFeature] {
-        if routesTab, let selection { return [selection] }
+        if routesTab || favoritesOnly, let selection { return [selection] }
         var features = matches
         if let index = features.firstIndex(where: { $0.id == selectedID }) {
             features.append(features.remove(at: index))
@@ -119,10 +124,12 @@ struct CatalogView: View {
             if let catalog {
                 if !catalog.readyForDistribution {
                     Label("Catálogo local", systemImage: "info.circle")
-                        .font(.caption).padding(10).frame(maxWidth: .infinity)
+                        .font(AppDesign.note).padding(10).frame(maxWidth: .infinity)
                         .background(.orange.opacity(0.1))
                 }
-                if routesTab {
+                if favoritesOnly {
+                    favoritesContent(catalog)
+                } else if routesTab {
                     ZStack {
                         VStack(spacing: 0) {
                             filters
@@ -142,26 +149,41 @@ struct CatalogView: View {
                         .allowsHitTesting(selection == nil)
                         if let selection {
                             ScrollView {
-                                VStack(spacing: 0) {
-                                    map.frame(height: 220)
-                                    detail(selection)
+                                VStack(spacing: -AppDesign.panelOverlap) {
+                                    map.frame(height: 250)
+                                    detail(selection).background { AppDesign.panelSurface() }
                                 }
                             }
                             .background(Color(uiColor: .systemBackground))
+                            .transition(reduceMotion ? .identity : .opacity)
                         }
                     }
+                    .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectedID)
                 } else {
                     map.frame(minHeight: 180, maxHeight: 310)
-                    filters
-                    if favoritesOnly && matches.isEmpty {
-                        NavigationLink("Explorar recorridos") { CatalogView() }
-                            .frame(minHeight: 44)
+                    VStack(spacing: 0) {
+                        AppPanelHeading(title: filter == .stops ? "Paradas" : "Recorridos",
+                                        back: { dismiss() }) {
+                            Button {
+                                showingServices = true
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Servicios")
+                        }
+                        .padding(.horizontal, 10)
+                        filters
+                        Group {
+                            if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
+                        }
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
+                        featureList
                     }
-                    Group {
-                        if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
-                    }
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
-                    featureList
+                    .background { AppDesign.panelSurface() }
+                    .padding(.top, -AppDesign.panelOverlap)
                 }
             } else {
                 ContentUnavailableView {
@@ -169,21 +191,27 @@ struct CatalogView: View {
                 } description: {
                     Text("Descarga el catálogo para consultar sus recorridos y referencias.")
                 } actions: {
-                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(.borderedProminent).disabled(repository.isUpdating)
+                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(AppActionStyle()).disabled(repository.isUpdating)
                 }
             }
             if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
             if !favoriteNotice.isEmpty {
-                Text(favoriteNotice).font(.footnote).padding(10)
+                Text(favoriteNotice).font(AppDesign.note).padding(10)
                     .accessibilityIdentifier("favorite-notice")
                     .task(id: favoriteNotice) {
                         do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
                         favoriteNotice = ""
                     }
             }
-            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
+            if let message = repository.message { Text(message).font(AppDesign.note).foregroundStyle(.primary).padding(10) }
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
+        .sheet(isPresented: $showingRouteSearch) {
+            routeSearchSheet
+                .presentationDetents([.fraction(0.83), .large])
+                .presentationCornerRadius(AppDesign.panelRadius)
+                .presentationDragIndicator(.hidden)
+        }
         .sheet(isPresented: $savingToLists) { if let selection { listEditor(routeID: selection.id) } }
         .sheet(isPresented: $showingLists, onDismiss: {
             if let id = routeToUse, let feature = catalog?.features.first(where: { $0.id == id }) {
@@ -208,11 +236,16 @@ struct CatalogView: View {
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle(favoritesOnly ? "Favoritos" : routesTab ? "Rutas" : filter == .stops ? "Paradas" : "Recorridos")
+        .navigationBarBackButtonHidden(catalog != nil && !routesTab)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
         .tint(.white)
+        .modifier(AppFavoritesToolbar(enabled: !favoritesOnly))
+        .environment(\.insideFavorites, insideFavorites || favoritesOnly)
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             ToolbarItem {
@@ -230,7 +263,7 @@ struct CatalogView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Listo") { searchFocused = false }
-                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
@@ -284,6 +317,7 @@ struct CatalogView: View {
             }
         }
         .navigationTitle("Servicios")
+        .modifier(AppFavoritesToolbar(darkHeader: false))
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
     }
 
@@ -303,10 +337,69 @@ struct CatalogView: View {
             }
         }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .overlay {
                 if matches.isEmpty { emptySearch }
             }
+    }
+
+    private func favoritesContent(_ catalog: RouteCatalog) -> some View {
+        VStack(spacing: 0) {
+            AppPanelHeading(title: "Favoritos", back: { dismiss() }) { EmptyView() }
+                .padding(.horizontal, 14)
+            Divider().padding(.horizontal, 18)
+            Group {
+            if let selection {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        map.frame(height: 220)
+                        detail(selection)
+                    }
+                }
+            } else if matches.isEmpty {
+                ContentUnavailableView {
+                    VStack(spacing: 10) {
+                        AppFavoriteIcon(scale: 2.65)
+                        Text("Sin favoritos").font(AppDesign.title)
+                    }
+                } description: {
+                    Text("Aún no tienes rutas guardadas.")
+                } actions: {
+                    NavigationLink("Explorar recorridos") { CatalogView(routesTab: true) }
+                        .frame(minHeight: 44)
+                }
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(matches) { feature in
+                            let layout = textSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                                : AnyLayout(HStackLayout(spacing: 8))
+                            layout {
+                                row(feature)
+                                if catalog.readyForDistribution {
+                                    NavigationLink {
+                                        TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
+                                    } label: {
+                                        Text("Iniciar ruta")
+                                            .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                                            .multilineTextAlignment(.center)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }.buttonStyle(AppActionStyle())
+                                }
+                            }
+                            .padding(10)
+                            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(Color.secondary.opacity(0.42)) }
+                        }
+                    }.padding(16)
+                }
+            }
+        }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(uiColor: .systemBackground))
     }
 
     private var emptySearch: some View {
@@ -331,26 +424,42 @@ struct CatalogView: View {
             fit(feature)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
-                    .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
+                if favoritesOnly {
+                    AppFavoriteIcon()
+                } else {
+                    if feature.kind == .route {
+                        AppGlyph(icon: .turn).foregroundStyle(routeColor(feature))
+                    } else {
+                        AppGlyph(icon: feature.kind == .stop ? .vehicle : .pin)
+                            .foregroundStyle(color(feature.color))
+                    }
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
-                    Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
-                    if routesTab, let direction = feature.routeDetails?.direction, direction != feature.name {
-                        Text(direction).font(.caption).foregroundStyle(.secondary)
+                    Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(AppDesign.note).foregroundStyle(.primary)
+                    if (routesTab || favoritesOnly), let direction = feature.routeDetails?.direction, direction != feature.name {
+                        Text(direction).font(AppDesign.note).foregroundStyle(.secondary)
                     }
                     if let reference, let distance = feature.distance(to: reference) {
                         Text(distanceCaption(feature, meters: distance))
-                            .font(.caption).foregroundStyle(.primary)
+                            .font(AppDesign.note).foregroundStyle(.primary)
                     }
                 }
                 Spacer(minLength: 0)
-                if feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
-                    Image(systemName: "star.fill").accessibilityHidden(true)
+                if !favoritesOnly && feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
+                    AppFavoriteIcon(filled: true)
                 }
                 if selectedID == feature.id { Image(systemName: "checkmark") }
             }
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(minHeight: 44)
+            .background {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(selectedID == feature.id ? (colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill) : Color(uiColor: .systemBackground))
+            }
+            .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(favoritesOnly ? 0 : 0.42)) }
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .accessibilityValue([
@@ -360,23 +469,104 @@ struct CatalogView: View {
         .accessibilityIdentifier("catalog-\(feature.id)")
     }
 
+    private var routeSearchSheet: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                AppPanelHeading(title: "Buscar recorridos", backLabel: "Cerrar", back: {
+                    routeSearchFocused = false
+                    showingRouteSearch = false
+                }) { EmptyView() }
+                HStack(spacing: 10) {
+                    TextField("Buscar recorridos", text: $query)
+                        .focused($routeSearchFocused)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit { routeSearchFocused = false }
+                        .accessibilityIdentifier("route-search-field")
+                        .appField(focused: routeSearchFocused)
+                    Button("Buscar") { routeSearchFocused = false }
+                        .buttonStyle(AppActionStyle())
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if matches.isEmpty { emptySearch }
+                        ForEach(matches) { feature in
+                            Button {
+                                routeSearchFocused = false
+                                selectedID = feature.id
+                                fit(feature)
+                                showingRouteSearch = false
+                            } label: {
+                                Label {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(feature.name).font(AppDesign.subtitle)
+                                        let subtitle = feature.routeDetails?.direction ?? groupName(feature.groupID)
+                                        if !subtitle.isEmpty, subtitle != feature.name {
+                                            Text(subtitle).font(AppDesign.note)
+                                        }
+                                    }
+                                    .fixedSize(horizontal: false, vertical: true)
+                                } icon: {
+                                    AppGlyph(icon: feature.kind == .route ? .navigation : .pin)
+                                }
+                                .multilineTextAlignment(.leading)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(Color.secondary.opacity(0.42))
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("route-search-result-\(feature.id)")
+                        }
+                    }
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .padding(16)
+            .navigationTitle("Buscar recorridos")
+            .modifier(AppFavoritesToolbar())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
+            .toolbarBackground(AppDesign.header, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .tint(AppDesign.primary)
+        }
+    }
+
     private var filters: some View {
         VStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Buscar nombre, grupo o información").font(.subheadline)
+                HStack {
+                    Text("Buscar nombre, grupo o información").font(AppDesign.subtitle)
+                    Spacer(minLength: 8)
+                    Button("Buscar") {
+                        searchFocused = false
+                        showingRouteSearch = true
+                    }
+                    .buttonStyle(AppActionStyle())
+                    .accessibilityIdentifier("catalog-open-search")
+                }
                 TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
                     .focused($searchFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .submitLabel(.search)
                     .onSubmit { searchFocused = false }
                     .accessibilityLabel("Buscar nombre, grupo o información")
                     .accessibilityIdentifier("catalog-search")
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-                    .contentShape(Rectangle())
+                    .appField(focused: searchFocused)
             }
             HStack {
+                Text("Filtros").font(AppDesign.subtitle)
+                    .accessibilityHidden(true)
                 Picker("Grupo", selection: $groupID) {
                     Text("Todos los grupos").tag(String?.none)
                     ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
@@ -389,11 +579,11 @@ struct CatalogView: View {
                 }
             }
             HStack {
-                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.primary)
+                Text("Resultados: \(matches.count)").font(AppDesign.note).foregroundStyle(.primary)
                 Spacer()
                 if reference != nil {
                     Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
-                        .font(.caption)
+                        .font(AppDesign.note)
                 }
             }
         }.padding(12)
@@ -407,10 +597,10 @@ struct CatalogView: View {
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(.white, lineWidth: selectedID == feature.id ? 11 : 7)
                         MapPolyline(coordinates: part.element.map(\.coordinate))
-                            .stroke(.black, lineWidth: selectedID == feature.id ? 9 : 5)
+                            .stroke(.black, style: StrokeStyle(lineWidth: selectedID == feature.id ? 9 : 5, lineCap: .round, lineJoin: .round))
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(feature.kind == .route ? routeColor(feature) : color(feature.color),
-                                    lineWidth: selectedID == feature.id ? 7 : 3)
+                                    style: StrokeStyle(lineWidth: selectedID == feature.id ? 6 : 3, lineCap: .round, lineJoin: .round))
                     }
                     ForEach(Array(feature.geometry.polygons.enumerated()), id: \.offset) { area in
                         MapPolygon(polygon(area.element))
@@ -438,11 +628,11 @@ struct CatalogView: View {
             .overlay(alignment: .topLeading) {
                 if routesTab, let selection {
                     Text(zone(selection))
-                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                         .padding(10).allowsHitTesting(false)
                 } else {
                     Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
-                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                         .padding(10).allowsHitTesting(false)
                 }
             }
@@ -452,7 +642,7 @@ struct CatalogView: View {
     private func detail(_ feature: CatalogFeature) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(feature.name).font(.headline)
+                Text(feature.name).font(AppDesign.title)
                 Spacer()
                 if feature.kind == .route && privateCatalog == nil {
                     let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
@@ -460,13 +650,16 @@ struct CatalogView: View {
                         favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
                         favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
                         AccessibilityNotification.Announcement(favoriteNotice).post()
-                        if !reduceMotion { favoritePulse += 1 }
                     } label: {
-                        Label(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star")
-                            .symbolEffect(.bounce, value: favoritePulse)
+                        AppFavoriteIcon(filled: saved)
+                            .contentTransition(reduceMotion ? .identity : .opacity)
+                            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .labelStyle(.iconOnly)
                     .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel(saved ? "Quitar de favoritos" : "Guardar en favoritos")
                     .accessibilityIdentifier("favorite-toggle")
                 }
                 if feature.kind == .route {
@@ -476,6 +669,8 @@ struct CatalogView: View {
                         savingToLists = true
                     }
                     .labelStyle(.iconOnly)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
                 }
@@ -483,14 +678,14 @@ struct CatalogView: View {
                     .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
-                .font(.caption).foregroundStyle(.primary)
+                .font(AppDesign.note).foregroundStyle(.primary)
             if feature.kind == .stop, case .point(let point) = feature.geometry {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
                 if routesTab {
-                    Text("Zona: " + zone(feature)).font(.caption)
-                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(.caption) }
+                    Text("Zona: " + zone(feature)).font(AppDesign.note)
+                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(AppDesign.note) }
                     Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
                         fit(feature)
                     }.frame(minHeight: 44)
@@ -505,7 +700,7 @@ struct CatalogView: View {
                     }.frame(minHeight: 44)
                 }
                 Text("Distancia al trazado en línea recta.")
-                    .font(.caption).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
             if feature.kind == .route || feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
                 Button("Ver información disponible") { showingInformation = true }
@@ -563,9 +758,10 @@ struct CatalogView: View {
                 }
             }
             .navigationTitle(routeID == nil ? "Mis listas" : "Guardar en listas")
+            .modifier(AppFavoritesToolbar(darkHeader: false))
             .toolbar { Button("Listo") { savingToLists = false; showingLists = false } }
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
     }
 
     private func toggleRoute(_ routeID: String, listID: UUID) {
@@ -586,7 +782,7 @@ struct CatalogView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(feature.name)
-                        .font(.title2.bold())
+                        .font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
                         .accessibilityAddTraits(.isHeader)
                     if let description = information?.description, !description.isEmpty {
                         Text(description).textSelection(.enabled)
@@ -612,7 +808,7 @@ struct CatalogView: View {
                         }
                         ForEach(Array(fields.enumerated()), id: \.offset) { item in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(item.element.label).font(.headline)
+                                Text(item.element.label).font(AppDesign.title)
                                 Text(item.element.value).textSelection(.enabled)
                             }
                         }
@@ -623,6 +819,7 @@ struct CatalogView: View {
                 .padding(20)
             }
             .navigationTitle("Información")
+            .modifier(AppFavoritesToolbar(darkHeader: false))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -669,13 +866,9 @@ struct CatalogView: View {
     }
 
     private func fit(_ feature: CatalogFeature) {
-        let points = feature.geometry.positions
-        guard let minLat = points.map(\.latitude).min(), let maxLat = points.map(\.latitude).max(),
-              let minLon = points.map(\.longitude).min(), let maxLon = points.map(\.longitude).max() else { return }
-        camera = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-            span: MKCoordinateSpan(latitudeDelta: max(0.005, (maxLat - minLat) * 1.25),
-                                  longitudeDelta: max(0.005, (maxLon - minLon) * 1.25))))
+        if let position = AppDesign.routeCamera(feature.geometry.positions.map(\.point), minimumSpan: 0.004) {
+            camera = position
+        }
     }
 
     private func polygon(_ rings: [[CatalogPosition]]) -> MKPolygon {
