@@ -181,6 +181,7 @@ struct ContentView: View {
                 ScrollView {
                     welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
                 }
+                .contentMargins(.bottom, 14, for: .scrollContent)
                 .accessibilityIdentifier("home-scroll")
             }
         }
@@ -224,47 +225,45 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, minHeight: 56)
                 .background(AppDesign.accent)
                 .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 16) {
-                ZStack(alignment: .bottom) {
-                    NavigationLink {
-                        if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
-                            TripPlannerView(catalog: catalog)
-                        } else {
-                            CatalogView()
-                        }
-                    } label: {
-                        Rectangle()
-                            .fill(.clear)
-                            .frame(height: textSize.isAccessibilitySize ? 190 : 250)
-                            .background {
-                                Map(initialPosition: .region(MKCoordinateRegion(
-                                    center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                                    span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                                )))
+            ZStack(alignment: .bottom) {
+                NavigationLink {
+                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                        TripPlannerView(catalog: catalog)
+                    } else {
+                        CatalogView()
+                    }
+                } label: {
+                    Rectangle()
+                        .fill(.clear)
+                        .frame(height: textSize.isAccessibilitySize ? 190 : 250)
+                        .background {
+                            Map(initialPosition: .region(AppDesign.city))
                                 .mapStyle(.standard(elevation: .flat))
                                 .allowsHitTesting(false)
                                 .accessibilityHidden(true)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 24))
-                            .contentShape(Rectangle())
+                        }
+                        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 22, bottomTrailingRadius: 22))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
+                if scenario.routeID == nil {
+                    NavigationLink { CatalogView() } label: {
+                        Text("Recorridos")
+                            .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 176, minHeight: 44)
+                            .padding(.horizontal, 14)
+                            .background { AppDesign.raisedAction(Capsule(), fill: AppDesign.primary, raised: true) }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
-                    if scenario.routeID == nil {
-                        NavigationLink { CatalogView() } label: {
-                            Text("Recorridos")
-                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(minWidth: 140, minHeight: 44)
-                                .padding(.horizontal, 12)
-                                .background { AppDesign.raisedAction(Capsule(), fill: AppDesign.primary, raised: true) }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("Explorar recorridos")
-                        .padding(.bottom, 14)
-                    }
+                    .accessibilityIdentifier("Explorar recorridos")
+                    .offset(y: 12)
                 }
+            }
+            .padding(.bottom, 18)
 
+            VStack(alignment: .leading, spacing: 16) {
                 if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
                 #if DEBUG
                 if isDemo && !ProcessInfo.processInfo.arguments.contains(where: { $0 == "--capture-catalog" || $0 == "--gallery" }) {
@@ -329,11 +328,10 @@ struct ContentView: View {
                 if !evaluation && scenario.routeID == nil && !journeyFixture {
                     if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                         NavigationLink { TripPlannerView(catalog: catalog) } label: {
-                            Text("Elegir ubicación inicial").frame(maxWidth: .infinity, minHeight: 44)
+                            Text("Elegir ubicación inicial")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
-                        .buttonStyle(AppActionStyle())
-                        .tint(AppDesign.primary)
-                        .controlSize(.large)
+                        .tint(actionTint)
                         .accessibilityIdentifier("Elegir ubicación inicial")
                     } else {
                         NavigationLink { CatalogView() } label: {
@@ -360,7 +358,7 @@ struct ContentView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
         } icon: {
-            Image(systemName: "bus").accessibilityHidden(true)
+            AppGlyph(icon: .vehicle, size: 30)
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .padding(.horizontal, 12)

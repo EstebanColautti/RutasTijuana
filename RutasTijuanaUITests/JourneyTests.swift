@@ -315,7 +315,13 @@ final class JourneyTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["dock-Inicio"].waitForExistence(timeout: 10))
         app.buttons["dock-Mapa"].tap()
-        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
+        let mapStart = app.buttons["map-start"]
+        XCTAssertTrue(mapStart.waitForExistence(timeout: 15))
+        let mapDockButton = app.buttons["dock-Mapa"]
+        XCTAssertTrue(mapDockButton.isHittable)
+        XCTAssertLessThan(mapStart.frame.maxY, mapDockButton.frame.minY)
+        let cityMap = app.maps.firstMatch
+        if cityMap.exists { XCTAssertGreaterThanOrEqual(cityMap.frame.maxY + 2, mapDockButton.frame.maxY) }
         capture("Mapa")
         app.buttons["dock-Inicio"].tap()
         tap("Abrir mapa para planear viaje")

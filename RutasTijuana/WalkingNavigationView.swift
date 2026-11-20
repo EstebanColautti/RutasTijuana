@@ -35,11 +35,17 @@ struct WalkingNavigationView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-                VStack(spacing: -AppDesign.panelOverlap) {
+                VStack(spacing: -MapPanelEdge.deep.depth) {
                     Map(position: $camera) {
                         if let route = model.route {
                             MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.white, style: AppDesign.routeOutline)
                             MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(AppDesign.routeInk, style: AppDesign.routeStroke)
+                            if !route.points.isEmpty {
+                                Annotation("Duración y distancia", coordinate: route.points[route.points.count / 2].walkingCoordinate, anchor: .bottom) {
+                                    MapRouteBadge(title: WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived),
+                                                  detail: WalkingFormat.distance(model.progress.remaining))
+                                }
+                            }
                         }
                         Annotation(model.destination.name, coordinate: model.destination.point.walkingCoordinate) {
                             Image(systemName: model.destination.purpose == .destination ? "flag.fill" : "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
@@ -97,7 +103,7 @@ struct WalkingNavigationView: View {
                         .accessibilityLabel("Recentrar")
                         .padding()
                     }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.55 : model.phase == .preview ? 0.65 : 0.57) + AppDesign.panelOverlap)
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.55 : model.phase == .preview ? 0.65 : 0.57) + MapPanelEdge.deep.depth)
                     ScrollView {
                         if showingSteps {
                             VStack(spacing: 0) {
@@ -172,10 +178,11 @@ struct WalkingNavigationView: View {
                             }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .padding(.top, 12)
                     .id(showingSteps)
                     .frame(maxHeight: .infinity)
                     .clipped()
-                    .background { AppDesign.panelSurface }
+                    .background { AppDesign.panelSurface(.deep) }
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -220,6 +227,7 @@ struct WalkingNavigationView: View {
             }
             .navigationTitle(showingSteps ? "Indicaciones" : model.destination.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -247,8 +255,11 @@ struct WalkingNavigationView: View {
                 let isCurrent = index == model.progress.stepIndex
                 let completed = index < model.progress.stepIndex
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: completed ? "checkmark.circle" : isCurrent ? "location.circle.fill" : "circle")
-                        .accessibilityHidden(true)
+                    if completed {
+                        Image(systemName: "checkmark.circle").accessibilityHidden(true)
+                    } else {
+                        AppGlyph(icon: isCurrent ? .turn : .chevron)
+                    }
                     VStack(alignment: .leading, spacing: 5) {
                         Text(step.instruction)
                             .font(AppDesign.body)

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import Accessibility
 
 struct CatalogView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
@@ -149,7 +150,7 @@ struct CatalogView: View {
                             ScrollView {
                                 VStack(spacing: -AppDesign.panelOverlap) {
                                     map.frame(height: 250)
-                                    detail(selection).background { AppDesign.panelSurface }
+                                    detail(selection).background { AppDesign.panelSurface() }
                                 }
                             }
                             .background(Color(uiColor: .systemBackground))
@@ -160,6 +161,19 @@ struct CatalogView: View {
                 } else {
                     map.frame(minHeight: 180, maxHeight: 310)
                     VStack(spacing: 0) {
+                        AppPanelHeading(title: filter == .stops ? "Paradas" : "Recorridos",
+                                        back: { dismiss() }) {
+                            Button {
+                                showingServices = true
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Servicios")
+                        }
+                        .padding(.horizontal, 10)
                         filters
                         Group {
                             if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
@@ -167,7 +181,7 @@ struct CatalogView: View {
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
                         featureList
                     }
-                    .background { AppDesign.panelSurface }
+                    .background { AppDesign.panelSurface() }
                     .padding(.top, -AppDesign.panelOverlap)
                 }
             } else {
@@ -225,6 +239,7 @@ struct CatalogView: View {
         .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
         .tint(.white)
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
@@ -324,7 +339,11 @@ struct CatalogView: View {
     }
 
     private func favoritesContent(_ catalog: RouteCatalog) -> some View {
-        Group {
+        VStack(spacing: 0) {
+            AppPanelHeading(title: "Favoritos", back: { dismiss() }) { EmptyView() }
+                .padding(.horizontal, 14)
+            Divider().padding(.horizontal, 18)
+            Group {
             if let selection {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -372,7 +391,9 @@ struct CatalogView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(uiColor: .systemBackground))
     }
 
     private var emptySearch: some View {
@@ -400,9 +421,12 @@ struct CatalogView: View {
                 if favoritesOnly {
                     AppFavoriteIcon()
                 } else {
-                    Image(systemName: feature.kind == .route ? "arrow.turn.up.left" : feature.kind == .stop ? "bus" : "square.dashed")
-                        .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
-                        .accessibilityHidden(true)
+                    if feature.kind == .route {
+                        AppGlyph(icon: .turn).foregroundStyle(routeColor(feature))
+                    } else {
+                        AppGlyph(icon: feature.kind == .stop ? .vehicle : .pin)
+                            .foregroundStyle(color(feature.color))
+                    }
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
@@ -476,8 +500,7 @@ struct CatalogView: View {
                                     }
                                     .fixedSize(horizontal: false, vertical: true)
                                 } icon: {
-                                    Image(systemName: feature.kind == .route ? "location" : "mappin")
-                                        .accessibilityHidden(true)
+                                    AppGlyph(icon: feature.kind == .route ? .navigation : .pin)
                                 }
                                 .multilineTextAlignment(.leading)
                                 .padding(10)

@@ -5,13 +5,18 @@ import SwiftUI
 
 enum AppDesign {
     static let panelRadius: CGFloat = 36
-    static let panelOverlap: CGFloat = 24
+    static let panelOverlap: CGFloat = 32
+    static let dockSelection = Color(white: 81 / 255)
+    static let city = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 32.5236, longitude: -117.0200),
+        span: MKCoordinateSpan(latitudeDelta: 0.041, longitudeDelta: 0.051)
+    )
     static let selectionFill = Color(red: 228 / 255, green: 223 / 255, blue: 1)
 
-    static var panelSurface: some View {
-        UnevenRoundedRectangle(topLeadingRadius: panelRadius, topTrailingRadius: panelRadius)
+    static func panelSurface(_ edge: MapPanelEdge = .shallow) -> some View {
+        MapPanelShape(edge: edge)
             .fill(Color(uiColor: .systemBackground))
-            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: -2)
+            .shadow(color: .black.opacity(0.16), radius: 7, x: 0, y: -2)
     }
 
     static func raisedAction(_ shape: Capsule, fill: Color, raised: Bool) -> some View {
@@ -89,48 +94,130 @@ enum AppDesign {
     }
 }
 
+enum MapPanelEdge: Equatable {
+    case shallow, deep
+
+    var depth: CGFloat { self == .deep ? 42 : 16 }
+    var width: CGFloat { self == .deep ? 68 : 52 }
+}
+
+private struct MapPanelShape: Shape {
+    let edge: MapPanelEdge
+
+    func path(in rect: CGRect) -> Path {
+        let width = min(rect.width / 2, edge.width)
+        let depth = min(rect.height, edge.depth)
+        return Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY + depth))
+            path.addQuadCurve(to: CGPoint(x: rect.minX + width, y: rect.minY),
+                              control: CGPoint(x: rect.minX + 5, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX - width, y: rect.minY))
+            path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + depth),
+                              control: CGPoint(x: rect.maxX - 5, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.closeSubpath()
+        }
+    }
+}
+
+struct AppBrandTitle: View {
+    var body: some View {
+        Text("Rutas Tijuana")
+            .font(AppDesign.title)
+            .foregroundStyle(.white)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+struct AppPanelHeading<Trailing: View>: View {
+    let title: String
+    var backLabel: String = "Regresar"
+    var back: (() -> Void)?
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        Text(title)
+            .font(AppDesign.title)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 50)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityAddTraits(.isHeader)
+            .overlay(alignment: .leading) {
+                if let back {
+                    Button(action: back) {
+                        Image(systemName: "arrow.left")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(backLabel)
+                }
+            }
+            .overlay(alignment: .trailing, content: trailing)
+            .foregroundStyle(.primary)
+    }
+}
+
+struct MapRouteBadge: View {
+    let title: String
+    let detail: String?
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(title).font(AppDesign.subtitle)
+            if let detail { Text(detail).font(AppDesign.note) }
+        }
+        .foregroundStyle(.white)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(AppDesign.primary, in: RoundedRectangle(cornerRadius: 9))
+        .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.white, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.26), radius: 3, x: 0, y: 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 enum AppDestination: String, CaseIterable {
     case routes = "Rutas"
     case home = "Inicio"
     case map = "Mapa"
 
+    var icon: AppIcon {
+        switch self {
+        case .routes: return .compass
+        case .home: return .home
+        case .map: return .pin
+        }
+    }
+
 }
 
-private struct DockIcon: Shape {
-    let destination: AppDestination
+enum AppIcon: String {
+    case compass = "app-compass"
+    case pin = "app-pin"
+    case home = "app-home"
+    case chevron = "app-chevron"
+    case turn = "app-turn"
+    case navigation = "app-navigation"
+    case star = "app-star"
+    case vehicle = "app-vehicle"
+}
 
-    func path(in rect: CGRect) -> Path {
-        let path = Path { path in
-            switch destination {
-            case .routes:
-                path.addEllipse(in: CGRect(x: 1.75, y: 1.75, width: 20.5, height: 20.5))
-                path.addLines([CGPoint(x: 16.5, y: 7.5), CGPoint(x: 14.2, y: 14.2),
-                               CGPoint(x: 7.5, y: 16.5), CGPoint(x: 9.8, y: 9.8)])
-                path.closeSubpath()
-            case .home:
-                path.addLines([CGPoint(x: 2.25, y: 10), CGPoint(x: 12, y: 2),
-                               CGPoint(x: 21.75, y: 10), CGPoint(x: 21.75, y: 20)])
-                path.addQuadCurve(to: CGPoint(x: 19.75, y: 22), control: CGPoint(x: 21.75, y: 22))
-                path.addLine(to: CGPoint(x: 4.25, y: 22))
-                path.addQuadCurve(to: CGPoint(x: 2.25, y: 20), control: CGPoint(x: 2.25, y: 22))
-                path.closeSubpath()
-                path.addLines([CGPoint(x: 8.75, y: 22), CGPoint(x: 8.75, y: 12),
-                               CGPoint(x: 15.25, y: 12), CGPoint(x: 15.25, y: 22)])
-            case .map:
-                path.move(to: CGPoint(x: 12, y: 22))
-                path.addCurve(to: CGPoint(x: 3, y: 10.5), control1: CGPoint(x: 9.3, y: 20.1),
-                              control2: CGPoint(x: 3, y: 15.4))
-                path.addCurve(to: CGPoint(x: 12, y: 1.75), control1: CGPoint(x: 3, y: 5.7),
-                              control2: CGPoint(x: 7, y: 1.75))
-                path.addCurve(to: CGPoint(x: 21, y: 10.5), control1: CGPoint(x: 17, y: 1.75),
-                              control2: CGPoint(x: 21, y: 5.7))
-                path.addCurve(to: CGPoint(x: 12, y: 22), control1: CGPoint(x: 21, y: 15.4),
-                              control2: CGPoint(x: 14.7, y: 20.1))
-                path.closeSubpath()
-                path.addEllipse(in: CGRect(x: 9, y: 7.25, width: 6, height: 6))
-            }
-        }
-        return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+struct AppGlyph: View {
+    let icon: AppIcon
+    var size: CGFloat = 20
+
+    var body: some View {
+        Image(icon.rawValue)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
@@ -140,24 +227,16 @@ struct AppFavoriteIcon: View {
     @ScaledMetric(relativeTo: .body) private var size = 19.0
 
     var body: some View {
-        let star = Path { path in
-            path.addLines([
-                CGPoint(x: 12, y: 1), CGPoint(x: 15.1, y: 8.1), CGPoint(x: 23, y: 9),
-                CGPoint(x: 17.2, y: 14.2), CGPoint(x: 18.7, y: 22), CGPoint(x: 12, y: 18.1),
-                CGPoint(x: 5.3, y: 22), CGPoint(x: 6.8, y: 14.2), CGPoint(x: 1, y: 9),
-                CGPoint(x: 8.9, y: 8.1)
-            ])
-            path.closeSubpath()
-        }.applying(CGAffineTransform(scaleX: size * scale / 24, y: size * scale / 24))
-
         Group {
             if filled {
-                star.fill(.foreground)
+                Image(systemName: "star.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size * scale, height: size * scale)
             } else {
-                star.stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                AppGlyph(icon: .star, size: size * scale)
             }
         }
-        .frame(width: size * scale, height: size * scale)
         .accessibilityHidden(true)
     }
 }
@@ -170,16 +249,16 @@ struct AppDock: View {
     var onSelect: (AppDestination) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             ForEach(AppDestination.allCases, id: \.self) { destination in
                 destinationButton(destination)
             }
         }
         .frame(maxWidth: .infinity)
         .foregroundStyle(.white)
-        .padding(4)
-        .appGlass(in: Capsule(), dark: true)
-        .padding(.horizontal, textSize.isAccessibilitySize ? 10 : 28)
+        .padding(3)
+        .background(AppDesign.dock, in: Capsule())
+        .padding(.horizontal, textSize.isAccessibilitySize ? 10 : 32)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-dock")
@@ -191,9 +270,7 @@ struct AppDock: View {
         } label: {
             VStack(spacing: 2) {
                 if !textSize.isAccessibilitySize {
-                    DockIcon(destination: destination)
-                        .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                        .frame(width: iconSize, height: iconSize)
+                    AppGlyph(icon: destination.icon, size: iconSize)
                 }
                 DockCaption(title: destination.rawValue)
                     .fixedSize(horizontal: false, vertical: true)
@@ -202,8 +279,13 @@ struct AppDock: View {
             .accessibilityLabel(destination.rawValue)
             .padding(.vertical, 4)
             .padding(.horizontal, 4)
-            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44)
-            .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
+            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+            .background(selection == destination ? AppDesign.dockSelection : .clear, in: Capsule())
+            .overlay {
+                if selection == destination {
+                    Capsule().strokeBorder(.white.opacity(0.17), lineWidth: 1).allowsHitTesting(false)
+                }
+            }
             .contentShape(Capsule())
             .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: selection)
         }

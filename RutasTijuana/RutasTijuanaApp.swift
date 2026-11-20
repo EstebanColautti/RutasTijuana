@@ -27,10 +27,11 @@ struct RutasTijuanaApp: App {
 
 private struct MainTabs: View {
     @State private var selected: AppDestination = .home
+    @State private var dockHeight: CGFloat = 66
     @ObservedObject private var repository = CatalogRepository.shared
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
             TabView(selection: $selected) {
                 NavigationStack {
                     CatalogView(routesTab: true)
@@ -51,8 +52,10 @@ private struct MainTabs: View {
                 .toolbar(.hidden, for: .tabBar)
                 .tag(AppDestination.map)
             }
+            .safeAreaPadding(.bottom, selected == .map ? 0 : dockHeight)
+
             AppDock(selection: selected) { selected = $0 }
-                .layoutPriority(1)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
         }
         .environment(\.activeAppDestination, selected)
         .environment(\.openAppDestination) { selected = $0 }
@@ -61,40 +64,58 @@ private struct MainTabs: View {
 
     private var mapHome: some View {
         ZStack(alignment: .bottom) {
-            Map(initialPosition: .region(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-            )))
-            .accessibilityLabel("Mapa de Tijuana")
-            VStack(spacing: 12) {
+            Map(initialPosition: .region(AppDesign.city))
+                .mapStyle(.standard(elevation: .flat))
+                .ignoresSafeArea(.container, edges: .bottom)
+                .accessibilityLabel("Mapa de Tijuana")
+            VStack(spacing: 8) {
                 Text("¿A dónde quieres ir hoy?")
-                    .font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
+                    .font(AppDesign.subtitle)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 if let catalog = repository.catalog, catalog.readyForDistribution {
-                    NavigationLink { TripPlannerView(catalog: catalog) } label: {
-                        Text("Empezar viaje").frame(minWidth: 160, minHeight: 44)
+                    NavigationLink {
+                        TripPlannerView(catalog: catalog).safeAreaPadding(.bottom, dockHeight)
+                    } label: {
+                        Text("Empezar viaje").padding(.horizontal, 14)
                     }
                     .accessibilityIdentifier("map-start")
                     .buttonStyle(AppActionStyle())
                 } else {
-                    NavigationLink { CatalogView() } label: {
-                        Text("Consultar recorridos").frame(minWidth: 160, minHeight: 44)
+                    NavigationLink {
+                        CatalogView().safeAreaPadding(.bottom, dockHeight)
+                    } label: {
+                        Text("Consultar recorridos").padding(.horizontal, 14)
                     }
                     .buttonStyle(AppActionStyle())
                 }
             }
-            .padding(16)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 20)
             .foregroundStyle(.primary)
             .background {
-                RoundedRectangle(cornerRadius: 24)
+                RoundedRectangle(cornerRadius: 58)
                     .fill(Color(uiColor: .systemBackground))
                     .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 40)
+            .padding(.bottom, dockHeight + 12)
         }
         .navigationTitle("Rutas Tijuana")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) { AppBrandTitle() }
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink { CatalogView(favoritesOnly: true).safeAreaPadding(.bottom, dockHeight) } label: {
+                    AppFavoriteIcon().frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .accessibilityLabel("Favoritos")
+            }
+        }
         .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)

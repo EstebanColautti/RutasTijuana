@@ -296,6 +296,12 @@ struct TripTravelView: View {
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                     .stroke(AppDesign.routeInk, style: AppDesign.routeStroke)
             }
+            if !mapPath.isEmpty, !model.finished {
+                let midpoint = mapPath[mapPath.count / 2]
+                Annotation("Etapa actual", coordinate: .init(latitude: midpoint.latitude, longitude: midpoint.longitude), anchor: .bottom) {
+                    MapRouteBadge(title: currentStatus, detail: model.remaining.map(WalkingFormat.distance))
+                }
+            }
             if model.finished, let destination = finalDestination {
                 Marker(destinationName, systemImage: "flag.fill",
                        coordinate: .init(latitude: destination.latitude, longitude: destination.longitude))
@@ -432,9 +438,9 @@ struct TripTravelView: View {
         let stage = model.index
         return NavigationStack {
             GeometryReader { geometry in
-                VStack(spacing: mapPath.count > 1 ? -AppDesign.panelOverlap : 0) {
+                VStack(spacing: mapPath.count > 1 ? -MapPanelEdge.deep.depth : 0) {
                     if mapPath.count > 1 {
-                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.38 : 0.54) + AppDesign.panelOverlap)
+                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.38 : 0.54) + MapPanelEdge.deep.depth)
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
@@ -487,7 +493,7 @@ struct TripTravelView: View {
                                         Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "bus.fill")
                                             .font(AppDesign.body)
                                     }
-                                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16).padding(.top, 12).frame(maxWidth: .infinity, alignment: .leading)
                                     .background(.background, in: RoundedRectangle(cornerRadius: 16))
                                     if stops.contains(where: \.suggested) {
                                         Text("Confirma con el conductor dónde puedes subir y bajar.").font(AppDesign.note)
@@ -513,7 +519,7 @@ struct TripTravelView: View {
                     }
                     .id(model.index)
                     .clipped()
-                    .background { AppDesign.panelSurface }
+                    .background { AppDesign.panelSurface(.deep) }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         stageAction(stage: stage)
                             .padding(.horizontal, 16)
@@ -541,6 +547,7 @@ struct TripTravelView: View {
             }
             .navigationTitle(model.finished ? "Viaje finalizado" : "Trayecto en curso")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
             .confirmationDialog("¿Finalizar el viaje?", isPresented: $confirmFinish, titleVisibility: .visible) {
                 Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
                 Button("Cancelar", role: .cancel) {}
