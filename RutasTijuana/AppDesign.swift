@@ -3,6 +3,13 @@ import SwiftUI
 
 enum AppDesign {
     static let panelRadius: CGFloat = 24
+    static let selectionFill = Color(red: 228 / 255, green: 223 / 255, blue: 1)
+
+    static var panelSurface: some View {
+        UnevenRoundedRectangle(topLeadingRadius: panelRadius, topTrailingRadius: panelRadius)
+            .fill(Color(uiColor: .systemBackground))
+            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: -2)
+    }
 
     static func raisedAction(_ shape: Capsule, fill: Color, raised: Bool) -> some View {
         shape.fill(fill)
@@ -113,6 +120,7 @@ private struct DockIcon: Shape {
 
 struct AppFavoriteIcon: View {
     var filled = false
+    var scale: CGFloat = 1
     @ScaledMetric(relativeTo: .body) private var size = 19.0
 
     var body: some View {
@@ -124,7 +132,7 @@ struct AppFavoriteIcon: View {
                 CGPoint(x: 8.9, y: 8.1)
             ])
             path.closeSubpath()
-        }.applying(CGAffineTransform(scaleX: size / 24, y: size / 24))
+        }.applying(CGAffineTransform(scaleX: size * scale / 24, y: size * scale / 24))
 
         Group {
             if filled {
@@ -133,13 +141,14 @@ struct AppFavoriteIcon: View {
                 star.stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: size * scale, height: size * scale)
         .accessibilityHidden(true)
     }
 }
 
 struct AppDock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
     @ScaledMetric(relativeTo: .body) private var iconSize = 19.0
     var selection: AppDestination?
     var onSelect: (AppDestination) -> Void
@@ -154,7 +163,7 @@ struct AppDock: View {
         .foregroundStyle(.white)
         .padding(4)
         .appGlass(in: Capsule(), dark: true)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, textSize.isAccessibilitySize ? 10 : 28)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-dock")
@@ -164,9 +173,20 @@ struct AppDock: View {
         Button {
             onSelect(destination)
         } label: {
-            DockIcon(destination: destination)
-                .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                .frame(width: iconSize, height: iconSize)
+            VStack(spacing: 2) {
+                if !textSize.isAccessibilitySize {
+                    DockIcon(destination: destination)
+                        .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                        .frame(width: iconSize, height: iconSize)
+                }
+                Text(destination.rawValue)
+                    .font(.caption2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.center)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(destination.rawValue)
+            .padding(.vertical, 4)
             .padding(.horizontal, 4)
             .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44)
             .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
@@ -184,7 +204,16 @@ private struct AppDestinationAction: EnvironmentKey {
     static let defaultValue: ((AppDestination) -> Void)? = nil
 }
 
+private struct ActiveAppDestination: EnvironmentKey {
+    static let defaultValue: AppDestination? = nil
+}
+
 extension EnvironmentValues {
+    var activeAppDestination: AppDestination? {
+        get { self[ActiveAppDestination.self] }
+        set { self[ActiveAppDestination.self] = newValue }
+    }
+
     var openAppDestination: ((AppDestination) -> Void)? {
         get { self[AppDestinationAction.self] }
         set { self[AppDestinationAction.self] = newValue }
@@ -260,6 +289,13 @@ struct AppNotice: View {
 
 struct AppActionStyle: ButtonStyle {
     var fill = AppDesign.primary
+    var ink = Color.white
+
+    private var pressedFill: Color {
+        if fill == AppDesign.primary { return Color(red: 0, green: 56 / 255, blue: 145 / 255) }
+        if fill == AppDesign.danger { return Color(red: 233 / 255, green: 77 / 255, blue: 49 / 255) }
+        return fill
+    }
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -267,16 +303,16 @@ struct AppActionStyle: ButtonStyle {
             .font(AppDesign.subtitle)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
-            .foregroundStyle(isEnabled ? Color.white : Color.black)
+            .foregroundStyle(isEnabled && !(configuration.isPressed && fill == AppDesign.danger) ? ink : Color.black)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .frame(minWidth: 44, minHeight: 44)
             .background {
-                AppDesign.raisedAction(Capsule(), fill: isEnabled ? fill : Color(white: 0.88),
+                AppDesign.raisedAction(Capsule(), fill: isEnabled ? (configuration.isPressed ? pressedFill : fill) : Color(white: 0.88),
                                        raised: isEnabled && !configuration.isPressed)
             }
             .overlay {
-                if configuration.isPressed && isEnabled {
+                if configuration.isPressed && isEnabled && fill == pressedFill {
                     Capsule().fill(.black.opacity(0.16)).allowsHitTesting(false)
                 }
             }

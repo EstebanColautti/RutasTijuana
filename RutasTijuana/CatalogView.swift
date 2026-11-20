@@ -8,6 +8,7 @@ struct CatalogView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
     @FocusState private var routeSearchFocused: Bool
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var showingRouteSearch = false
     @ObservedObject private var repository = CatalogRepository.shared
     @AppStorage("favorite-routes") private var favoriteData = Data()
@@ -63,7 +64,6 @@ struct CatalogView: View {
     @State private var groupID: String?
     @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
-    @State private var favoritePulse = 0
     @State private var favoriteNotice = ""
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
@@ -90,8 +90,9 @@ struct CatalogView: View {
         if routesTab {
             let term = normalized(query)
             return all.filter { feature in
-                term.isEmpty || normalized(([feature.name, feature.routeDetails?.code ?? "",
-                    feature.routeDetails?.direction ?? "", zone(feature)] + zones(feature)).joined(separator: " ")).contains(term)
+                let fields = [feature.name, feature.routeDetails?.code ?? "",
+                              feature.routeDetails?.direction ?? "", groupName(feature.groupID), zone(feature)]
+                return term.isEmpty || (fields + zones(feature)).contains { normalized($0).contains(term) }
             }.sorted {
                 let order = $0.name.localizedStandardCompare($1.name)
                 return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
@@ -158,12 +159,15 @@ struct CatalogView: View {
                     .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectedID)
                 } else {
                     map.frame(minHeight: 180, maxHeight: 310)
-                    filters
-                    Group {
-                        if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
+                    VStack(spacing: 0) {
+                        filters
+                        Group {
+                            if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
+                        }
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
+                        featureList
                     }
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
-                    featureList
+                    .background { AppDesign.panelSurface }
                 }
             } else {
                 ContentUnavailableView {
@@ -186,7 +190,12 @@ struct CatalogView: View {
             if let message = repository.message { Text(message).font(AppDesign.note).foregroundStyle(.primary).padding(10) }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
-        .sheet(isPresented: $showingRouteSearch) { routeSearchSheet }
+        .sheet(isPresented: $showingRouteSearch) {
+            routeSearchSheet
+                .presentationDetents([.fraction(0.83), .large])
+                .presentationCornerRadius(AppDesign.panelRadius)
+                .presentationDragIndicator(.hidden)
+        }
         .sheet(isPresented: $savingToLists) { if let selection { listEditor(routeID: selection.id) } }
         .sheet(isPresented: $showingLists, onDismiss: {
             if let id = routeToUse, let feature = catalog?.features.first(where: { $0.id == id }) {
@@ -324,9 +333,7 @@ struct CatalogView: View {
             } else if matches.isEmpty {
                 ContentUnavailableView {
                     VStack(spacing: 10) {
-                        Image(systemName: "star")
-                            .font(.system(size: 52, weight: .ultraLight))
-                            .accessibilityHidden(true)
+                        AppFavoriteIcon(scale: 2.65)
                         Text("Sin favoritos").font(AppDesign.title)
                     }
                 } description: {
@@ -339,7 +346,10 @@ struct CatalogView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(matches) { feature in
-                            HStack(spacing: 8) {
+                            let layout = textSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                                : AnyLayout(HStackLayout(spacing: 8))
+                            layout {
                                 row(feature)
                                 if catalog.readyForDistribution {
                                     NavigationLink {
@@ -347,17 +357,14 @@ struct CatalogView: View {
                                     } label: {
                                         Text("Iniciar ruta")
                                             .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
-                                            .foregroundStyle(.white)
                                             .multilineTextAlignment(.center)
-                                            .padding(.horizontal, 12)
-                                            .frame(minWidth: 44, minHeight: 44)
-                                            .background(AppDesign.primary, in: Capsule())
-                                    }.buttonStyle(.plain)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }.buttonStyle(AppActionStyle())
                                 }
                             }
                             .padding(10)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-                            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(.quaternary) }
+                            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(Color.secondary.opacity(0.42)) }
                         }
                     }.padding(16)
                 }
@@ -388,12 +395,17 @@ struct CatalogView: View {
             fit(feature)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
-                    .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
+                if favoritesOnly {
+                    AppFavoriteIcon()
+                } else {
+                    Image(systemName: feature.kind == .route ? "arrow.turn.up.left" : feature.kind == .stop ? "bus" : "square.dashed")
+                        .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
                     Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(AppDesign.note).foregroundStyle(.primary)
-                    if routesTab, let direction = feature.routeDetails?.direction, direction != feature.name {
+                    if (routesTab || favoritesOnly), let direction = feature.routeDetails?.direction, direction != feature.name {
                         Text(direction).font(AppDesign.note).foregroundStyle(.secondary)
                     }
                     if let reference, let distance = feature.distance(to: reference) {
@@ -402,18 +414,19 @@ struct CatalogView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
-                    Image(systemName: "star.fill").accessibilityHidden(true)
+                if !favoritesOnly && feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
+                    AppFavoriteIcon(filled: true)
                 }
                 if selectedID == feature.id { Image(systemName: "checkmark") }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .frame(minHeight: 44)
             .background {
                 RoundedRectangle(cornerRadius: 14)
-                    .fill(selectedID == feature.id ? AppDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.32) : Color(uiColor: .systemBackground))
+                    .fill(selectedID == feature.id ? (colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill) : Color(uiColor: .systemBackground))
             }
-            .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary) }
+            .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(favoritesOnly ? 0 : 0.42)) }
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
@@ -454,19 +467,25 @@ struct CatalogView: View {
                                 Label {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(feature.name).font(AppDesign.subtitle)
-                                        if let direction = feature.routeDetails?.direction,
-                                           !direction.isEmpty, direction != feature.name {
-                                            Text(direction).font(AppDesign.note)
+                                        let subtitle = feature.routeDetails?.direction ?? groupName(feature.groupID)
+                                        if !subtitle.isEmpty, subtitle != feature.name {
+                                            Text(subtitle).font(AppDesign.note)
                                         }
                                     }
                                     .fixedSize(horizontal: false, vertical: true)
                                 } icon: {
-                                    Image(systemName: feature.kind == .route ? "arrow.triangle.turn.up.right.diamond" : "mappin")
+                                    Image(systemName: feature.kind == .route ? "location" : "mappin")
+                                        .accessibilityHidden(true)
                                 }
                                 .multilineTextAlignment(.leading)
                                 .padding(10)
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(Color.secondary.opacity(0.42))
+                                        .allowsHitTesting(false)
+                                }
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("route-search-result-\(feature.id)")
@@ -480,7 +499,13 @@ struct CatalogView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { showingRouteSearch = false }
+                    Button {
+                        routeSearchFocused = false
+                        showingRouteSearch = false
+                    } label: {
+                        Image(systemName: "arrow.left").frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("Cerrar")
                 }
             }
             .tint(AppDesign.primary)
@@ -497,9 +522,7 @@ struct CatalogView: View {
                         searchFocused = false
                         showingRouteSearch = true
                     }
-                    .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
-                    .foregroundStyle(AppDesign.primary)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .buttonStyle(AppActionStyle())
                     .accessibilityIdentifier("catalog-open-search")
                 }
                 TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
@@ -598,13 +621,16 @@ struct CatalogView: View {
                         favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
                         favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
                         AccessibilityNotification.Announcement(favoriteNotice).post()
-                        if !reduceMotion { favoritePulse += 1 }
                     } label: {
-                        Label(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star")
-                            .symbolEffect(.bounce, value: favoritePulse)
+                        AppFavoriteIcon(filled: saved)
+                            .contentTransition(reduceMotion ? .identity : .opacity)
+                            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .labelStyle(.iconOnly)
                     .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel(saved ? "Quitar de favoritos" : "Guardar en favoritos")
                     .accessibilityIdentifier("favorite-toggle")
                 }
                 if feature.kind == .route {

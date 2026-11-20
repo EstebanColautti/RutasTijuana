@@ -54,6 +54,7 @@ private struct MainTabs: View {
             AppDock(selection: selected) { selected = $0 }
                 .layoutPriority(1)
         }
+        .environment(\.activeAppDestination, selected)
         .environment(\.openAppDestination) { selected = $0 }
         .tint(AppDesign.primary)
     }
@@ -84,7 +85,11 @@ private struct MainTabs: View {
             }
             .padding(16)
             .foregroundStyle(.primary)
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24))
+            .background {
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(uiColor: .systemBackground))
+                    .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
+            }
             .padding(.horizontal, 24)
             .padding(.bottom, 16)
         }

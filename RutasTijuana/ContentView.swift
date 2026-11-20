@@ -38,7 +38,9 @@ struct ContentView: View {
     private var recentPlannedRoutes: [CatalogFeature] {
         let stored = (try? JSONDecoder().decode([String].self, from: recentPlannedData)) ?? []
         #if DEBUG
-        let ids = ProcessInfo.processInfo.arguments.contains("--catalog-recent-sample") ? ["sample-route"] : stored
+        let arguments = ProcessInfo.processInfo.arguments
+        let ids = arguments.contains("--gallery") ? RouteCatalog.galleryRouteIDs
+            : arguments.contains("--catalog-recent-sample") ? ["sample-route"] : stored
         #else
         let ids = stored
         #endif
@@ -213,14 +215,16 @@ struct ContentView: View {
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            Text("¿A dónde quieres ir hoy?")
+                .font(AppDesign.title)
+                .foregroundStyle(AppDesign.header)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .background(AppDesign.accent)
+                .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 16) {
-                Text("¿A dónde quieres ir hoy?")
-                    .font(AppDesign.type(17, relativeTo: .headline, weight: .semibold))
-                    .foregroundStyle(AppDesign.header)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(AppDesign.accent, in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityAddTraits(.isHeader)
-
                 ZStack(alignment: .bottom) {
                     NavigationLink {
                         if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
@@ -231,7 +235,7 @@ struct ContentView: View {
                     } label: {
                         Rectangle()
                             .fill(.clear)
-                            .frame(height: textSize.isAccessibilitySize ? 220 : 280)
+                            .frame(height: textSize.isAccessibilitySize ? 190 : 250)
                             .background {
                                 Map(initialPosition: .region(MKCoordinateRegion(
                                     center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
@@ -263,7 +267,7 @@ struct ContentView: View {
 
                 if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
                 #if DEBUG
-                if isDemo && !ProcessInfo.processInfo.arguments.contains("--capture-catalog") {
+                if isDemo && !ProcessInfo.processInfo.arguments.contains(where: { $0 == "--capture-catalog" || $0 == "--gallery" }) {
                     Button { importing = true } label: {
                         Text("Abrir datos de evaluación").frame(minHeight: 44)
                     }
@@ -297,12 +301,7 @@ struct ContentView: View {
                 if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
                     ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
                         NavigationLink { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) } label: {
-                            Label(feature.name, systemImage: "bus")
-                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
-                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary) }
+                            recentRouteCard(feature.name, detail: feature.routeDetails?.direction)
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("recent-planned-\(feature.id)")
@@ -313,12 +312,7 @@ struct ContentView: View {
                        let feature = catalog.features.first(where: { $0.id == item.element.routeID }),
                        let match = catalog.journeyScenario(for: feature) {
                         NavigationLink { ContentView(scenario: match, recent: item.element) } label: {
-                            Label(match.name, systemImage: "bus")
-                                .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .padding(.horizontal, 12)
-                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
-                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary) }
+                            recentRouteCard(match.name, detail: match.direction)
                         }.buttonStyle(.plain)
                     }
                 }
@@ -327,7 +321,7 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .accessibilityIdentifier("Consultas recientes")
-                if isDemo && !evaluation && !journeyFixture {
+                if isDemo && !evaluation && !journeyFixture && !ProcessInfo.processInfo.arguments.contains("--gallery") {
                     Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
                 }
                 Text("Puedes elegir tu ubicación manualmente. No se guarda.")
@@ -353,8 +347,26 @@ struct ContentView: View {
                     primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
                 }
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
+    }
+
+    private func recentRouteCard(_ name: String, detail: String?) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(AppDesign.subtitle)
+                if let detail, !detail.isEmpty, detail != name { Text(detail).font(AppDesign.note) }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "bus").accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.42)) }
     }
 
     private var routeMap: some View {

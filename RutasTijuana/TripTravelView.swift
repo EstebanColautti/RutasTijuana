@@ -228,8 +228,10 @@ struct TripTravelView: View {
     @StateObject private var model: TripTravelController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openAppDestination) private var openAppDestination
+    @Environment(\.activeAppDestination) private var activeAppDestination
     @State private var pendingDestination: AppDestination?
     @State private var confirmingDestination = false
+    @State private var confirmFinish = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var walking: WalkingDestination?
@@ -431,13 +433,27 @@ struct TripTravelView: View {
             GeometryReader { geometry in
                 VStack(spacing: 0) {
                     if mapPath.count > 1 {
-                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.32 : 0.48))
+                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.38 : 0.54))
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    confirmFinish = true
+                                } label: {
+                                    Image(systemName: "arrow.left").frame(width: 44, height: 44).contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Finalizar viaje")
+                                .accessibilityIdentifier("trip-finish")
+                                Text(model.finished ? "Viaje finalizado" : "Trayecto en curso")
+                                    .font(AppDesign.title)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Estado actual").font(AppDesign.subtitle)
-                                Text(currentStatus).font(AppDesign.body)
+                                Text(currentStatus).font(AppDesign.subtitle)
+                                if !model.finished { stageProgress }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
@@ -455,7 +471,6 @@ struct TripTravelView: View {
                             } else if let leg = model.leg {
                                 switch leg {
                                 case .walk(_, _, let route):
-                                    stageProgress
                                     Label("Camina hasta " + walkingTarget, systemImage: "figure.walk").font(AppDesign.title)
                                         .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                         .onAppear { stageFocused = true }
@@ -465,7 +480,6 @@ struct TripTravelView: View {
                                         .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                         .onAppear { stageFocused = true }
                                     Text(service.direction ?? "Sigue el sentido indicado en el recorrido").font(AppDesign.body)
-                                    stageProgress
                                     VStack(alignment: .leading, spacing: 12) {
                                         Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
                                             .font(AppDesign.title)
@@ -497,7 +511,7 @@ struct TripTravelView: View {
                         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .id(model.index)
-                    .background(Color(uiColor: .systemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                    .background { AppDesign.panelSurface }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         stageAction(stage: stage)
                             .padding(.horizontal, 16)
@@ -508,7 +522,7 @@ struct TripTravelView: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if openAppDestination != nil {
-                    AppDock(selection: nil) { destination in
+                    AppDock(selection: activeAppDestination) { destination in
                         pendingDestination = destination
                         confirmingDestination = true
                     }
@@ -525,10 +539,9 @@ struct TripTravelView: View {
             }
             .navigationTitle(model.finished ? "Viaje finalizado" : "Trayecto en curso")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                TripActionButton("Finalizar viaje") { model.finish(); dismiss() }
-                    .foregroundStyle(.red)
-                    .accessibilityIdentifier("trip-finish")
+            .confirmationDialog("¿Finalizar el viaje?", isPresented: $confirmFinish, titleVisibility: .visible) {
+                Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
+                Button("Cancelar", role: .cancel) {}
             }
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

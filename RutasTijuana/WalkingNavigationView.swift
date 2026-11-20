@@ -6,6 +6,7 @@ struct WalkingNavigationView: View {
     @StateObject private var model: WalkingNavigationCoordinator
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openAppDestination) private var openAppDestination
+    @Environment(\.activeAppDestination) private var activeAppDestination
     @State private var pendingDestination: AppDestination?
     @State private var confirmingDestination = false
     @Environment(\.dynamicTypeSize) private var textSize
@@ -34,10 +35,11 @@ struct WalkingNavigationView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-                VStack(spacing: 0) {
+                VStack(spacing: -8) {
                     Map(position: $camera) {
                         if let route = model.route {
-                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.blue, lineWidth: 6)
+                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.white, lineWidth: 9)
+                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(AppDesign.routeInk, lineWidth: 5)
                         }
                         Annotation(model.destination.name, coordinate: model.destination.point.walkingCoordinate) {
                             Image(systemName: model.destination.purpose == .destination ? "flag.fill" : "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
@@ -55,6 +57,11 @@ struct WalkingNavigationView: View {
                         }
                     }
                     .accessibilityLabel("Mapa de la guía a pie")
+                    .overlay {
+                        if showingSteps {
+                            Color.black.opacity(0.16).allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
                     #if DEBUG
                     .overlay(alignment: .topLeading) {
                         if ProcessInfo.processInfo.arguments.contains("--walking-live-directions") {
@@ -86,20 +93,59 @@ struct WalkingNavigationView: View {
                         .accessibilityLabel("Recentrar")
                         .padding()
                     }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.56 : 0.60))
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.55 : model.phase == .preview ? 0.65 : 0.57))
                     ScrollView {
                         if showingSteps {
-                            walkingSteps
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Button {
+                                        showingSteps = false
+                                    } label: {
+                                        Image(systemName: "arrow.left").frame(width: 44, height: 44).contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Cerrar")
+                                    .accessibilityIdentifier("walking-close-steps")
+                                    Text("Indicaciones").font(AppDesign.title).accessibilityAddTraits(.isHeader)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 12)
+                                walkingSteps
+                            }
                         } else {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text(model.destination.name).font(AppDesign.title)
+                                HStack(spacing: 8) {
+                                    Button {
+                                        confirmEnd = true
+                                    } label: {
+                                        Image(systemName: "arrow.left")
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Finalizar")
+                                    .accessibilityIdentifier("walking-finish")
+                                    Text(model.destination.title)
+                                        .font(AppDesign.subtitle)
+                                        .accessibilityAddTraits(.isHeader)
+                                }
                                 if model.phase == .navigating {
                                     Text(model.instruction).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold)).accessibilityIdentifier("walking-instruction")
                                     Text("En \(WalkingFormat.distance(model.progress.stepRemaining))")
                                     if model.progress.stepRemaining <= WalkingPolicy.maneuverDistance { Text("Próxima indicación").font(AppDesign.note) }
                                 }
+                                Text(model.destination.name)
+                                    .font(model.phase == .navigating ? AppDesign.subtitle : AppDesign.title)
+                                    .accessibilityAddTraits(model.phase == .navigating ? [] : .isHeader)
                                 if model.route != nil {
-                                    Text("\(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining)) · \(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived))")
+                                    let layout = textSize.isAccessibilitySize
+                                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                                        : AnyLayout(HStackLayout(spacing: 12))
+                                    layout {
+                                        Label(WalkingFormat.duration(model.secondsRemaining, arrived: model.phase == .arrived), systemImage: "clock")
+                                        Label(WalkingFormat.distance(model.phase == .arrived ? 0 : model.progress.remaining), systemImage: "figure.walk")
+                                    }
+                                    .font(AppDesign.subtitle)
                                     if !model.status.offersStart(phase: model.phase) {
                                         Button("Ver pasos") { showingSteps = true }.frame(minHeight: 44)
                                     }
@@ -124,7 +170,7 @@ struct WalkingNavigationView: View {
                     }
                     .id(showingSteps)
                     .frame(maxHeight: .infinity)
-                    .background(Color(uiColor: .secondarySystemBackground), in: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                    .background { AppDesign.panelSurface }
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -137,8 +183,7 @@ struct WalkingNavigationView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, minHeight: 44)
                             }
-                            .buttonStyle(.bordered)
-                            .tint(.primary)
+                            .buttonStyle(AppActionStyle(fill: Color(uiColor: .secondarySystemBackground), ink: .primary))
                             Button { model.start() } label: {
                                 Text("Iniciar guía")
                                     .fixedSize(horizontal: false, vertical: true)
@@ -151,7 +196,7 @@ struct WalkingNavigationView: View {
                         .padding(.vertical, 6)
                     }
                     if openAppDestination != nil {
-                        AppDock(selection: nil) { destination in
+                        AppDock(selection: activeAppDestination) { destination in
                             pendingDestination = destination
                             confirmingDestination = true
                         }
@@ -173,23 +218,6 @@ struct WalkingNavigationView: View {
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack {
-                    Button {
-                        if showingSteps { showingSteps = false } else { confirmEnd = true }
-                    } label: {
-                        Text(showingSteps ? "Cerrar" : "Finalizar")
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-                    .accessibilityIdentifier(showingSteps ? "walking-close-steps" : "walking-finish")
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .background(Color(uiColor: .systemBackground))
-            }
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
                 Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
             }
