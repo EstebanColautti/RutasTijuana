@@ -199,7 +199,7 @@ final class JourneyTests: XCTestCase {
         tap("Iniciar guía")
         XCTAssertTrue(app.staticTexts["walking-instruction"].waitForExistence(timeout: 5))
         tap("walking-finish")
-        app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
+        tap("Terminar guía")
         tap("trip-walk-arrived")
         XCTAssertTrue(app.staticTexts["Esperando para subir"].waitForExistence(timeout: 5))
         capture("Esperando para subir")
@@ -260,6 +260,9 @@ final class JourneyTests: XCTestCase {
         capture("Inicio desplazado")
         XCTAssertTrue(app.buttons["recent-planned-sample-route"].waitForExistence(timeout: 10))
         capture("Inicio con consultas recientes")
+        let browse = app.buttons["Explorar recorridos"]
+        let home = app.scrollViews["home-scroll"]
+        if browse.frame.midY < home.frame.minY { home.swipeDown() }
         tap("Explorar recorridos")
         XCTAssertTrue(app.navigationBars["Recorridos"].waitForExistence(timeout: 15))
     }
@@ -480,9 +483,9 @@ final class JourneyTests: XCTestCase {
         tap("Ver pasos")
         XCTAssertTrue(app.navigationBars["Indicaciones"].waitForExistence(timeout: 5))
         capture("Indicaciones")
-        tap("Cerrar")
-        tap("Finalizar")
-        app.buttons.matching(identifier: "Finalizar").allElementsBoundByIndex.last!.tap()
+        tap("walking-close-steps")
+        tap("walking-finish")
+        tap("Terminar guía")
         XCTAssertTrue(app.staticTexts["Sube en Parada 1"].waitForExistence(timeout: 5))
     }
 
@@ -691,6 +694,9 @@ final class JourneyTests: XCTestCase {
             }
             let search = app.textFields["catalog-search"]
             search.tap()
+            if let value = search.value as? String, value == "Centro Murua" {
+                search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+            }
             search.typeText("Murua\n")
             XCTAssertTrue(app.buttons["catalog-centro-murua"].waitForExistence(timeout: 10))
             if attempt == 0 {
@@ -828,11 +834,19 @@ final class JourneyTests: XCTestCase {
             let fixedAction = app.buttons["trip-continue"]
             let aboveAction = !identifier.hasPrefix("trip-stop-") || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY
             let unobscured = aboveTab && aboveAction
-            if button.isHittable && unobscured { break }
+            if button.isHittable && unobscured {
+                button.tap()
+                return
+            }
             let scroll = app.scrollViews.containing(.button, identifier: identifier).firstMatch
             let target = scroll.exists ? scroll : app.scrollViews.firstMatch
             guard target.isHittable else { break }
-            target.swipeUp()
+            let viewport = target.frame
+            if button.frame.midY < viewport.minY {
+                target.swipeDown()
+            } else {
+                target.swipeUp()
+            }
             var previousY = button.frame.midY
             for _ in 0..<10 {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.15))
@@ -841,11 +855,7 @@ final class JourneyTests: XCTestCase {
                 previousY = currentY
             }
         }
-        guard button.isHittable else {
-            recordMissingControl(identifier, reason: "No se pudo tocar")
-            return
-        }
-        button.tap()
+        recordMissingControl(identifier, reason: "No se pudo tocar")
     }
 
     private func recordMissingControl(_ identifier: String, reason: String) {

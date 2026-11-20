@@ -147,9 +147,9 @@ struct CatalogView: View {
                         .allowsHitTesting(selection == nil)
                         if let selection {
                             ScrollView {
-                                VStack(spacing: 0) {
-                                    map.frame(height: 220)
-                                    detail(selection)
+                                VStack(spacing: -AppDesign.panelOverlap) {
+                                    map.frame(height: 250)
+                                    detail(selection).background { AppDesign.panelSurface }
                                 }
                             }
                             .background(Color(uiColor: .systemBackground))
@@ -168,6 +168,7 @@ struct CatalogView: View {
                         featureList
                     }
                     .background { AppDesign.panelSurface }
+                    .padding(.top, -AppDesign.panelOverlap)
                 }
             } else {
                 ContentUnavailableView {
@@ -315,6 +316,7 @@ struct CatalogView: View {
             }
         }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .overlay {
                 if matches.isEmpty { emptySearch }
@@ -568,10 +570,10 @@ struct CatalogView: View {
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(.white, lineWidth: selectedID == feature.id ? 11 : 7)
                         MapPolyline(coordinates: part.element.map(\.coordinate))
-                            .stroke(.black, lineWidth: selectedID == feature.id ? 9 : 5)
+                            .stroke(.black, style: StrokeStyle(lineWidth: selectedID == feature.id ? 9 : 5, lineCap: .round, lineJoin: .round))
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(feature.kind == .route ? routeColor(feature) : color(feature.color),
-                                    lineWidth: selectedID == feature.id ? 7 : 3)
+                                    style: StrokeStyle(lineWidth: selectedID == feature.id ? 6 : 3, lineCap: .round, lineJoin: .round))
                     }
                     ForEach(Array(feature.geometry.polygons.enumerated()), id: \.offset) { area in
                         MapPolygon(polygon(area.element))
@@ -835,13 +837,9 @@ struct CatalogView: View {
     }
 
     private func fit(_ feature: CatalogFeature) {
-        let points = feature.geometry.positions
-        guard let minLat = points.map(\.latitude).min(), let maxLat = points.map(\.latitude).max(),
-              let minLon = points.map(\.longitude).min(), let maxLon = points.map(\.longitude).max() else { return }
-        camera = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-            span: MKCoordinateSpan(latitudeDelta: max(0.005, (maxLat - minLat) * 1.25),
-                                  longitudeDelta: max(0.005, (maxLon - minLon) * 1.25))))
+        if let position = AppDesign.routeCamera(feature.geometry.positions.map(\.point), minimumSpan: 0.004) {
+            camera = position
+        }
     }
 
     private func polygon(_ rings: [[CatalogPosition]]) -> MKPolygon {

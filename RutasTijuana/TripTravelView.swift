@@ -284,7 +284,7 @@ struct TripTravelView: View {
     }
 
     private var travelMap: some View {
-        Map(interactionModes: [.pan, .zoom]) {
+        Map(initialPosition: AppDesign.routeCamera(mapPath) ?? .automatic, interactionModes: [.pan, .zoom]) {
             if case .walk = model.leg {
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
                     .stroke(.white, style: StrokeStyle(lineWidth: 8, dash: [6, 4]))
@@ -292,9 +292,9 @@ struct TripTravelView: View {
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, dash: [6, 4]))
             } else {
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                    .stroke(.white, lineWidth: 9)
+                    .stroke(.white, style: AppDesign.routeOutline)
                 MapPolyline(coordinates: mapPath.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                    .stroke(AppDesign.routeInk, lineWidth: 6)
+                    .stroke(AppDesign.routeInk, style: AppDesign.routeStroke)
             }
             if model.finished, let destination = finalDestination {
                 Marker(destinationName, systemImage: "flag.fill",
@@ -324,6 +324,7 @@ struct TripTravelView: View {
                 }
             }
         }
+        .mapStyle(.standard(elevation: .flat))
         .accessibilityLabel("Mapa de la etapa actual del viaje")
         .accessibilityHint("La etapa y las paradas también aparecen en el panel inferior.")
         .id(model.index)
@@ -431,9 +432,9 @@ struct TripTravelView: View {
         let stage = model.index
         return NavigationStack {
             GeometryReader { geometry in
-                VStack(spacing: 0) {
+                VStack(spacing: mapPath.count > 1 ? -AppDesign.panelOverlap : 0) {
                     if mapPath.count > 1 {
-                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.38 : 0.54))
+                        travelMap.frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.25 : geometry.size.height < 700 ? 0.38 : 0.54) + AppDesign.panelOverlap)
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
@@ -511,6 +512,7 @@ struct TripTravelView: View {
                         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .id(model.index)
+                    .clipped()
                     .background { AppDesign.panelSurface }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         stageAction(stage: stage)

@@ -706,6 +706,7 @@ struct ContentView: View {
                 .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityIdentifier("stop-\(stop.id)")
     }
 

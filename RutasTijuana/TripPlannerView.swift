@@ -238,8 +238,10 @@ struct TripPlannerView: View {
                 .id("\(trip != nil)-\(selectingOrigin)")
                 .transition(reduceMotion ? .identity : .opacity)
                 .scrollDismissesKeyboard(.interactively)
-                .background { AppDesign.panelSurface }
+                .clipped()
                 .accessibilityIdentifier("trip-panel")
+                .background { AppDesign.panelSurface }
+                .padding(.top, -AppDesign.panelOverlap)
                 VStack(spacing: 8) {
                     primaryAction
                 }
@@ -407,11 +409,16 @@ struct TripPlannerView: View {
             if selectedLegIndex == index {
                 Label("Etapa seleccionada", systemImage: "checkmark.circle.fill").font(AppDesign.note)
             }
-            Button("Mostrar etapa en el mapa") {
+            Button {
                 selectedLegIndex = index
                 showLeg(leg)
+            } label: {
+                Text("Mostrar etapa en el mapa")
+                    .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
             }
-            .frame(minHeight: 44)
+            .buttonStyle(.plain)
+            .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
             .accessibilityValue(selectedLegIndex == index ? "Seleccionada" : "")
             .accessibilityIdentifier("trip-show-leg-\(index)")
         }
@@ -420,9 +427,10 @@ struct TripPlannerView: View {
     }
 
     private func tripMap(height: CGFloat) -> some View {
-        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : height < 700 ? 0.38 : trip == nil ? 0.59 : 0.45
+        let fraction: CGFloat = textSize.isAccessibilitySize ? 0.26 : trip != nil ? (height < 700 ? 0.31 : 0.40) : height < 700 ? 0.38 : 0.59
         return Map(position: $camera) { mapContents }
-            .frame(height: height * fraction)
+            .mapStyle(.standard(elevation: .flat))
+            .frame(height: height * fraction + AppDesign.panelOverlap)
             .accessibilityLabel("Mapa de origen, destino e itinerario")
             .accessibilityHint("Las etapas del viaje también están disponibles en la lista.")
             .overlay(alignment: .bottomTrailing) {
@@ -545,9 +553,9 @@ struct TripPlannerView: View {
                 case .ride(let service, let stops):
                     if let path = service.section(through: stops) {
                         MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                            .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 11 : 8)
+                            .stroke(.white.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), style: StrokeStyle(lineWidth: selectedLegIndex == row.offset ? 11 : 9, lineCap: .round, lineJoin: .round))
                         MapPolyline(coordinates: path.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
-                            .stroke(AppDesign.routeInk.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), lineWidth: selectedLegIndex == row.offset ? 8 : 5)
+                            .stroke(AppDesign.routeInk.opacity(selectedLegIndex == nil || selectedLegIndex == row.offset ? 1 : 0.4), style: StrokeStyle(lineWidth: selectedLegIndex == row.offset ? 8 : 6, lineCap: .round, lineJoin: .round))
                     } else {
                         ForEach(Array(service.geometry.enumerated()), id: \.offset) { part in
                             MapPolyline(coordinates: part.element.map { .init(latitude: $0.latitude, longitude: $0.longitude) })
@@ -829,7 +837,7 @@ struct TripPlannerView: View {
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .safeAreaInset(edge: .bottom, spacing: -AppDesign.panelOverlap) {
                 VStack(spacing: 8) {
                     TripActionButton("Seleccionar") {
                         guard let mapPoint else { return }
@@ -845,7 +853,7 @@ struct TripPlannerView: View {
                     }
                     .buttonStyle(AppActionStyle())
                     .disabled(mapPoint == nil)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, -2)
 
                     VStack(spacing: 4) {
                         Text(selectingOrigin ? "Selecciona el origen" : "Selecciona el destino")
@@ -1024,13 +1032,7 @@ struct TripPlannerView: View {
     }
 
     private func showPoints(_ points: [GeoPoint]) {
-        let valid = points.filter { $0.latitude.isFinite && $0.longitude.isFinite }
-        guard let minLat = valid.map(\.latitude).min(), let maxLat = valid.map(\.latitude).max(),
-              let minLon = valid.map(\.longitude).min(), let maxLon = valid.map(\.longitude).max() else { return }
-        camera = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-            span: MKCoordinateSpan(latitudeDelta: max(0.008, (maxLat - minLat) * 2),
-                                   longitudeDelta: max(0.008, (maxLon - minLon) * 2))))
+        if let position = AppDesign.routeCamera(points) { camera = position }
     }
 
     private func calculate() {

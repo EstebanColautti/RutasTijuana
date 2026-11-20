@@ -35,11 +35,11 @@ struct WalkingNavigationView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-                VStack(spacing: -8) {
+                VStack(spacing: -AppDesign.panelOverlap) {
                     Map(position: $camera) {
                         if let route = model.route {
-                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.white, lineWidth: 9)
-                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(AppDesign.routeInk, lineWidth: 5)
+                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(.white, style: AppDesign.routeOutline)
+                            MapPolyline(coordinates: route.points.map(\.walkingCoordinate)).stroke(AppDesign.routeInk, style: AppDesign.routeStroke)
                         }
                         Annotation(model.destination.name, coordinate: model.destination.point.walkingCoordinate) {
                             Image(systemName: model.destination.purpose == .destination ? "flag.fill" : "bus.fill").padding(10).background(.blue, in: Circle()).foregroundStyle(.white)
@@ -56,6 +56,7 @@ struct WalkingNavigationView: View {
                             }
                         }
                     }
+                    .mapStyle(.standard(elevation: .flat))
                     .accessibilityLabel("Mapa de la guía a pie")
                     .overlay {
                         if showingSteps {
@@ -74,7 +75,10 @@ struct WalkingNavigationView: View {
                     .onChange(of: camera.positionedByUser) { _, value in if value { follow = false } }
                     .onChange(of: model.fix?.timestamp) { _, _ in recenter() }
                     .onChange(of: model.phase) { _, phase in
-                        if phase == .preview { follow = false; camera = .automatic }
+                        if phase == .preview {
+                            follow = false
+                            camera = AppDesign.routeCamera(model.route?.points ?? [], minimumSpan: 0.0012) ?? .automatic
+                        }
                         if phase == .navigating { follow = true; recenter() }
                         if phase == .arrived, let onArrival { onArrival(); dismiss() }
                     }
@@ -93,7 +97,7 @@ struct WalkingNavigationView: View {
                         .accessibilityLabel("Recentrar")
                         .padding()
                     }
-                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.55 : model.phase == .preview ? 0.65 : 0.57))
+                    .frame(height: geometry.size.height * (textSize.isAccessibilitySize ? 0.26 : showingSteps ? 0.55 : model.phase == .preview ? 0.65 : 0.57) + AppDesign.panelOverlap)
                     ScrollView {
                         if showingSteps {
                             VStack(spacing: 0) {
@@ -170,6 +174,7 @@ struct WalkingNavigationView: View {
                     }
                     .id(showingSteps)
                     .frame(maxHeight: .infinity)
+                    .clipped()
                     .background { AppDesign.panelSurface }
                 }
             }
@@ -219,7 +224,7 @@ struct WalkingNavigationView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
-                Button("Finalizar", role: .destructive) { model.finish(); dismiss() }
+                Button("Terminar guía", role: .destructive) { model.finish(); dismiss() }
             }
 
         }

@@ -1,8 +1,11 @@
 import CoreText
+import MapKit
+import UIKit
 import SwiftUI
 
 enum AppDesign {
-    static let panelRadius: CGFloat = 24
+    static let panelRadius: CGFloat = 36
+    static let panelOverlap: CGFloat = 24
     static let selectionFill = Color(red: 228 / 255, green: 223 / 255, blue: 1)
 
     static var panelSurface: some View {
@@ -16,13 +19,26 @@ enum AppDesign {
             .shadow(color: .black.opacity(raised ? 0.24 : 0), radius: 3, x: 0, y: 3)
     }
 
+    static func routeCamera(_ points: [GeoPoint], padding: Double = 1.3, minimumSpan: Double = 0.0025) -> MapCameraPosition? {
+        let valid = points.filter { (-90...90).contains($0.latitude) && (-180...180).contains($0.longitude) }
+        guard let minLat = valid.map(\.latitude).min(), let maxLat = valid.map(\.latitude).max(),
+              let minLon = valid.map(\.longitude).min(), let maxLon = valid.map(\.longitude).max() else { return nil }
+        return .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: max(minimumSpan, (maxLat - minLat) * padding),
+                                   longitudeDelta: max(minimumSpan, (maxLon - minLon) * padding))
+        ))
+    }
+
     static let navigationMotion = Animation.easeInOut(duration: 0.20)
     static let selectionMotion = Animation.easeOut(duration: 0.16)
     static let header = Color(red: 23 / 255, green: 25 / 255, blue: 30 / 255)
     static let primary = Color(red: 0, green: 80 / 255, blue: 208 / 255)
     static let accent = Color(red: 184 / 255, green: 170 / 255, blue: 1)
     static let dock = Color(red: 38 / 255, green: 38 / 255, blue: 38 / 255)
-    static let routeInk = Color(red: 0.25, green: 0.16, blue: 0.80)
+    static let routeInk = Color(red: 43 / 255, green: 24 / 255, blue: 202 / 255)
+    static let routeOutline = StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round)
+    static let routeStroke = StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round)
     static let fieldError = Color(red: 197 / 255, green: 26 / 255, blue: 26 / 255)
     static let focus = Color(red: 5 / 255, green: 149 / 255, blue: 240 / 255)
     static let danger = Color(red: 215 / 255, green: 0, blue: 21 / 255)
@@ -179,10 +195,8 @@ struct AppDock: View {
                         .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                         .frame(width: iconSize, height: iconSize)
                 }
-                Text(destination.rawValue)
-                    .font(.caption2)
+                DockCaption(title: destination.rawValue)
                     .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.center)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(destination.rawValue)
@@ -197,6 +211,30 @@ struct AppDock: View {
         .accessibilityLabel(destination.rawValue)
         .accessibilityIdentifier("dock-" + destination.rawValue)
         .accessibilityAddTraits(selection == destination ? .isSelected : [])
+    }
+}
+
+private struct DockCaption: UIViewRepresentable {
+    let title: String
+
+    func makeUIView(context: Context) -> UILabel {
+        let label = UILabel()
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.adjustsFontForContentSizeCategory = true
+        label.isAccessibilityElement = false
+        return label
+    }
+
+    func updateUIView(_ label: UILabel, context: Context) {
+        label.text = title
+        label.font = UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: label.traitCollection)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+        uiView.sizeThatFits(CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width,
+                                  height: .greatestFiniteMagnitude))
     }
 }
 
