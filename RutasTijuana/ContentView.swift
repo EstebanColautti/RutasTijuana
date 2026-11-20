@@ -179,6 +179,7 @@ struct ContentView: View {
                 ScrollView {
                     welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
                 }
+                .accessibilityIdentifier("home-scroll")
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .top))

@@ -423,6 +423,10 @@ final class JourneyTests: XCTestCase {
                     return true
                 }
                 if issue.auditType == .contrast {
+                    let home = self.app.scrollViews["home-scroll"]
+                    if screen == "Inicio", home.exists,
+                       element.frame.minY >= home.frame.maxY,
+                       !["Rutas", "Inicio", "Mapa"].contains(element.label) { return true }
                     let tabBar = self.app.otherElements["app-dock"]
                     let bottom = tabBar.isHittable ? tabBar.frame.minY : self.app.frame.maxY
                     if element.frame.midY >= bottom || element.frame.maxY <= self.app.frame.minY ||

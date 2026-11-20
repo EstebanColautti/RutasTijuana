@@ -104,13 +104,12 @@ private struct DockIcon: Shape {
 
 struct AppDock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var textSize
     @ScaledMetric(relativeTo: .body) private var iconSize = 19.0
     var selection: AppDestination?
     var onSelect: (AppDestination) -> Void
 
     var body: some View {
-        HStack(spacing: textSize.isAccessibilitySize ? 4 : 8) {
+        HStack(spacing: 8) {
             ForEach(AppDestination.allCases, id: \.self) { destination in
                 destinationButton(destination)
             }
@@ -119,7 +118,7 @@ struct AppDock: View {
         .foregroundStyle(.white)
         .padding(4)
         .appGlass(in: RoundedRectangle(cornerRadius: 26), dark: true)
-        .padding(.horizontal, textSize.isAccessibilitySize ? 8 : 28)
+        .padding(.horizontal, 28)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-dock")
@@ -129,18 +128,9 @@ struct AppDock: View {
         Button {
             onSelect(destination)
         } label: {
-            VStack(spacing: 2) {
-                if !textSize.isAccessibilitySize {
-                    DockIcon(destination: destination)
-                        .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                        .frame(width: iconSize, height: iconSize)
-                        .accessibilityHidden(true)
-                }
-                Text(destination.rawValue)
-                    .font(.callout)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            DockIcon(destination: destination)
+                .stroke(style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .frame(width: iconSize, height: iconSize)
             .padding(.horizontal, 4)
             .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44)
             .background(selection == destination ? Color.white.opacity(0.18) : .clear, in: Capsule())
