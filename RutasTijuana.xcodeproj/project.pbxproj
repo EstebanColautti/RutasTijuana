@@ -264,7 +264,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicaciÃ³n permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación centra el mapa, ayuda a consultar paradas y permite guiarte durante un viaje. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -304,7 +304,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CatalogManifestURL = "$(CATALOG_MANIFEST_URL)";
 				INFOPLIST_KEY_CFBundleDisplayName = "Rutas Tijuana";
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicaciÃ³n permite consultar paradas, guiarte a pie y avisarte de la bajada durante un viaje, incluso con la pantalla bloqueada. No se guarda.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Tu ubicación centra el mapa, ayuda a consultar paradas y permite guiarte durante un viaje. No se guarda.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

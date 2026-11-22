@@ -8,8 +8,8 @@ enum AppDesign {
     static let panelOverlap: CGFloat = 32
     static let dockSelection = Color(white: 81 / 255)
     static let city = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 32.5236, longitude: -117.0200),
-        span: MKCoordinateSpan(latitudeDelta: 0.041, longitudeDelta: 0.051)
+        center: CLLocationCoordinate2D(latitude: 32.5304, longitude: -117.0250),
+        span: MKCoordinateSpan(latitudeDelta: 0.032, longitudeDelta: 0.037)
     )
     static let selectionFill = Color(red: 228 / 255, green: 223 / 255, blue: 1)
 
@@ -131,11 +131,24 @@ struct AppBrandTitle: View {
     }
 }
 
+extension ToolbarContent {
+    @ToolbarContentBuilder
+    func appHeaderControl() -> some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}
+
 struct AppPanelHeading<Trailing: View>: View {
     let title: String
     var backLabel: String = "Regresar"
+    var backIdentifier: String?
     var back: (() -> Void)?
     var centered = true
+    var sideWidth: CGFloat = 48
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -143,8 +156,8 @@ struct AppPanelHeading<Trailing: View>: View {
             .font(AppDesign.title)
             .multilineTextAlignment(centered ? .center : .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.leading, 48)
-            .padding(.trailing, centered ? 48 : 12)
+            .padding(.leading, sideWidth)
+            .padding(.trailing, centered ? sideWidth : 12)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: centered ? .center : .leading)
             .accessibilityAddTraits(.isHeader)
             .overlay(alignment: .leading) {
@@ -156,6 +169,7 @@ struct AppPanelHeading<Trailing: View>: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(backLabel)
+                    .accessibilityIdentifier(backIdentifier ?? backLabel)
                 }
             }
             .overlay(alignment: .trailing, content: trailing)
@@ -186,7 +200,7 @@ struct AppFavoritesToolbar: ViewModifier {
                             if confirmBeforeOpening { confirming = true }
                             else { showingFavorites = true }
                         } label: {
-                            AppFavoriteIcon()
+                            AppFavoriteIcon(scale: 1.26)
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
@@ -194,7 +208,7 @@ struct AppFavoritesToolbar: ViewModifier {
                         .foregroundStyle(darkHeader ? Color.white : Color.primary)
                         .accessibilityLabel("Favoritos")
                         .accessibilityIdentifier("header-favorites")
-                    }
+                    }.appHeaderControl()
                 }
             }
             .confirmationDialog("¿Abrir Favoritos?", isPresented: $confirming, titleVisibility: .visible) {
@@ -306,7 +320,7 @@ struct AppFavoriteIcon: View {
 struct AppDock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
-    @ScaledMetric(relativeTo: .body) private var iconSize = 19.0
+    @ScaledMetric(relativeTo: .body) private var iconSize = 23.0
     var selection: AppDestination?
     var onSelect: (AppDestination) -> Void
 
@@ -509,10 +523,10 @@ extension View {
             .font(AppDesign.body)
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(invalid ? AppDesign.fieldError : focused ? AppDesign.focus : Color.secondary,
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(invalid ? AppDesign.fieldError : focused ? AppDesign.focus : Color.secondary.opacity(0.38),
                                   lineWidth: invalid || focused ? 2 : 1)
                     .allowsHitTesting(false)
             }

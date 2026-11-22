@@ -192,8 +192,9 @@ final class JourneyTests: XCTestCase {
             app.scrollViews.firstMatch.swipeUp()
         }
         tap("trip-stages")
-        let currentStage = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Etapa 1 · Actual")).firstMatch
+        let currentStage = app.descendants(matching: .any)["trip-stage-1"]
         XCTAssertTrue(currentStage.waitForExistence(timeout: 5))
+        XCTAssertEqual(currentStage.value as? String, "Actual")
         capture("Etapas del viaje")
         tap("trip-walk")
         tap("Iniciar guía")
@@ -257,6 +258,10 @@ final class JourneyTests: XCTestCase {
         app.scrollViews.firstMatch.swipeUp()
         XCTAssertTrue(title.isHittable)
         XCTAssertEqual(title.frame.minY, initialY, accuracy: 1)
+        let homeScroll = app.scrollViews["home-scroll"]
+        let dock = app.otherElements["app-dock"]
+        XCTAssertTrue(dock.exists)
+        XCTAssertLessThanOrEqual(homeScroll.frame.maxY, dock.frame.minY + 1)
         capture("Inicio desplazado")
         XCTAssertTrue(app.buttons["recent-planned-sample-route"].waitForExistence(timeout: 10))
         capture("Inicio con consultas recientes")
@@ -337,6 +342,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
         tap("map-start")
         XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(app.scrollViews["trip-panel"].frame.maxY, app.otherElements["app-dock"].frame.minY + 1)
         capture("Panel de origen")
         tap("trip-search-toggle")
         let search = app.textFields["trip-place-search"]
@@ -671,6 +677,11 @@ final class JourneyTests: XCTestCase {
         tap("catalog-sample-route")
         tap("favorite-toggle")
         XCTAssertTrue(app.staticTexts["Quitado de favoritos"].waitForExistence(timeout: 5))
+        let notice = app.staticTexts["favorite-notice"]
+        if notice.exists {
+            let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: notice)
+            XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 12), .completed)
+        }
         capture("Favoritos vacío")
     }
 
@@ -766,6 +777,71 @@ final class JourneyTests: XCTestCase {
         }
     }
 
+    func testReferenceEntryScreens() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--catalog-full-test", "--gallery"]
+        app.launch()
+        XCTAssertTrue(app.buttons["recent-planned-feature_7eb377470e968bbdb36536f6"].waitForExistence(timeout: 20))
+        capture("08 Inicio")
+        tap("dock-Mapa")
+        XCTAssertTrue(app.buttons["map-start"].waitForExistence(timeout: 15))
+        capture("09 Mapa")
+        tap("dock-Inicio")
+        tap("Abrir mapa para planear viaje")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["trip-continue"].exists)
+        capture("10 Origen inicial")
+    }
+
+    func testReferenceSelectorWithCatalog() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--catalog-full-test", "--gallery", "--capture-catalog"]
+        app.launch()
+        tap("Abrir mapa para planear viaje")
+        tap("Elegir origen en el mapa")
+        XCTAssertTrue(app.navigationBars["Elegir origen"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Seleccionar"].isEnabled)
+        capture("13 Selector en mapa")
+        tap("Cancelar")
+        XCTAssertTrue(app.navigationBars["Desde dónde sales"].exists)
+    }
+
+    func testReferenceOriginSearchWithCatalog() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--catalog-full-test", "--gallery"]
+        app.launch()
+        tap("Abrir mapa para planear viaje")
+        tap("trip-search-toggle")
+        let search = app.textFields["trip-place-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("Farmacia")
+        XCTAssertTrue(app.buttons["trip-place-2"].waitForExistence(timeout: 15))
+        capture("11 Buscar origen")
+    }
+
+    func testReferenceCatalogScreens() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--gallery"]
+        #if targetEnvironment(simulator)
+        app.launchArguments.append("--catalog-full-test")
+        #endif
+        app.launch()
+        tap("Explorar recorridos")
+        XCTAssertTrue(app.staticTexts["Resultados: 182"].waitForExistence(timeout: 15))
+        capture("19 Recorridos")
+        let rows = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND NOT (identifier IN %@)",
+            "catalog-", ["catalog-open-search", "catalog-filter"]
+        ))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))
+        let visible = try? XCTUnwrap(rows.allElementsBoundByIndex.first(where: \.isHittable))
+        guard let visible else { return }
+        visible.tap()
+        XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 10))
+        capture("22 Recorrido seleccionado")
+    }
+
     func testAppScreensWithCatalog() throws {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--catalog-bundle-sample", "--gallery", "--capture-catalog"]
@@ -841,7 +917,7 @@ final class JourneyTests: XCTestCase {
         }
         for _ in 0..<8 {
             let tabBar = app.otherElements["app-dock"]
-            let aboveTab = !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
+            let aboveTab = identifier.hasPrefix("dock-") || !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
             let fixedAction = app.buttons["trip-continue"]
             let aboveAction = !identifier.hasPrefix("trip-stop-") || !fixedAction.isHittable || button.frame.midY < fixedAction.frame.minY
             let unobscured = aboveTab && aboveAction
@@ -879,6 +955,7 @@ final class JourneyTests: XCTestCase {
     }
 
     private func capture(_ name: String) {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways

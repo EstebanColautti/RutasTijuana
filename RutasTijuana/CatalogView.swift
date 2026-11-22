@@ -79,7 +79,7 @@ struct CatalogView: View {
     }
     @State private var plannedRoute: PlannedRoute?
     @State private var errorMessage: String?
-    @State private var camera: MapCameraPosition = .automatic
+    @State private var camera: MapCameraPosition = .region(AppDesign.city)
 
     init(initialFilter: CatalogFilter = .routes, favoritesOnly: Bool = false, routesTab: Bool = false) {
         self.routesTab = routesTab
@@ -111,12 +111,9 @@ struct CatalogView: View {
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
 
     private var mapFeatures: [CatalogFeature] {
-        if routesTab || favoritesOnly, let selection { return [selection] }
-        var features = matches
-        if let index = features.firstIndex(where: { $0.id == selectedID }) {
-            features.append(features.remove(at: index))
-        }
-        return features
+        if let selection { return [selection] }
+        if !routesTab && filter == .routes && reference == nil { return [] }
+        return matches
     }
 
     var body: some View {
@@ -160,30 +157,36 @@ struct CatalogView: View {
                     }
                     .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectedID)
                 } else {
-                    map.frame(minHeight: 180, maxHeight: 310)
+                    map.frame(height: textSize.isAccessibilitySize ? 154 : 232)
+                        .contentShape(Rectangle())
+                        .clipped()
                     VStack(spacing: 0) {
                         AppPanelHeading(title: filter == .stops ? "Paradas" : "Recorridos",
-                                        back: { dismiss() }) {
-                            Button {
-                                showingServices = true
-                            } label: {
-                                Image(systemName: "info.circle")
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
+                                        back: { dismiss() }, sideWidth: 88) {
+                            HStack(spacing: 0) {
+                                Button { showingServices = true } label: {
+                                    Image(systemName: "info.circle")
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .accessibilityLabel("Servicios")
+                                Button(action: refreshCatalog) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .accessibilityLabel("Actualizar ahora")
+                                .disabled(repository.isUpdating)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Servicios")
                         }
                         .padding(.horizontal, 10)
                         filters
-                        Group {
-                            if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
-                        }
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
-                        featureList
+                        catalogPanelList
                     }
                     .background { AppDesign.panelSurface() }
                     .padding(.top, -AppDesign.panelOverlap)
+                    .zIndex(1)
                 }
             } else {
                 ContentUnavailableView {
@@ -248,16 +251,20 @@ struct CatalogView: View {
         .environment(\.insideFavorites, insideFavorites || favoritesOnly)
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
-            ToolbarItem {
-                Button("Servicios", systemImage: "info.circle") { showingServices = true }
+            if !favoritesOnly {
+                if routesTab || catalog == nil {
+                    ToolbarItem {
+                        Button("Servicios", systemImage: "info.circle") { showingServices = true }
+                    }
+                    ToolbarItem {
+                        Button("Actualizar ahora", systemImage: "arrow.clockwise", action: refreshCatalog)
+                            .disabled(repository.isUpdating)
+                    }
+                    #if DEBUG
+                    ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
+                    #endif
+                }
             }
-            ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
-                privateCatalog = nil
-                Task { await repository.update(force: true) }
-            }.disabled(repository.isUpdating) }
-            #if DEBUG
-            ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
-            #endif
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -297,8 +304,15 @@ struct CatalogView: View {
             #endif
         }
         .onChange(of: query) { _, _ in selectedID = nil }
-        .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
-        .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+        .onChange(of: groupID) { _, _ in
+            selectedID = nil
+            camera = !routesTab && filter == .routes && reference == nil ? .region(AppDesign.city) : .automatic
+        }
+        .onChange(of: filter) { _, next in
+            selectedID = nil
+            reference = nil
+            camera = !routesTab && next == .routes ? .region(AppDesign.city) : .automatic
+        }
     }
 
     private var services: some View {
@@ -321,21 +335,56 @@ struct CatalogView: View {
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
     }
 
-    private var featureList: some View {
-        List {
-            if routesTab && grouped {
-                let sections = Dictionary(grouping: matches, by: zone)
-                ForEach(sections.keys.sorted {
-                    if $0 == "Otras rutas" { return false }
-                    if $1 == "Otras rutas" { return true }
-                    return $0.localizedStandardCompare($1) == .orderedAscending
-                }, id: \.self) { name in
-                    Section(name) { ForEach(sections[name] ?? []) { row($0) } }
+    private func refreshCatalog() {
+        privateCatalog = nil
+        Task { await repository.update(force: true) }
+    }
+
+    private var catalogPanelList: some View {
+        ScrollViewReader { scroll in
+            List {
+                if let selection {
+                    detail(selection)
+                        .buttonStyle(.borderless)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 24, bottom: 5, trailing: 24))
+                        .listRowSeparator(.hidden)
+                        .id(selection.id)
                 }
-            } else {
-                ForEach(matches) { row($0) }
+                ForEach(matches.filter { $0.id != selectedID }) { feature in
+                    row(feature)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 24, bottom: 5, trailing: 24))
+                        .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .overlay { if matches.isEmpty { emptySearch } }
+            .onChange(of: selectedID) { _, id in
+                if let id { scroll.scrollTo(id, anchor: .top) }
             }
         }
+    }
+
+    private var featureList: some View {
+            List {
+                if grouped {
+                    let sections = Dictionary(grouping: matches, by: zone)
+                    ForEach(sections.keys.sorted {
+                        if $0 == "Otras rutas" { return false }
+                        if $1 == "Otras rutas" { return true }
+                        return $0.localizedStandardCompare($1) == .orderedAscending
+                    }, id: \.self) { name in
+                        Section(name) { ForEach(sections[name] ?? []) { row($0) } }
+                    }
+                } else {
+                    ForEach(matches) { feature in
+                        row(feature)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .listRowSeparator(.hidden)
+                    }
+                }
+            }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -358,17 +407,18 @@ struct CatalogView: View {
                     }
                 }
             } else if matches.isEmpty {
-                ContentUnavailableView {
-                    VStack(spacing: 10) {
-                        AppFavoriteIcon(scale: 2.65)
-                        Text("Sin favoritos").font(AppDesign.title)
-                    }
-                } description: {
-                    Text("Aún no tienes rutas guardadas.")
-                } actions: {
+                VStack(spacing: 10) {
+                    AppFavoriteIcon(scale: textSize.isAccessibilitySize ? 2.6 : 5.2)
+                    Text("No hay rutas guardadas.")
+                        .font(AppDesign.body)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
                     NavigationLink("Explorar recorridos") { CatalogView(routesTab: true) }
                         .frame(minHeight: 44)
+                        .font(AppDesign.note)
+                        .foregroundStyle(.primary)
                 }
+                .padding(24)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -390,8 +440,8 @@ struct CatalogView: View {
                                 }
                             }
                             .padding(10)
-                            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 16))
-                            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(Color.secondary.opacity(0.42)) }
+                            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24))
+                            .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(Color.secondary.opacity(0.42)).allowsHitTesting(false) }
                         }
                     }.padding(16)
                 }
@@ -455,11 +505,11 @@ struct CatalogView: View {
             .padding(.vertical, 8)
             .frame(minHeight: 44)
             .background {
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 24)
                     .fill(selectedID == feature.id ? (colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill) : Color(uiColor: .systemBackground))
             }
-            .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(favoritesOnly ? 0 : 0.42)) }
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(Color.secondary.opacity(favoritesOnly ? 0 : 0.42)).allowsHitTesting(false) }
+            .contentShape(RoundedRectangle(cornerRadius: 24))
         }
         .buttonStyle(.plain)
         .accessibilityValue([
@@ -514,10 +564,10 @@ struct CatalogView: View {
                                 }
                                 .multilineTextAlignment(.leading)
                                 .padding(10)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
+                                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                                .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24))
                                 .overlay {
-                                    RoundedRectangle(cornerRadius: 14)
+                                    RoundedRectangle(cornerRadius: 24)
                                         .strokeBorder(Color.secondary.opacity(0.42))
                                         .allowsHitTesting(false)
                                 }
@@ -530,23 +580,28 @@ struct CatalogView: View {
                 .scrollDismissesKeyboard(.interactively)
             }
             .padding(16)
-            .navigationTitle("Buscar recorridos")
-            .modifier(AppFavoritesToolbar())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
-            .toolbarBackground(AppDesign.header, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .tint(AppDesign.primary)
         }
     }
 
     private var filters: some View {
         VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Buscar nombre, grupo o información").font(AppDesign.subtitle)
-                    Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Buscar nombre, grupo o información").font(AppDesign.subtitle)
+                let layout = textSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                    : AnyLayout(HStackLayout(spacing: 10))
+                layout {
+                    TextField("Buscar nombre, grupo o información", text: $query, prompt: Text("Buscar…"))
+                        .focused($searchFocused)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit { searchFocused = false }
+                        .accessibilityLabel("Buscar nombre, grupo o información")
+                        .accessibilityIdentifier("catalog-search")
+                        .appField(focused: searchFocused)
                     Button("Buscar") {
                         searchFocused = false
                         showingRouteSearch = true
@@ -554,15 +609,6 @@ struct CatalogView: View {
                     .buttonStyle(AppActionStyle())
                     .accessibilityIdentifier("catalog-open-search")
                 }
-                TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
-                    .focused($searchFocused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .onSubmit { searchFocused = false }
-                    .accessibilityLabel("Buscar nombre, grupo o información")
-                    .accessibilityIdentifier("catalog-search")
-                    .appField(focused: searchFocused)
             }
             HStack {
                 Text("Filtros").font(AppDesign.subtitle)
@@ -679,6 +725,9 @@ struct CatalogView: View {
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(AppDesign.note).foregroundStyle(.primary)
+            if !routesTab, let direction = feature.routeDetails?.direction, !direction.isEmpty, direction != feature.name {
+                Text(direction).font(AppDesign.body)
+            }
             if feature.kind == .stop, case .point(let point) = feature.geometry {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
@@ -708,7 +757,14 @@ struct CatalogView: View {
             }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background {
+            if routesTab || favoritesOnly {
+                Color(uiColor: .secondarySystemBackground)
+            } else {
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill)
+            }
+        }
     }
 
     private func listEditor(routeID: String?) -> some View {

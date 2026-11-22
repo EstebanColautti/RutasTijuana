@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var scenario: JourneyScenario
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var textSize
     @ObservedObject private var catalogRepository = CatalogRepository.shared
     private var route: TransitRoute { scenario.route }
@@ -21,6 +22,8 @@ struct ContentView: View {
     @State private var importing = false
     @State private var importError: String?
     @State private var detent: PresentationDetent = .medium
+    @State private var welcomeCamera = MapCameraPosition.region(AppDesign.city)
+    @State private var requestedWelcomeLocation = false
     @StateObject private var connectivity = ConnectivityMonitor()
     @State private var stage = Stage.home
     @State private var origin: GeoPoint?
@@ -77,6 +80,7 @@ struct ContentView: View {
     ))
     #if os(iOS)
     @StateObject private var location = LocationService()
+    @StateObject private var welcomeLocation = LocationService()
     #endif
 
     private var title: String {
@@ -101,6 +105,7 @@ struct ContentView: View {
     }
 
     private var mappedTrip: [GeoPoint]? { scenario.mappedSection(for: trip) }
+    private var hasWelcomeCatalog: Bool { catalogRepository.catalog?.readyForDistribution == true }
 
     var body: some View {
         NavigationStack {
@@ -174,11 +179,9 @@ struct ContentView: View {
         VStack(spacing: 0) {
             welcomeHeader
             GeometryReader { geometry in
-                ScrollView {
-                    welcomeContent.frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .leading)
-                }
-                .contentMargins(.bottom, 14, for: .scrollContent)
-                .accessibilityIdentifier("home-scroll")
+                let preferredMapHeight: CGFloat = textSize.isAccessibilitySize ? 216 : 302
+                let availableMapHeight = max(100, geometry.size.height - 309)
+                welcomeContent(mapHeight: min(preferredMapHeight, availableMapHeight))
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea(edges: .top))
@@ -198,7 +201,7 @@ struct ContentView: View {
         }
         .overlay(alignment: .trailing) {
             NavigationLink { CatalogView(favoritesOnly: true) } label: {
-                AppFavoriteIcon()
+                AppFavoriteIcon(scale: 1.26)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -210,139 +213,185 @@ struct ContentView: View {
         .background { AppDesign.header.ignoresSafeArea(edges: .top) }
     }
 
-    private var welcomeContent: some View {
+    private func welcomeContent(mapHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("¿A dónde quieres ir hoy?")
-                .font(AppDesign.title)
-                .foregroundStyle(AppDesign.header)
+                .font(AppDesign.type(24, relativeTo: .title2, weight: .semibold))
+                .foregroundStyle(colorSchemeContrast == .increased ? AppDesign.header : .white)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: 56)
-                .background(AppDesign.accent)
-                .accessibilityAddTraits(.isHeader)
-            ZStack(alignment: .bottom) {
-                NavigationLink {
-                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
-                        TripPlannerView(catalog: catalog)
-                    } else {
-                        CatalogView()
-                    }
-                } label: {
-                    Rectangle()
-                        .fill(.clear)
-                        .frame(height: textSize.isAccessibilitySize ? 190 : 250)
-                        .background {
-                            Map(initialPosition: .region(AppDesign.city))
-                                .mapStyle(.standard(elevation: .flat))
-                                .allowsHitTesting(false)
-                                .accessibilityHidden(true)
-                        }
-                        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 22, bottomTrailingRadius: 22))
-                        .contentShape(Rectangle())
+                .frame(maxWidth: .infinity, minHeight: 64)
+                .background {
+                    UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14)
+                        .fill(AppDesign.accent)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
+                .accessibilityAddTraits(.isHeader)
+                .zIndex(1)
+            VStack(spacing: 0) {
+                Map(position: $welcomeCamera) {
+                    #if os(iOS)
+                    if welcomeLocation.point != nil { UserAnnotation() }
+                    #endif
+                }
+                    .mapStyle(.standard(elevation: .flat))
+                    .frame(height: mapHeight)
+                    .accessibilityLabel("Mapa de Tijuana")
+                    #if os(iOS)
+                    .task(id: hasWelcomeCatalog) {
+                        guard hasWelcomeCatalog, isDemo, !evaluation, !journeyFixture, !requestedWelcomeLocation else { return }
+                        let arguments = ProcessInfo.processInfo.arguments
+                        guard !arguments.contains("--gallery"), !arguments.contains("--ui-testing") else { return }
+                        requestedWelcomeLocation = true
+                        welcomeLocation.request()
+                    }
+                    .onChange(of: welcomeLocation.point) { _, point in
+                        guard let point, !welcomeCamera.positionedByUser else { return }
+                        welcomeCamera = .region(MKCoordinateRegion(
+                            center: point.coordinate,
+                            span: MKCoordinateSpan(latitudeDelta: 0.025, longitudeDelta: 0.031)
+                        ))
+                    }
+                    #endif
+                    .overlay(alignment: .topTrailing) {
+                        NavigationLink {
+                            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                                TripPlannerView(catalog: catalog)
+                            } else {
+                                CatalogView()
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.right")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 44, height: 44)
+                                .background(Color(uiColor: .systemBackground), in: Circle())
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(catalogRepository.catalog?.readyForDistribution == true ? "Abrir mapa para planear viaje" : "Abrir catálogo de recorridos")
+                        .padding(.top, 26)
+                        .padding(.trailing, 12)
+                    }
+                    .padding(.top, -14)
+
+                ScrollView {
+                    welcomePanel
+                        .padding(.horizontal, textSize.isAccessibilitySize ? 16 : 32)
+                        .padding(.bottom, 24)
+                }
+                .clipped()
+                .padding(.top, scenario.routeID == nil ? 40 : 16)
+                .accessibilityIdentifier("home-scroll")
+                .background {
+                    UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)
+                        .fill(Color(uiColor: .systemBackground))
+                }
+                .padding(.top, -12)
+            }
+            .overlay(alignment: .top) {
                 if scenario.routeID == nil {
                     NavigationLink { CatalogView() } label: {
                         Text("Recorridos")
                             .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(minWidth: 176, minHeight: 44)
+                            .frame(minWidth: 192, minHeight: 44)
                             .padding(.horizontal, 14)
                             .background { AppDesign.raisedAction(Capsule(), fill: AppDesign.primary, raised: true) }
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("Explorar recorridos")
-                    .offset(y: 12)
+                    .padding(.top, mapHeight - 48)
                 }
             }
-            .padding(.bottom, 18)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 16) {
-                if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
-                #if DEBUG
-                if isDemo && !ProcessInfo.processInfo.arguments.contains(where: { $0 == "--capture-catalog" || $0 == "--gallery" }) {
-                    Button { importing = true } label: {
-                        Text("Abrir datos de evaluación").frame(minHeight: 44)
+    private var welcomePanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if evaluation || scenario.routeID != nil || journeyFixture { demoNotice }
+            #if DEBUG
+            if isDemo && (journeyFixture || !hasWelcomeCatalog)
+                && !ProcessInfo.processInfo.arguments.contains(where: { $0 == "--capture-catalog" || $0 == "--gallery" }) {
+                Button { importing = true } label: {
+                    Text("Abrir datos de evaluación").frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                Button("Evaluar consulta") {
+                    scenario = .evaluation
+                    if ProcessInfo.processInfo.arguments.contains("--evaluation-no-date") {
+                        scenario.updatedAt = nil
                     }
-                    .buttonStyle(.bordered)
-                    Button("Evaluar consulta") {
-                        scenario = .evaluation
-                        if ProcessInfo.processInfo.arguments.contains("--evaluation-no-date") {
-                            scenario.updatedAt = nil
-                        }
-                        reset()
-                    }.buttonStyle(.bordered).frame(minHeight: 44)
-                }
-                #endif
+                    reset()
+                }.buttonStyle(.bordered).frame(minHeight: 44)
+            }
+            #endif
 
-                if let id = scenario.routeID {
-                    Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
-                    Text(scenario.name).font(AppDesign.title).accessibilityIdentifier(id)
+            if let id = scenario.routeID {
+                Button("Volver a recorridos") { dismiss() }.frame(minHeight: 44)
+                Text(scenario.name).font(AppDesign.title).accessibilityIdentifier(id)
+            }
+            if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                NavigationLink { TripPlannerView(catalog: catalog) } label: {
+                    Text("Planear viaje").frame(minHeight: 44)
                 }
-                if journeyFixture, let catalog = catalogRepository.catalog, catalog.readyForDistribution {
-                    NavigationLink { TripPlannerView(catalog: catalog) } label: {
-                        Text("Planear viaje").frame(minHeight: 44)
-                    }
-                }
-                Divider()
+            }
+            Divider()
 
+            NavigationLink { recentView } label: {
                 Text("Consultas recientes")
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                     .accessibilityAddTraits(.isHeader)
-                if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
-                    ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
-                        NavigationLink { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) } label: {
-                            recentRouteCard(feature.name, detail: feature.routeDetails?.direction)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("recent-planned-\(feature.id)")
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Consultas recientes")
+            .accessibilityHint("Abre el historial de consultas")
+            if recents.isEmpty && recentPlannedRoutes.isEmpty {
+                Text("No hay consultas recientes").font(AppDesign.body).foregroundStyle(.secondary)
+            }
+            if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
+                ForEach(Array(recentPlannedRoutes.prefix(2))) { feature in
+                    NavigationLink { TripPlannerView(catalog: catalog, requiredRouteID: feature.id) } label: {
+                        recentRouteCard(feature.name, detail: feature.routeDetails?.direction)
                     }
-                }
-                ForEach(Array(recents.prefix(2).enumerated()), id: \.offset) { item in
-                    if let catalog = catalogRepository.catalog,
-                       let feature = catalog.features.first(where: { $0.id == item.element.routeID }),
-                       let match = catalog.journeyScenario(for: feature) {
-                        NavigationLink { ContentView(scenario: match, recent: item.element) } label: {
-                            recentRouteCard(match.name, detail: match.direction)
-                        }.buttonStyle(.plain)
-                    }
-                }
-                NavigationLink { recentView } label: {
-                    Label(recents.isEmpty && recentPlannedRoutes.isEmpty ? "No hay consultas recientes" : "Ver consultas recientes", systemImage: "clock.arrow.circlepath")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                }
-                .accessibilityIdentifier("Consultas recientes")
-                if isDemo && !evaluation && !journeyFixture && !ProcessInfo.processInfo.arguments.contains("--gallery") {
-                    Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
-                }
-                Text("Puedes elegir tu ubicación manualmente. No se guarda.")
-                    .font(AppDesign.note).foregroundStyle(.primary)
-                if !evaluation && scenario.routeID == nil && !journeyFixture {
-                    if let catalog = catalogRepository.catalog, catalog.readyForDistribution {
-                        NavigationLink { TripPlannerView(catalog: catalog) } label: {
-                            Text("Elegir ubicación inicial")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }
-                        .tint(actionTint)
-                        .accessibilityIdentifier("Elegir ubicación inicial")
-                    } else {
-                        NavigationLink { CatalogView() } label: {
-                            Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(AppActionStyle())
-                        .tint(AppDesign.primary)
-                        .controlSize(.large)
-                    }
-                } else {
-                    primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("recent-planned-\(feature.id)")
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+            ForEach(Array(recents.prefix(2).enumerated()), id: \.offset) { item in
+                if let catalog = catalogRepository.catalog,
+                   let feature = catalog.features.first(where: { $0.id == item.element.routeID }),
+                   let match = catalog.journeyScenario(for: feature) {
+                    NavigationLink { ContentView(scenario: match, recent: item.element) } label: {
+                        recentRouteCard(match.name, detail: match.direction)
+                    }.buttonStyle(.plain)
+                }
+            }
+            Text("Puedes elegir tu ubicación manualmente. No se guarda.")
+                .font(AppDesign.note)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            if isDemo && !evaluation && !journeyFixture && !hasWelcomeCatalog && !ProcessInfo.processInfo.arguments.contains("--gallery") {
+                Button("Ver ejemplo") { begin() }.frame(minHeight: 44)
+            }
+            if !evaluation && scenario.routeID == nil && !journeyFixture {
+                if !hasWelcomeCatalog {
+                    NavigationLink { CatalogView() } label: {
+                        Text("Consultar recorridos").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(AppActionStyle())
+                    .tint(AppDesign.primary)
+                    .controlSize(.large)
+                }
+            } else {
+                primaryButton(evaluation ? "Planear mi ruta" : "Elegir ubicación inicial") { begin() }
+            }
         }
     }
 
@@ -356,11 +405,11 @@ struct ContentView: View {
         } icon: {
             AppGlyph(icon: .vehicle, size: 30)
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 14))
-        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.42)) }
+        .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24))
+        .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(Color.secondary.opacity(0.42)) }
     }
 
     private var routeMap: some View {

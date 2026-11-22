@@ -143,6 +143,7 @@ struct TripPlannerView: View {
     @AccessibilityFocusState private var resultFocused: Bool
     @State private var selectingOnMap = false
     @State private var mapPoint: GeoPoint?
+    @State private var selectorCamera: MapCameraPosition = .region(AppDesign.city)
     @State private var camera: MapCameraPosition = .region(AppDesign.city)
     @State private var requiredRouteID: String?
     @State private var canSearchAll = false
@@ -209,12 +210,31 @@ struct TripPlannerView: View {
                         .accessibilityIdentifier("trip-search-toggle")
                         .disabled(working)
                         if !selectingOrigin {
-                            VStack(alignment: .leading, spacing: 4) {
-                                if !originName.isEmpty { Label(originName, systemImage: "location.circle") }
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button {
+                                    selectingOrigin = true
+                                } label: {
+                                    HStack {
+                                        Text(originName.isEmpty ? "Cambiar origen" : originName)
+                                        Spacer()
+                                        Image(systemName: "pencil")
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .frame(minHeight: 44)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 14).strokeBorder(.secondary.opacity(0.35))
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Cambiar origen")
+                                .accessibilityValue(originName)
+                                .disabled(working)
                                 if !destinationName.isEmpty { Label(destinationName, systemImage: "mappin.circle") }
                             }
                             .font(AppDesign.note)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
                         }
                         if selectingOrigin {
                             let actions = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 14))
@@ -270,23 +290,6 @@ struct TripPlannerView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
-        .toolbar {
-            if trip != nil {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Editar") { invalidate() }
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .accessibilityLabel("Cambiar origen o destino")
-                        .accessibilityIdentifier("Cambiar origen o destino")
-                }
-            } else if !selectingOrigin {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Cambiar origen") { selectingOrigin = true }
-                        .foregroundStyle(.white)
-                        .frame(minHeight: 44).disabled(working)
-                }
-            }
-        }
         .tint(.white)
         .modifier(AppFavoritesToolbar())
         .sheet(isPresented: $selectingOnMap) { mapSelection }
@@ -355,7 +358,13 @@ struct TripPlannerView: View {
 
     private func tripResult(_ trip: PlannedTrip) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            AppPanelHeading(title: "Tu trayecto", back: { invalidate() }) { EmptyView() }
+            AppPanelHeading(title: "Tu trayecto", back: { invalidate() }) {
+                Button("Cambiar origen o destino", systemImage: "pencil") { invalidate() }
+                    .labelStyle(.iconOnly)
+                    .frame(width: 44, height: 44)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("Cambiar origen o destino")
+            }
             if let error = location.message { Text(error) }
             if !message.isEmpty { Text(message).accessibilityIdentifier("trip-status") }
             let layout = textSize.isAccessibilitySize
@@ -439,8 +448,9 @@ struct TripPlannerView: View {
     private func tripMap(height: CGFloat) -> some View {
         let fraction: CGFloat
         if textSize.isAccessibilitySize { fraction = 0.26 }
-        else if trip != nil { fraction = 0.43 }
+        else if trip != nil { fraction = height < 560 ? 0.38 : 0.43 }
         else if selectingOrigin && origin == nil { fraction = height < 560 ? 0.59 : 0.69 }
+        else if !selectingOrigin && destination == nil && height >= 560 { fraction = 0.62 }
         else { fraction = height < 560 ? 0.38 : 0.53 }
         return Map(position: $camera) { mapContents }
             .mapStyle(.standard(elevation: .flat))
@@ -475,7 +485,7 @@ struct TripPlannerView: View {
                     .buttonStyle(AppActionStyle(fill: AppDesign.danger))
                 }
                 Button { travelling = true } label: {
-                    Text(textSize.isAccessibilitySize ? "Iniciar" : "Empezar viaje")
+                    Text("Continuar")
                         .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }
                 .tint(AppDesign.primary)
@@ -689,6 +699,10 @@ struct TripPlannerView: View {
             requestingOriginLocation = false
             location.cancel()
             mapPoint = selectingOrigin ? origin : destination
+            selectorCamera = mapPoint.map {
+                .region(MKCoordinateRegion(center: .init(latitude: $0.latitude, longitude: $0.longitude),
+                                           span: .init(latitudeDelta: 0.008, longitudeDelta: 0.010)))
+            } ?? camera
             selectingOnMap = true
         }
         .accessibilityLabel(selectingOrigin ? "Elegir origen en el mapa" : "Elegir destino en el mapa")
@@ -720,8 +734,6 @@ struct TripPlannerView: View {
                         .frame(minHeight: 44)
                         .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                 }
-                .padding(.horizontal, 12).frame(minHeight: 44)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && recentStops.isEmpty {
                     Text("Busca una parada o un lugar.").font(AppDesign.note)
                 } else if query.trimmingCharacters(in: .whitespacesAndNewlines).count == 1 {
@@ -768,10 +780,10 @@ struct TripPlannerView: View {
                         }
                         .foregroundStyle(.primary)
                         .padding(10)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .background(.background, in: RoundedRectangle(cornerRadius: 14))
+                        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                        .background(.background, in: RoundedRectangle(cornerRadius: 24))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 14)
+                            RoundedRectangle(cornerRadius: 24)
                                 .strokeBorder(.secondary.opacity(0.45))
                                 .allowsHitTesting(false)
                         }
@@ -784,13 +796,7 @@ struct TripPlannerView: View {
                 .listStyle(.plain)
             }
             .padding(16)
-            .navigationTitle(selectingOrigin ? "Buscar origen" : "Buscar destino")
-            .modifier(AppFavoritesToolbar())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
-            .toolbarBackground(AppDesign.header, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .tint(.blue)
         .onChange(of: query) { _, text in
@@ -845,16 +851,16 @@ struct TripPlannerView: View {
     private var mapSelection: some View {
         NavigationStack {
             MapReader { proxy in
-                Map(position: $camera) {
+                Map(position: $selectorCamera) {
                     mapContents
                     if let mapPoint {
                         Marker("Punto seleccionado", coordinate: .init(latitude: mapPoint.latitude, longitude: mapPoint.longitude))
                     }
                 }
-                .onTapGesture { position in
-                    guard let coordinate = proxy.convert(position, from: .local) else { return }
+                .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+                    guard let coordinate = proxy.convert(tap.location, from: .local) else { return }
                     mapPoint = .init(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                }
+                })
             }
             .navigationTitle(selectingOrigin ? "Elegir origen" : "Elegir destino")
             .modifier(AppFavoritesToolbar())

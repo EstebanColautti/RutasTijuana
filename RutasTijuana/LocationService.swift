@@ -22,11 +22,6 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         point = nil
         message = nil
         isRequesting = true
-        let work = DispatchWorkItem { [weak self] in
-            self?.fail("No pudimos obtener tu ubicación. Puedes elegir el origen en el mapa.")
-        }
-        timeout = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: work)
         resolveAuthorization()
     }
 
@@ -40,7 +35,14 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     private func resolveAuthorization() {
         switch manager.authorizationStatus {
         case .notDetermined: manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways: manager.requestLocation()
+        case .authorizedWhenInUse, .authorizedAlways:
+            guard timeout == nil else { return }
+            let work = DispatchWorkItem { [weak self] in
+                self?.fail("No pudimos obtener tu ubicación. Puedes elegir el origen en el mapa.")
+            }
+            timeout = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: work)
+            manager.requestLocation()
         case .denied, .restricted: fail("La ubicación no está disponible. Elige el origen en el mapa.")
         @unknown default: fail("Elige el origen en el mapa.")
         }

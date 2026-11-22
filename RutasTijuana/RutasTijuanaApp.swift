@@ -52,7 +52,7 @@ private struct MainTabs: View {
                 .toolbar(.hidden, for: .tabBar)
                 .tag(AppDestination.map)
             }
-            .safeAreaPadding(.bottom, selected == .map ? 0 : dockHeight)
+            .padding(.bottom, selected == .map ? 0 : dockHeight)
 
             AppDock(selection: selected) { selected = $0 }
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
@@ -76,24 +76,24 @@ private struct MainTabs: View {
                     .accessibilityAddTraits(.isHeader)
                 if let catalog = repository.catalog, catalog.readyForDistribution {
                     NavigationLink {
-                        TripPlannerView(catalog: catalog).safeAreaPadding(.bottom, dockHeight)
+                        TripPlannerView(catalog: catalog).padding(.bottom, dockHeight)
                     } label: {
-                        Text("Empezar viaje").padding(.horizontal, 14)
+                        Text("Empezar viaje").frame(minWidth: 150)
                     }
                     .accessibilityIdentifier("map-start")
                     .buttonStyle(AppActionStyle())
                 } else {
                     NavigationLink {
-                        CatalogView().safeAreaPadding(.bottom, dockHeight)
+                        CatalogView().padding(.bottom, dockHeight)
                     } label: {
                         Text("Consultar recorridos").padding(.horizontal, 14)
                     }
                     .buttonStyle(AppActionStyle())
                 }
             }
-            .frame(maxWidth: .infinity)
             .padding(.horizontal, 14)
             .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, minHeight: 128)
             .foregroundStyle(.primary)
             .background {
                 RoundedRectangle(cornerRadius: 58)
@@ -108,13 +108,13 @@ private struct MainTabs: View {
         .toolbar {
             ToolbarItem(placement: .principal) { AppBrandTitle() }
             ToolbarItem(placement: .primaryAction) {
-                NavigationLink { CatalogView(favoritesOnly: true).safeAreaPadding(.bottom, dockHeight) } label: {
-                    AppFavoriteIcon().frame(width: 44, height: 44)
+                NavigationLink { CatalogView(favoritesOnly: true).padding(.bottom, dockHeight) } label: {
+                    AppFavoriteIcon(scale: 1.26).frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
                 .accessibilityLabel("Favoritos")
-            }
+            }.appHeaderControl()
         }
         .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
