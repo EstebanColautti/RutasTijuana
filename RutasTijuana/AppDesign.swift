@@ -134,11 +134,15 @@ struct AppBrandTitle: View {
 extension ToolbarContent {
     @ToolbarContentBuilder
     func appHeaderControl() -> some ToolbarContent {
+        #if compiler(>=6.4)
         if #available(iOS 26.0, *) {
             sharedBackgroundVisibility(.hidden)
         } else {
             self
         }
+        #else
+        self
+        #endif
     }
 }
 
