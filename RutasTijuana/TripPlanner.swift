@@ -15,10 +15,12 @@ struct TripService: Sendable {
            let start = accessPositions[first.id], let end = accessPositions[last.id], let points = geometry.first {
             let measure = RouteMeasure(points)
             if end > start { return measure.section(from: start, to: end) }
-            if circular, let a = measure.section(from: start, to: measure.length), let b = measure.section(from: 0, to: end) {
-                return a + b.dropFirst()
-            }
-            return nil
+            guard circular, points.first == points.last else { return nil }
+            if end == 0 { return measure.section(from: start, to: measure.length) }
+            if start == measure.length { return measure.section(from: 0, to: end) }
+            guard let beforeSeam = measure.section(from: start, to: measure.length),
+                  let afterSeam = measure.section(from: 0, to: end) else { return nil }
+            return beforeSeam + afterSeam.dropFirst()
         }
         return JourneyScenario(schemaVersion: 1, name: name, coverageRadius: 1000,
             stops: stops, places: [], circular: circular, routeGeometry: geometry).mappedSection(for: selected)
@@ -510,17 +512,15 @@ actor TripPlanner {
                 next.tie += key + ";"
                 let distanceKey = "\(service.id.count):\(service.id):\(position)"
                 if rideDistances[distanceKey] == nil {
-                    if let start = service.accessPositions[service.stops[position].id], let end = service.accessPositions[nextStop.id] {
-                        let length = end > start ? end - start : (service.circular ? RouteMeasure(service.geometry[0]).length - start + end : .infinity)
-                        rideDistances[distanceKey] = length
+                    let stop = service.stops[position]
+                    if let start = service.accessPositions[stop.id], let end = service.accessPositions[nextStop.id], end > start {
+                        rideDistances[distanceKey] = end - start
+                    } else if let path = service.section(through: [stop, nextStop]) {
+                        rideDistances[distanceKey] = zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+                    } else if service.geometry.isEmpty {
+                        rideDistances[distanceKey] = stop.point.distance(to: nextStop.point)
                     } else {
-                        if let path = service.section(through: [service.stops[position], nextStop]) {
-                            rideDistances[distanceKey] = zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
-                        } else if service.geometry.isEmpty {
-                            rideDistances[distanceKey] = service.stops[position].point.distance(to: nextStop.point)
-                        } else {
-                            rideDistances[distanceKey] = .infinity
-                        }
+                        rideDistances[distanceKey] = .infinity
                     }
                 }
                 guard let rideDistance = rideDistances[distanceKey], rideDistance.isFinite else { continue }

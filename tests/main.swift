@@ -149,6 +149,13 @@ check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descri
 let geometryA = GeoPoint(latitude: 0, longitude: 0)
 let geometryB = GeoPoint(latitude: 0.001, longitude: 0.001)
 let geometryC = GeoPoint(latitude: 0.001, longitude: 0.002)
+let straightTrace = [geometryA, geometryB, GeoPoint(latitude: 0.002, longitude: 0.002)]
+    .map { CatalogPosition(longitude: $0.longitude, latitude: $0.latitude) }
+let curvedTrace = [geometryA, geometryB, geometryC, geometryA]
+    .map { CatalogPosition(longitude: $0.longitude, latitude: $0.latitude) }
+check(CatalogGeometry.line(Array(straightTrace.prefix(2))).routeDisplayLines.isEmpty, "A two-point route is hidden from the map")
+check(CatalogGeometry.multiLine([straightTrace, curvedTrace]).routeDisplayLines == [curvedTrace],
+      "Only shaped route parts are drawn and a closed path remains visible")
 let geometryStops = [geometryA, geometryB, geometryC].enumerated().map {
     TransitStop(id: String($0.offset), name: String($0.offset), point: $0.element)
 }
@@ -690,6 +697,12 @@ print("Pruebas de imágenes correctas")
     check(prepared.circular,"Only declared closed geometry wraps")
     let end=prepared.stops.last!, start=prepared.stops[1]
     check(prepared.section(through:[end,start]) != nil,"Circular clip follows the declared seam")
+    let seam = prepared.stops.first!
+    let approach = prepared.section(through: [end, seam])
+    check(approach?.last == seam.point && approach?.count ?? 0 > 1, "Circular clip may end exactly at its seam")
+    var disconnected = prepared
+    disconnected.geometry[0].removeLast()
+    check(disconnected.section(through: [end, start]) == nil, "Open geometry never jumps across a seam")
     let open=TripService(id:"open",name:"Open",direction:nil,stops:[],circular:true,geometry:[[origin,middle]])
     check(!(try RouteAccess.services([open],origin:origin,destination:middle))[0].circular,"Circular declaration never invents missing geometry")
     print("Pruebas de conexiones sugeridas correctas")

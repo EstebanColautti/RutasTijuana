@@ -79,6 +79,22 @@ enum CatalogGeometry: Codable, Equatable, Sendable {
         }
     }
 
+    var routeDisplayLines: [[CatalogPosition]] {
+        lines.filter { line in
+            guard line.count > 2, let first = line.first,
+                  let last = line.last(where: { $0.latitude != first.latitude || $0.longitude != first.longitude }) else {
+                return false
+            }
+            let dx = last.longitude - first.longitude
+            let dy = last.latitude - first.latitude
+            let tolerance = hypot(dx, dy) * 1e-8
+            return line.contains { point in
+                let cross = dx * (point.latitude - first.latitude) - dy * (point.longitude - first.longitude)
+                return abs(cross) > tolerance
+            }
+        }
+    }
+
     var polygons: [[[CatalogPosition]]] {
         switch self {
         case .polygon(let value): return [value]

@@ -31,7 +31,8 @@ import Accessibility
     init(trip: PlannedTrip) {
         self.trip = trip
         #if DEBUG
-        fixture = ProcessInfo.processInfo.arguments.contains("--trip-fixture")
+        let arguments = ProcessInfo.processInfo.arguments
+        fixture = arguments.contains("--trip-fixture") || arguments.contains("--capture-catalog")
         if fixture {
             locations = FixtureNavigationLocationProvider(destination: .init(id: "fixture", name: "Parada de ejemplo",
                 point: .init(latitude: 32.51, longitude: -117)))

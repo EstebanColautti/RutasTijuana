@@ -420,17 +420,16 @@ struct ContentView: View {
                         MapPolyline(coordinates: part.element.map { $0.coordinate })
                             .stroke(.gray.opacity(0.6), lineWidth: 4)
                     }
-                } else if isDemo {
-                    MapPolyline(coordinates: route.mapStops.map { $0.point.coordinate })
-                        .stroke(.gray.opacity(0.5), lineWidth: 4)
                 }
                 if stage == .journey && validation == .accepted {
-                    if let section = isDemo ? trip.map(\.point) : mappedTrip {
+                    if let section = mappedTrip {
                         MapPolyline(coordinates: section.map { $0.coordinate }).stroke(.blue, lineWidth: 7)
                     }
                     if let step = simulationStep, trip.indices.contains(step) {
-                        MapPolyline(coordinates: trip.prefix(step + 1).map { $0.point.coordinate })
-                            .stroke(.secondary, style: StrokeStyle(lineWidth: 7, dash: [7, 5]))
+                        if let section = scenario.mappedSection(for: Array(trip.prefix(step + 1))) {
+                            MapPolyline(coordinates: section.map { $0.coordinate })
+                                .stroke(.secondary, style: StrokeStyle(lineWidth: 7, dash: [7, 5]))
+                        }
                         Marker("Parada actual simulada", systemImage: "bus.fill", coordinate: trip[step].point.coordinate)
                     }
                 }
@@ -446,7 +445,7 @@ struct ContentView: View {
                 }
             }
             .mapStyle(.standard(elevation: .flat))
-            .accessibilityLabel(isDemo ? "Mapa esquemático del recorrido" : "Mapa del recorrido y sus paradas")
+            .accessibilityLabel(isDemo ? "Mapa de paradas de ejemplo" : "Mapa del recorrido y sus paradas")
             .accessibilityHint("Las paradas y el resumen del trayecto también están en la lista.")
             .onTapGesture { position in
                 guard !invalidDestination, stage != .journey, let point = proxy.convert(position, from: .local) else { return }
@@ -629,7 +628,7 @@ struct ContentView: View {
                 .accessibilityFocused($resultFocused)
             Text(route.name).font(AppDesign.type(17, relativeTo: .title3, weight: .semibold))
             if isDemo {
-                Text("Mapa esquemático entre paradas").font(AppDesign.note).foregroundStyle(.primary)
+                Text("Paradas de ejemplo").font(AppDesign.note).foregroundStyle(.primary)
             } else if validation == .accepted && mappedTrip == nil {
                 Text("El mapa muestra el recorrido completo y sus paradas.").font(AppDesign.note).foregroundStyle(.primary)
             }

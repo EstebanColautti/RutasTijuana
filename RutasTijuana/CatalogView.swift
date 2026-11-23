@@ -66,6 +66,7 @@ struct CatalogView: View {
     @State private var groupID: String?
     @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
+    @State private var routeSummaryHeight: CGFloat?
     @State private var favoriteNotice = ""
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
@@ -145,13 +146,7 @@ struct CatalogView: View {
                         .accessibilityHidden(selection != nil)
                         .allowsHitTesting(selection == nil)
                         if let selection {
-                            ScrollView {
-                                VStack(spacing: -AppDesign.panelOverlap) {
-                                    map.frame(height: 250)
-                                    detail(selection).background { AppDesign.panelSurface() }
-                                }
-                            }
-                            .background(Color(uiColor: .systemBackground))
+                            routeSelection(selection, catalog: catalog)
                             .transition(reduceMotion ? .identity : .opacity)
                         }
                     }
@@ -639,7 +634,8 @@ struct CatalogView: View {
         MapReader { proxy in
             Map(position: $camera) {
                 ForEach(mapFeatures) { feature in
-                    ForEach(Array(feature.geometry.lines.enumerated()), id: \.offset) { part in
+                    let lines = feature.kind == .route ? feature.geometry.routeDisplayLines : feature.geometry.lines
+                    ForEach(Array(lines.enumerated()), id: \.offset) { part in
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(.white, lineWidth: selectedID == feature.id ? 11 : 7)
                         MapPolyline(coordinates: part.element.map(\.coordinate))
@@ -667,16 +663,12 @@ struct CatalogView: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .onTapGesture { position in
-                guard filter.supportsProximity, let point = proxy.convert(position, from: .local) else { return }
+                guard !routesTab, filter.supportsProximity, let point = proxy.convert(position, from: .local) else { return }
                 selectedID = nil
                 reference = GeoPoint(latitude: point.latitude, longitude: point.longitude)
             }
             .overlay(alignment: .topLeading) {
-                if routesTab, let selection {
-                    Text(zone(selection))
-                        .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                        .padding(10).allowsHitTesting(false)
-                } else {
+                if !routesTab {
                     Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
                         .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                         .padding(10).allowsHitTesting(false)
@@ -685,43 +677,176 @@ struct CatalogView: View {
         }
     }
 
+    private func routeSelection(_ feature: CatalogFeature, catalog: RouteCatalog) -> some View {
+        let hasTrace = !feature.geometry.routeDisplayLines.isEmpty
+        return GeometryReader { geometry in
+            VStack(spacing: -AppDesign.panelOverlap) {
+                map
+                    .frame(maxHeight: .infinity)
+                    .clipShape(Rectangle())
+                    .overlay(alignment: .topTrailing) {
+                        if feature.kind != .route || hasTrace {
+                            Button {
+                                fit(feature)
+                            } label: {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.body.weight(.semibold))
+                                    .frame(width: 44, height: 44)
+                                    .background(Color(uiColor: .systemBackground), in: Circle())
+                                    .shadow(color: .black.opacity(0.16), radius: 3, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(AppDesign.primary)
+                            .accessibilityLabel("Volver a encuadrar")
+                            .padding(12)
+                        }
+                    }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 4) {
+                        if textSize.isAccessibilitySize {
+                            Spacer(minLength: 0)
+                        } else {
+                            routeTitle(feature)
+                        }
+                        selectionActions(feature)
+                            .foregroundStyle(routeActionInk)
+                    }
+                    ScrollView {
+                        routeSummary(feature, hasTrace: hasTrace)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                                routeSummaryHeight = height
+                            }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: min(routeSummaryHeight ?? 160, geometry.size.height * 0.45))
+
+                    if feature.kind == .route && hasTrace && catalog.readyForDistribution {
+                        NavigationLink {
+                            TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
+                        } label: {
+                            Text("Usar esta ruta").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(AppActionStyle())
+                    } else if feature.kind == .stop, case .point(let point) = feature.geometry {
+                        Button {
+                            walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: point.point)
+                        } label: {
+                            Text("Ir a la parada").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(AppActionStyle())
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background { AppDesign.panelSurface() }
+                .zIndex(1)
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+    }
+
+    private var routeActionInk: Color {
+        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary
+    }
+
+    private func routeTitle(_ feature: CatalogFeature) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            if feature.kind == .route {
+                AppGlyph(icon: .turn, size: 20)
+                    .foregroundStyle(routeActionInk)
+                    .frame(width: 30, height: 30)
+                    .background(colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill,
+                                in: RoundedRectangle(cornerRadius: 9))
+                    .accessibilityHidden(true)
+            }
+            Text(feature.name).font(AppDesign.title)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .foregroundStyle(.primary)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    }
+
+    private func routeSummary(_ feature: CatalogFeature, hasTrace: Bool) -> some View {
+        let fields = CatalogPublic.information(feature.information, description: false)?.fields ?? []
+        return VStack(alignment: .leading, spacing: 6) {
+            if textSize.isAccessibilitySize { routeTitle(feature) }
+            if feature.kind == .route {
+                Text("Zona: " + zone(feature)).font(AppDesign.note)
+                if !hasTrace {
+                    Text("Trazado no disponible").font(AppDesign.note)
+                }
+                if let direction = feature.routeDetails?.direction, !direction.isEmpty, direction != feature.name {
+                    Text("Sentido: " + direction).font(AppDesign.note)
+                }
+                ForEach(["fare", "schedule"], id: \.self) { category in
+                    if let field = fields.first(where: { $0.category == category && !$0.value.isEmpty }) {
+                        let title = category == "fare" ? "Tarifa" : "Horario"
+                        Text(field.value.localizedCaseInsensitiveContains(title + ":") ? field.value : title + ": " + field.value)
+                            .font(AppDesign.note)
+                    }
+                }
+            }
+            if feature.kind == .route || feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
+                Button("Ver información", systemImage: "info.circle") { showingInformation = true }
+                    .font(AppDesign.subtitle)
+                    .foregroundStyle(routeActionInk)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("catalog-information")
+            }
+        }
+        .foregroundStyle(.primary)
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
+    }
+
+    private func selectionActions(_ feature: CatalogFeature) -> some View {
+        HStack(spacing: 0) {
+            if feature.kind == .route && privateCatalog == nil {
+                let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
+                Button {
+                    favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
+                    favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
+                    AccessibilityNotification.Announcement(favoriteNotice).post()
+                } label: {
+                    AppFavoriteIcon(filled: saved)
+                        .contentTransition(reduceMotion ? .identity : .opacity)
+                        .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .labelStyle(.iconOnly)
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityLabel(saved ? "Quitar de favoritos" : "Guardar en favoritos")
+                .accessibilityIdentifier("favorite-toggle")
+            }
+            if feature.kind == .route {
+                let saved = savedLists.contains { $0.routes.contains(feature.id) }
+                Button("Guardar en listas", systemImage: saved ? "bookmark.fill" : "bookmark") {
+                    listName = ""
+                    savingToLists = true
+                }
+                .labelStyle(.iconOnly)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
+            }
+            Button("Cerrar", systemImage: "xmark") { selectedID = nil }
+                .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     private func detail(_ feature: CatalogFeature) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(feature.name).font(AppDesign.title)
                 Spacer()
-                if feature.kind == .route && privateCatalog == nil {
-                    let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
-                    Button {
-                        favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
-                        favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
-                        AccessibilityNotification.Announcement(favoriteNotice).post()
-                    } label: {
-                        AppFavoriteIcon(filled: saved)
-                            .contentTransition(reduceMotion ? .identity : .opacity)
-                            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .labelStyle(.iconOnly)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel(saved ? "Quitar de favoritos" : "Guardar en favoritos")
-                    .accessibilityIdentifier("favorite-toggle")
-                }
-                if feature.kind == .route {
-                    let saved = savedLists.contains { $0.routes.contains(feature.id) }
-                    Button("Guardar en listas", systemImage: saved ? "bookmark.fill" : "bookmark") {
-                        listName = ""
-                        savingToLists = true
-                    }
-                    .labelStyle(.iconOnly)
-                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                    .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
-                }
-                Button("Cerrar", systemImage: "xmark") { selectedID = nil }
-                    .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                selectionActions(feature)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
                 .font(AppDesign.note).foregroundStyle(.primary)
@@ -732,18 +857,8 @@ struct CatalogView: View {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                if routesTab {
-                    Text("Zona: " + zone(feature)).font(AppDesign.note)
-                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(AppDesign.note) }
-                    Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        fit(feature)
-                    }.frame(minHeight: 44)
-                }
-                if routesTab, let catalog, catalog.readyForDistribution {
-                    NavigationLink("Usar esta ruta") {
-                        TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
-                    }.frame(minHeight: 44)
-                } else if let catalog, catalog.readyForDistribution, let scenario = catalog.journeyScenario(for: feature) {
+                if !feature.geometry.routeDisplayLines.isEmpty, let catalog, catalog.readyForDistribution,
+                   let scenario = catalog.journeyScenario(for: feature) {
                     Button("Planear este recorrido") {
                         plannedRoute = PlannedRoute(id: feature.id, scenario: scenario)
                     }.frame(minHeight: 44)
@@ -758,7 +873,7 @@ struct CatalogView: View {
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            if routesTab || favoritesOnly {
+            if favoritesOnly {
                 Color(uiColor: .secondarySystemBackground)
             } else {
                 RoundedRectangle(cornerRadius: 24)
@@ -922,8 +1037,11 @@ struct CatalogView: View {
     }
 
     private func fit(_ feature: CatalogFeature) {
-        if let position = AppDesign.routeCamera(feature.geometry.positions.map(\.point), minimumSpan: 0.004) {
+        let positions = feature.kind == .route ? feature.geometry.routeDisplayLines.flatMap { $0 } : feature.geometry.positions
+        if let position = AppDesign.routeCamera(positions.map(\.point), minimumSpan: 0.004) {
             camera = position
+        } else if feature.kind == .route {
+            camera = .region(AppDesign.city)
         }
     }
 

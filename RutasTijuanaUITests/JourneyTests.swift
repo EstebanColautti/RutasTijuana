@@ -294,7 +294,10 @@ final class JourneyTests: XCTestCase {
         capture("Todas las rutas")
         tap("catalog-sample-route")
         XCTAssertTrue(app.buttons["Guardar en listas"].waitForExistence(timeout: 10))
-        capture("Ficha de ruta")
+        XCTAssertTrue(app.staticTexts["Trazado no disponible"].exists)
+        XCTAssertFalse(app.buttons["Volver a encuadrar"].exists)
+        XCTAssertFalse(app.buttons["Usar esta ruta"].exists)
+        capture("Ficha sin trazado")
         tap("Guardar en listas")
         XCTAssertTrue(app.navigationBars["Guardar en listas"].waitForExistence(timeout: 10))
         let name = "Lista " + String(UUID().uuidString.prefix(8))
@@ -711,10 +714,12 @@ final class JourneyTests: XCTestCase {
                 capture("Buscar recorridos reales")
                 routeSearch.typeText(" Murua")
                 tap("route-search-result-centro-murua")
+                XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 10))
                 capture("Centro a Murúa")
                 tap("Cerrar")
             }
             let search = app.textFields["catalog-search"]
+            XCTAssertTrue(search.waitForExistence(timeout: 10))
             search.tap()
             if let value = search.value as? String, value == "Centro Murua" {
                 search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
@@ -876,15 +881,24 @@ final class JourneyTests: XCTestCase {
         guard result.waitForExistence(timeout: 28) else {
             throw XCTSkip("No se obtuvo un itinerario con rutas peatonales durante la captura.")
         }
+        XCTAssertTrue(app.buttons["trip-begin"].waitForExistence(timeout: 10))
         capture("Resultado con recorrido real")
         tap("trip-begin")
         XCTAssertTrue(app.buttons["trip-finish"].waitForExistence(timeout: 10))
         capture("Trayecto con recorrido real")
         let arrive = app.buttons["trip-walk-arrived"]
         if arrive.isHittable { arrive.tap() }
-        if app.buttons["trip-board"].waitForExistence(timeout: 5) {
-            capture("Espera para subir con recorrido real")
-        }
+        let board = app.buttons["trip-board"]
+        XCTAssertTrue(board.waitForExistence(timeout: 10))
+        capture("Espera para subir con recorrido real")
+
+        tap("trip-board")
+        XCTAssertTrue(app.staticTexts["En transporte"].firstMatch.waitForExistence(timeout: 10))
+        capture("En transporte con recorrido real")
+        tap("trip-alight")
+        if arrive.isHittable { arrive.tap() }
+        XCTAssertTrue(app.staticTexts["Viaje finalizado"].firstMatch.waitForExistence(timeout: 10))
+        capture("Viaje finalizado con recorrido real")
     }
 
     func testWalkingLiveRoute() throws {
