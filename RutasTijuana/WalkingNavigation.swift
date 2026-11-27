@@ -193,6 +193,24 @@ struct WalkingSessionStatus {
 }
 
 enum WalkingFormat {
+    /// Símbolo de giro para una indicación peatonal, en español o inglés según devuelva MapKit.
+    static func turnSymbol(_ instruction: String) -> String {
+        let text = instruction.lowercased()
+        if text.contains("izquierda") || text.contains("left") { return "arrow.turn.up.left" }
+        if text.contains("derecha") || text.contains("right") { return "arrow.turn.up.right" }
+        if text.contains("llega") || text.contains("destino") || text.contains("arrive") { return "mappin.and.ellipse" }
+        return "arrow.up"
+    }
+
+    /// Texto que se repite con otro aunque cambien acentos, mayúsculas, guiones o flechas.
+    static func sameText(_ first: String, _ second: String) -> Bool {
+        func plain(_ value: String) -> String {
+            value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_MX"))
+                .filter { $0.isLetter || $0.isNumber }
+        }
+        return plain(first) == plain(second)
+    }
+
     static func distance(_ meters: Double) -> String {
         guard meters.isFinite else { return "—" }
         let value = max(0, meters)

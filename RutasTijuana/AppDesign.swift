@@ -5,6 +5,11 @@ import SwiftUI
 
 enum AppDesign {
     static let panelRadius: CGFloat = 36
+    /// Liquid Glass existe desde iOS 26; antes se usan materiales y colores sólidos.
+    static var hasLiquidGlass: Bool {
+        if #available(iOS 26.0, *) { return true }
+        return false
+    }
     static let panelOverlap: CGFloat = 32
     static let dockSelection = Color(white: 81 / 255)
     static let city = MKCoordinateRegion(
@@ -17,6 +22,13 @@ enum AppDesign {
         MapPanelShape(edge: edge)
             .fill(Color(uiColor: .systemBackground))
             .shadow(color: .black.opacity(0.16), radius: 7, x: 0, y: -2)
+    }
+
+    /// Panel flotante sobre el mapa, en vidrio como la hoja de Apple Maps.
+    static func glassPanel(_ edge: MapPanelEdge = .shallow) -> some View {
+        Color.clear
+            .appGlass(in: MapPanelShape(edge: edge), glassTint: Color(uiColor: .systemBackground).opacity(0.88))
+            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: -2)
     }
 
     static func raisedAction(_ shape: Capsule, fill: Color, raised: Bool) -> some View {
@@ -47,6 +59,10 @@ enum AppDesign {
     static let fieldError = Color(red: 197 / 255, green: 26 / 255, blue: 26 / 255)
     static let focus = Color(red: 5 / 255, green: 149 / 255, blue: 240 / 255)
     static let danger = Color(red: 215 / 255, green: 0, blue: 21 / 255)
+    /// Texto secundario con contraste suficiente sobre blanco, tarjetas y vidrio (WCAG AA).
+    static let secondaryInk = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(white: 0.74, alpha: 1) : UIColor(white: 0.36, alpha: 1)
+    })
 
     static var title: Font { type(17, relativeTo: .headline, weight: .semibold) }
     static var subtitle: Font { type(14, relativeTo: .subheadline, weight: .semibold) }
@@ -163,6 +179,7 @@ struct AppPanelHeading<Trailing: View>: View {
             .padding(.leading, sideWidth)
             .padding(.trailing, centered ? sideWidth : 12)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: centered ? .center : .leading)
+            .contentTransition(.opacity)
             .accessibilityAddTraits(.isHeader)
             .overlay(alignment: .leading) {
                 if let back {
@@ -178,6 +195,18 @@ struct AppPanelHeading<Trailing: View>: View {
             }
             .overlay(alignment: .trailing, content: trailing)
             .foregroundStyle(.primary)
+    }
+}
+
+/// Cuenta los toques sobre la pestaña ya activa; las pantallas vuelven a su raíz al cambiar.
+private struct TabResetKey: EnvironmentKey {
+    static let defaultValue = 0
+}
+
+extension EnvironmentValues {
+    var tabReset: Int {
+        get { self[TabResetKey.self] }
+        set { self[TabResetKey.self] = newValue }
     }
 }
 
@@ -203,11 +232,11 @@ struct MapRouteBadge: View {
         }
         .foregroundStyle(.white)
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 9)
+        .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(AppDesign.primary, in: RoundedRectangle(cornerRadius: 9))
-        .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.white, lineWidth: 1) }
-        .shadow(color: .black.opacity(0.26), radius: 3, x: 0, y: 2)
+        .appGlass(in: Capsule(), tint: AppDesign.primary, glassTint: Color(red: 0, green: 52 / 255, blue: 150 / 255))
+        .background(AppDesign.primary, in: Capsule())
+        .shadow(color: .black.opacity(0.22), radius: 4, x: 0, y: 2)
         .accessibilityElement(children: .combine)
     }
 }
@@ -263,7 +292,9 @@ struct AppFavoriteIcon: View {
                 Image(systemName: "star.fill")
                     .resizable()
                     .scaledToFit()
+                    .foregroundStyle(AppDesign.accent)
                     .frame(width: size * scale, height: size * scale)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
             } else {
                 AppGlyph(icon: .star, size: size * scale)
             }
@@ -290,7 +321,8 @@ struct AppDock: View {
         .frame(maxWidth: .infinity)
         .foregroundStyle(.white)
         .padding(3)
-        .background(AppDesign.dock, in: Capsule())
+        .appGlass(in: Capsule(), dark: true)
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         .padding(.horizontal, textSize.isAccessibilitySize ? 10 : 32)
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
@@ -298,6 +330,7 @@ struct AppDock: View {
     }
 
     @State private var confirmationDestination: AppDestination?
+    @Namespace private var selectionSpace
 
     private func destinationButton(_ destination: AppDestination) -> some View {
         Button {
@@ -309,8 +342,10 @@ struct AppDock: View {
             VStack(spacing: 2) {
                 if !textSize.isAccessibilitySize {
                     AppGlyph(icon: destination.icon, size: iconSize)
+                        .foregroundStyle(selection == destination ? AppDesign.accent : .white)
                 }
-                DockCaption(title: destination.rawValue)
+                DockCaption(title: destination.rawValue,
+                            color: selection == destination ? UIColor(AppDesign.accent) : .white)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .accessibilityElement(children: .ignore)
@@ -318,16 +353,18 @@ struct AppDock: View {
             .padding(.vertical, 4)
             .padding(.horizontal, 4)
             .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
-            .background(selection == destination ? AppDesign.dockSelection : .clear, in: Capsule())
-            .overlay {
+            .background {
                 if selection == destination {
-                    Capsule().strokeBorder(.white.opacity(0.17), lineWidth: 1).allowsHitTesting(false)
+                    Capsule().fill(AppDesign.dockSelection)
+                        .overlay { Capsule().strokeBorder(.white.opacity(0.17), lineWidth: 1) }
+                        .matchedGeometryEffect(id: "dock-selection", in: selectionSpace)
+                        .allowsHitTesting(false)
                 }
             }
             .contentShape(Capsule())
-            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: selection)
+            .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82), value: selection)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppPressStyle())
         .accessibilityLabel(destination.rawValue)
         .accessibilityIdentifier("dock-" + destination.rawValue)
         .accessibilityAddTraits(selection == destination ? .isSelected : [])
@@ -343,6 +380,7 @@ struct AppDock: View {
 
 private struct DockCaption: UIViewRepresentable {
     let title: String
+    var color: UIColor = .white
 
     func makeUIView(context: Context) -> UILabel {
         let label = UILabel()
@@ -356,6 +394,7 @@ private struct DockCaption: UIViewRepresentable {
 
     func updateUIView(_ label: UILabel, context: Context) {
         label.text = title
+        label.textColor = color
         label.font = UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: label.traitCollection)
     }
 
@@ -386,8 +425,28 @@ extension EnvironmentValues {
 }
 
 extension View {
-    func appGlass<S: Shape>(in shape: S, dark: Bool = false, interactive: Bool = false) -> some View {
-        modifier(AppGlassSurface(shape: shape, dark: dark, interactive: interactive))
+    /// `tint` colorea el vidrio y su respaldo opaco; `glassTint` solo matiza el vidrio de iOS 26.
+    func appGlass<S: Shape>(in shape: S, dark: Bool = false, interactive: Bool = false,
+                            tint: Color? = nil, glassTint: Color? = nil) -> some View {
+        modifier(AppGlassSurface(shape: shape, dark: dark, interactive: interactive, tint: tint, glassTint: glassTint))
+    }
+}
+
+/// Agrupa superficies de vidrio cercanas para que se combinen y transformen juntas (iOS 26).
+struct AppGlassGroup<Content: View>: View {
+    var spacing: CGFloat = 12
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing, content: content)
+        } else {
+            content()
+        }
+        #else
+        content()
+        #endif
     }
 }
 
@@ -397,14 +456,18 @@ private struct AppGlassSurface<S: Shape>: ViewModifier {
     let shape: S
     let dark: Bool
     let interactive: Bool
+    var tint: Color?
+    var glassTint: Color?
+
+    private var solid: Color { tint ?? (dark ? AppDesign.dock : Color(uiColor: .systemBackground)) }
 
     func body(content: Content) -> some View {
         if reduceTransparency || contrast == .increased {
-            content.background(dark ? AppDesign.dock : Color(uiColor: .systemBackground), in: shape)
+            content.background(solid, in: shape)
         } else {
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
-                content.glassEffect(.regular.tint(dark ? AppDesign.dock.opacity(0.85) : nil)
+                content.glassEffect(.regular.tint(glassTint ?? tint ?? (dark ? AppDesign.dock : Color(uiColor: .systemBackground).opacity(0.55)))
                     .interactive(interactive), in: shape)
             } else {
                 fallback(content)
@@ -416,7 +479,9 @@ private struct AppGlassSurface<S: Shape>: ViewModifier {
     }
 
     @ViewBuilder private func fallback(_ content: Content) -> some View {
-        if dark {
+        if let tint {
+            content.background(tint, in: shape)
+        } else if dark {
             content.background(AppDesign.dock, in: shape)
         } else {
             content.background(.regularMaterial, in: shape)
@@ -452,10 +517,105 @@ struct AppNotice: View {
     }
 }
 
+/// Espera común de la app: icono en círculo lila con pulso y una barra que avanza.
+/// `compact` la reduce a una fila para espacios pequeños, como los resultados de búsqueda.
+struct AppLoadingView: View {
+    let title: String
+    var symbol = "bus.fill"
+    var compact = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sweeping = false
+
+    var body: some View {
+        Group {
+            if compact {
+                HStack(spacing: 10) {
+                    badge(size: 28)
+                    Text(title).font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 44)
+            } else {
+                VStack(spacing: 12) {
+                    badge(size: 48)
+                    Text(title).font(AppDesign.subtitle).multilineTextAlignment(.center)
+                    track.frame(width: 120)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .appCard()
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.updatesFrequently)
+        .onAppear { sweeping = true }
+    }
+
+    private func badge(size: CGFloat) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(AppDesign.primary)
+            .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+            .frame(width: size, height: size)
+            .background(AppDesign.selectionFill, in: Circle())
+    }
+
+    private var track: some View {
+        Capsule().fill(Color(uiColor: .tertiarySystemFill))
+            .frame(height: 4)
+            .overlay(alignment: .leading) {
+                GeometryReader { geometry in
+                    Capsule().fill(AppDesign.accent)
+                        .frame(width: geometry.size.width * 0.38)
+                        .offset(x: reduceMotion ? geometry.size.width * 0.31 : (sweeping ? geometry.size.width * 0.62 : 0))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: sweeping)
+                }
+            }
+            .clipShape(Capsule())
+    }
+}
+
+/// Botón de icono con área táctil mínima de 44 pt dentro del propio botón.
+struct AppIconButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .labelStyle(.iconOnly)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.92 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+/// Respuesta táctil discreta y común para controles sin relleno propio.
+struct AppPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 struct AppActionStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var fill = AppDesign.primary
     var ink = Color.white
     var verticalInset: CGFloat = 8
+
+    /// El vidrio aclara su tinte; se tiñe con un tono más profundo para que el resultado
+    /// se vea como el color de marca y el texto blanco conserve el contraste AA.
+    private var glassFill: Color {
+        if fill == AppDesign.primary { return Color(red: 0, green: 52 / 255, blue: 150 / 255) }
+        if fill == AppDesign.danger { return Color(red: 170 / 255, green: 0, blue: 16 / 255) }
+        return fill
+    }
 
     private var pressedFill: Color {
         if fill == AppDesign.primary { return Color(red: 0, green: 56 / 255, blue: 145 / 255) }
@@ -465,28 +625,47 @@ struct AppActionStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        surface(configuration.label
             .font(AppDesign.subtitle)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(isEnabled && !(configuration.isPressed && fill == AppDesign.danger) ? ink : Color.black)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 16)
             .padding(.vertical, verticalInset)
-            .frame(minWidth: 44, minHeight: 44)
-            .background {
-                AppDesign.raisedAction(Capsule(), fill: isEnabled ? (configuration.isPressed ? pressedFill : fill) : Color(white: 0.88),
-                                       raised: isEnabled && !configuration.isPressed)
-            }
-            .overlay {
-                if configuration.isPressed && isEnabled && fill == pressedFill {
-                    Capsule().fill(.black.opacity(0.16)).allowsHitTesting(false)
-                }
-            }
+            .frame(minWidth: 44, minHeight: 44), pressed: configuration.isPressed)
             .contentShape(Capsule())
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+
+    /// Botón principal: vidrio teñido con el color de la acción (equivalente a `.glassProminent`).
+    @ViewBuilder private func surface(_ label: some View, pressed: Bool) -> some View {
+        if isEnabled {
+            label
+                .appGlass(in: Capsule(), interactive: true, tint: pressed ? pressedFill : fill,
+                          glassTint: pressed ? pressedFill : glassFill)
+                .background(pressed ? pressedFill : fill, in: Capsule())
+                .shadow(color: fill.opacity(pressed || !AppDesign.hasLiquidGlass ? 0 : 0.28), radius: 6, y: 3)
+        } else {
+            label.background(Color(white: 0.88), in: Capsule())
+        }
     }
 }
 
 extension View {
+    /// Tarjeta común de la app: la misma superficie que el itinerario de Inicio.
+    func appCard(selected: Bool = false, radius: CGFloat = 18) -> some View {
+        background(selected ? AppDesign.selectionFill : Color(uiColor: .secondarySystemBackground),
+                   in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+    }
+
+    /// Superficie flotante de búsqueda, compartida por Inicio y Rutas.
+    func appSearchSurface() -> some View {
+        self
+            .appGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: true)
+            .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+    }
+
     func appField(focused: Bool, invalid: Bool = false) -> some View {
         self
             .font(AppDesign.body)

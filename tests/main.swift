@@ -716,3 +716,35 @@ print("Pruebas de imágenes correctas")
     print("Pruebas de conexiones sugeridas correctas")
 }
 try await testCalculatedTransfers()
+
+func testPresentationRules() {
+    check(WalkingFormat.turnSymbol("Gira a la izquierda en Calle 2") == "arrow.turn.up.left", "Giro a la izquierda en español")
+    check(WalkingFormat.turnSymbol("Take a right onto Calle Emiliano Zapata") == "arrow.turn.up.right", "Giro a la derecha en inglés")
+    check(WalkingFormat.turnSymbol("Da vuelta a la DERECHA por Calle Plaza México") == "arrow.turn.up.right", "Giro sin distinguir mayúsculas")
+    check(WalkingFormat.turnSymbol("Llegaste al destino") == "mappin.and.ellipse", "Llegada")
+    check(WalkingFormat.turnSymbol("Arrive at the destination") == "mappin.and.ellipse", "Llegada en inglés")
+    check(WalkingFormat.turnSymbol("Continúa por Calle Las Plazas") == "arrow.up", "Seguir de frente")
+    check(WalkingFormat.turnSymbol("") == "arrow.up", "Indicación vacía")
+
+    check(WalkingFormat.sameText("5 y 10-10 de Mayo (Blanco/Dorado)", "5 y 10 → 10 de Mayo (Blanco/Dorado)"), "Sentido repetido con flecha")
+    check(WalkingFormat.sameText("5 y 10-CETYS-Jardín Dorado", "5 y 10 → CETYS → Jardin dorado"), "Repetición sin acentos ni mayúsculas")
+    check(WalkingFormat.sameText("5 y 10-Homex blanco y naranja", "5 y 10 → Homex (blanco/naranja)") == false, "Un texto con palabras distintas se conserva")
+    check(!WalkingFormat.sameText("Recorrido de ejemplo", "Sentido de ejemplo"), "Textos distintos se conservan")
+    check(!WalkingFormat.sameText("Centro", "Centro Murúa"), "Un prefijo no es una repetición")
+
+    check(WalkingFormat.distance(0) == "0 m", "Distancia cero")
+    check(WalkingFormat.distance(215.4) == "215 m", "Metros redondeados")
+    check(WalkingFormat.distance(-5) == "0 m", "Distancia negativa")
+    check(WalkingFormat.distance(2_400) == "2,4 km", "Kilómetros con coma decimal")
+    check(WalkingFormat.distance(.infinity) == "—", "Distancia no finita")
+
+    func trip(transfers: Int, walking: Double) -> PlannedTrip {
+        PlannedTrip(catalogVersion: "v", legs: [], transfers: transfers, walkingMeters: walking, exceedsPreferences: false)
+    }
+    check(trip(transfers: 0, walking: 0).summary == "Sin transbordos · sin caminar", "Resumen sin cifras vacías")
+    check(trip(transfers: 0, walking: 0.4).summary == "Sin transbordos · sin caminar", "Caminata menor a un metro")
+    check(trip(transfers: 1, walking: 215).summary == "1 transbordo · 215 m a pie", "Singular de transbordo")
+    check(trip(transfers: 2, walking: 2_400).summary == "2 transbordos · 2,4 km a pie", "Plural y kilómetros")
+    print("Pruebas de reglas de presentación correctas")
+}
+testPresentationRules()

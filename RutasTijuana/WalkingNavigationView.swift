@@ -72,7 +72,7 @@ struct WalkingNavigationView: View {
                         .overlay(alignment: .topLeading) {
                             if ProcessInfo.processInfo.arguments.contains("--walking-live-directions") {
                                 Text("Ubicación simulada · Camino calculado por Apple")
-                                    .font(AppDesign.note).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).padding(8)
+                                    .font(AppDesign.note).padding(8).appGlass(in: Capsule()).padding(8)
                             }
                         }
                         #endif

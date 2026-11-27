@@ -66,6 +66,18 @@ Las pruebas de lógica se ejecutan en el runner de macOS de GitHub Actions:
 bash scripts/test-logic.sh
 ```
 
+### Pruebas por niveles
+
+No hace falta correr toda la matriz en cada cambio:
+
+| Momento | Qué correr | Tiempo aproximado |
+|---|---|---|
+| Cada iteración | `python3 scripts/test_changed.py`: lógica, Python, compilación incremental y hasta 4 pruebas de interfaz del área modificada en el iPhone 17 | 2–4 min |
+| Cierre de un lote | `python3 scripts/test_changed.py --max 0`: todas las pruebas de interfaz de las áreas modificadas | 8–10 min |
+| Antes de publicar o integrar | Todo en el iPhone 17 y en el iPhone SE, más la CI de GitHub | 25 min |
+
+`--dry-run` muestra el plan sin ejecutarlo y `--base main` compara contra otra referencia. Las pruebas XCTest añadidas o editadas se corren primero. La compilación reutiliza `build/test-changed`, así que las iteraciones siguientes son incrementales.
+
 Para revisar la interfaz en Xcode:
 
 1. Comenzar una consulta sin conceder ubicación y elegir una parada como origen.

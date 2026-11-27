@@ -433,12 +433,12 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if isDemo {
                         Text("Recorrido de evaluación").font(.caption.weight(.medium)).padding(8)
-                            .background(.regularMaterial, in: Capsule())
+                            .appGlass(in: Capsule())
                             .accessibilityIdentifier("route-map-demo")
                     }
                     if !connectivity.isConnected {
                         Label("Sin conexión · Puedes elegir de la lista", systemImage: "wifi.slash")
-                            .font(AppDesign.note).padding(8).background(.regularMaterial, in: Capsule())
+                            .font(AppDesign.note).padding(8).appGlass(in: Capsule())
                     }
                 }
                 .padding(12).allowsHitTesting(false)

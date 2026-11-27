@@ -4,6 +4,15 @@ import MapKit
 @main
 struct RutasTijuanaApp: App {
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        #if DEBUG
+        // Las pruebas de interfaz empiezan sin favoritos ni listas guardadas por ejecuciones anteriores.
+        if ProcessInfo.processInfo.arguments.contains("--reset-saved-data") {
+            for key in ["favorite-routes", "route-lists"] { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        #endif
+    }
     @ViewBuilder private var root: some View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
@@ -41,26 +50,36 @@ private struct MainTabs: View {
                         .toolbarBackground(.visible, for: .navigationBar)
                         .toolbarColorScheme(.dark, for: .navigationBar)
                 }
+                .padding(.bottom, dockHeight)
                 .toolbar(.hidden, for: .tabBar)
-                .id("routes-\(tabResets[.routes, default: 0])")
+                // Sin .id: recrear el NavigationStack durante su maquetación aborta en iOS 17 y 18.
+                .environment(\.tabReset, tabResets[.routes, default: 0])
                 .tag(AppDestination.routes)
 
                 home
+                    .safeAreaPadding(.bottom, dockHeight)
                     .toolbar(.hidden, for: .tabBar)
                     .id("home-\(tabResets[.home, default: 0])")
                     .tag(AppDestination.home)
 
-                NavigationStack { CatalogView(favoritesOnly: true) }
+                NavigationStack {
+                    CatalogView(favoritesOnly: true)
+                        .toolbarBackground(AppDesign.header, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
+                }
+                    .padding(.bottom, dockHeight)
                     .toolbar(.hidden, for: .tabBar)
-                    .id("favorites-\(tabResets[.favorites, default: 0])")
+                    .environment(\.tabReset, tabResets[.favorites, default: 0])
                     .tag(AppDestination.favorites)
             }
-            .padding(.bottom, dockHeight)
 
             AppDock(selection: selected, confirmsSelection: selected == .home && tripActive,
                     confirmsReselectionOnly: true, onSelect: select)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .environment(\.homeTripActive, $tripActive)
         .environment(\.activeAppDestination, selected)
         .environment(\.openAppDestination, select)

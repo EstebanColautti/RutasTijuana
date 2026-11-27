@@ -355,8 +355,9 @@ struct TripTravelView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
                 .font(AppDesign.subtitle)
-            ProgressView(value: Double(model.index), total: Double(max(1, model.trip.legs.count)))
+            ProgressView(value: Double(model.index + 1), total: Double(max(1, model.trip.legs.count)))
                 .tint(AppDesign.accent)
+                .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: model.index)
                 .accessibilityLabel("Progreso por etapas del viaje")
                 .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
         }
@@ -423,7 +424,7 @@ struct TripTravelView: View {
                     }
                     TripActionButton("Ya llegué") { model.advance(from: stage) }
                         .accessibilityIdentifier("trip-walk-arrived")
-                        .frame(minHeight: 44)
+                        .buttonStyle(AppActionStyle())
                 }
             case .ride:
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
@@ -481,7 +482,7 @@ struct TripTravelView: View {
                             Button("Cancelar", role: .cancel) {}
                         }
                     }
-                    if !model.finished { stageProgress }
+                    if !model.finished && model.trip.legs.count > 1 { stageProgress }
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
                         Text("Datos de evaluación").font(AppDesign.note)
@@ -499,10 +500,25 @@ struct TripTravelView: View {
                                 .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
                                 .onAppear { stageFocused = true }
                             Text(WalkingFormat.distance(route.length))
-                            if inlineFinish != nil {
-                                ForEach(Array(route.steps.enumerated()), id: \.offset) { step in
-                                    Text(step.element.instruction).font(AppDesign.body)
+                                .font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                            if inlineFinish != nil, !route.steps.isEmpty {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(Array(route.steps.enumerated()), id: \.offset) { step in
+                                        if step.offset > 0 { Divider().padding(.leading, 40) }
+                                        Label {
+                                            Text(step.element.instruction).font(AppDesign.body)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        } icon: {
+                                            Image(systemName: WalkingFormat.turnSymbol(step.element.instruction))
+                                                .foregroundStyle(AppDesign.primary)
+                                                .frame(width: 24)
+                                        }
+                                        .padding(.vertical, 10)
+                                    }
                                 }
+                                .padding(.horizontal, 14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .appCard()
                             }
                         case .ride(let service, let stops):
                             stageBadge(symbol: "bus.fill", fill: AppDesign.primary, ink: .white)
@@ -511,13 +527,16 @@ struct TripTravelView: View {
                                 .onAppear { stageFocused = true }
                             Text(service.direction ?? "Sigue el sentido indicado en el recorrido").font(AppDesign.body)
                             VStack(alignment: .leading, spacing: 12) {
-                                Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
-                                    .font(AppDesign.title)
                                 Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "bus.fill")
-                                    .font(AppDesign.body)
+                                    .font(model.aboard ? AppDesign.body : AppDesign.title)
+                                    .foregroundStyle(model.aboard ? .secondary : .primary)
+                                Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
+                                    .font(model.aboard ? AppDesign.title : AppDesign.body)
+                                    .foregroundStyle(model.aboard ? .primary : .secondary)
                             }
-                            .padding(16).padding(.top, 12).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 16))
+                            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                            .appCard()
+                            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: model.aboard)
                             if stops.contains(where: \.suggested) {
                                 Text("Confirma con el conductor dónde puedes subir y bajar.").font(AppDesign.note)
                             }
@@ -543,6 +562,12 @@ struct TripTravelView: View {
             .id(model.index)
             .transition(reduceMotion ? .identity : .opacity)
             .clipped()
+            .mask {
+                VStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 18)
+                }
+            }
             stageAction(stage: stage)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)

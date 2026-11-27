@@ -98,6 +98,15 @@ struct PlannedTrip: Sendable {
 
 enum TripPlanningError: Error, Sendable { case invalidInput, tryAgainLater }
 
+extension PlannedTrip {
+    /// Resumen breve del itinerario sin cifras vacías como «0 transbordos · 0 m a pie».
+    var summary: String {
+        let transferText = transfers == 0 ? "Sin transbordos" : "\(transfers) \(transfers == 1 ? "transbordo" : "transbordos")"
+        let walkingText = walkingMeters < 1 ? "sin caminar" : WalkingFormat.distance(walkingMeters) + " a pie"
+        return transferText + " · " + walkingText
+    }
+}
+
 enum TripSearchResult: Sendable {
     case found(PlannedTrip)
     case paused
