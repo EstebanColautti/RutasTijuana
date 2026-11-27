@@ -13,7 +13,7 @@ El catálogo incluido se conserva en SQLite para consultar sin conexión desde l
 ## Requisitos
 
 - macOS con Xcode 16.4 o posterior.
-- iPhone con iOS 17 o posterior.
+- iPhone con iOS 18 o posterior.
 - Sin dependencias externas.
 
 ## Ejecutar

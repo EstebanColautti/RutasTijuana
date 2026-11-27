@@ -357,9 +357,11 @@ final class JourneyTests: XCTestCase {
                 if issue.auditType == .hitRegion && element.identifier.isEmpty && element.label == "Aviso legal" {
                     return true
                 }
-                // En iOS 17 y 18 el UITextField no crece en vertical; la barra entera (50 pt) enfoca el campo.
+                // En iOS 18 el UITextField no crece en vertical; la barra entera (50 pt) enfoca el campo.
                 if issue.auditType == .hitRegion, ["trip-place-search", "catalog-search"].contains(element.identifier),
                    element.frame.height >= 17 { return true }
+                // Puntos de interés de Apple Maps (en algunas versiones se exponen como VKPointFeature).
+                if element.identifier == "VKPointFeature" { return true }
                 // Rótulos y puntos de interés que dibuja Apple Maps en la parte visible del mapa.
                 let map = self.app.otherElements["Mapa de Tijuana"]
                 let handle = self.app.buttons["home-panel-handle"]
@@ -383,7 +385,8 @@ final class JourneyTests: XCTestCase {
             } else {
                 print("[\(screen)] \(issue.auditType): \(issue.compactDescription)")
                 // Texto que dibuja Apple Maps dentro del mapa, sin elemento propio de la app.
-                if issue.auditType == .elementDetection && self.app.maps.firstMatch.exists { return true }
+                if issue.auditType == .elementDetection,
+                   self.app.maps.firstMatch.exists || self.app.otherElements["Mapa de Tijuana"].exists { return true }
             }
             return false
         }

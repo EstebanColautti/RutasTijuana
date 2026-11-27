@@ -46,7 +46,7 @@ private struct MainTabs: View {
                 }
                 .padding(.bottom, dockHeight)
                 .toolbar(.hidden, for: .tabBar)
-                // Sin .id: recrear el NavigationStack durante su maquetación aborta en iOS 17 y 18.
+                // Sin .id: recrear el NavigationStack durante su maquetación aborta en iOS 18.
                 .environment(\.tabReset, tabResets[.routes, default: 0])
                 .tag(AppDestination.routes)
 

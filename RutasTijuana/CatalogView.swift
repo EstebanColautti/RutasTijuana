@@ -1063,9 +1063,15 @@ struct CatalogView: View {
                isPresented: Binding(get: { listNaming != nil }, set: { if !$0 { listNaming = nil } })) {
             TextField("Nombre de la lista", text: $listName)
             Button("Cancelar", role: .cancel) { listName = "" }
-            // Se captura la operación: en iOS 17 el diálogo se cierra (y limpia listNaming) antes de la acción.
+            // Se captura la operación: el diálogo puede cerrarse (y limpiar listNaming) antes de la acción.
             let naming = listNaming ?? .create(routeID: nil)
-            Button({ if case .rename = naming { "Guardar" } else { "Crear" } }()) { commitListName(naming) }
+            // El campo puede entregar el texto después de la acción: se confirma en el siguiente ciclo.
+            Button({ if case .rename = naming { "Guardar" } else { "Crear" } }()) {
+                Task { @MainActor in
+                    await Task.yield()
+                    commitListName(naming)
+                }
+            }
                 .disabled(!listNameIsValid(for: naming))
         } message: {
             Text("Por ejemplo «Trabajo» o «Escuela».")

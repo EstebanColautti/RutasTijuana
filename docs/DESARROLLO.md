@@ -54,7 +54,7 @@ xcodebuild -project RutasTijuana.xcodeproj -scheme RutasTijuana \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-El destino de la app es iPhone con iOS 17 o posterior.
+El destino de la app es iPhone con iOS 18 o posterior. En la CI el perfil compacto usa iPhone SE con iOS 18 y el estándar iPhone 17 con iOS 26.
 
 ## Validación
 

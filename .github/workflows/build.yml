@@ -167,10 +167,8 @@ jobs:
           PROFILE: ${{ matrix.device }}
         run: |
           if [ "$PROFILE" = compact ]; then
-            runtime=com.apple.CoreSimulator.SimRuntime.iOS-17-5
-            if ! xcrun simctl list runtimes available | grep -Fq "$runtime"; then
-              xcodebuild -downloadPlatform iOS -buildVersion 17.5
-            fi
+            # iOS 18, el mínimo de la app, con el runtime que trae la imagen de macOS 15.
+            runtime=$(xcrun simctl list runtimes available -j | python3 -c 'import json,sys; r=[x["identifier"] for x in json.load(sys.stdin)["runtimes"] if x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-18")]; print(sorted(r)[-1])')
             simulator=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
           else
             simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-26" in k for v in d[k] if v["name"] == "iPhone 17"))')
