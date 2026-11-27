@@ -76,7 +76,7 @@ No hace falta correr toda la matriz en cada cambio:
 | Cierre de un lote | `python3 scripts/test_changed.py --max 0`: todas las pruebas de interfaz de las áreas modificadas | 8–10 min |
 | Antes de publicar o integrar | Todo en el iPhone 17 y en el iPhone SE, más la CI de GitHub | 25 min |
 
-`--dry-run` muestra el plan sin ejecutarlo y `--base main` compara contra otra referencia. Las pruebas XCTest añadidas o editadas se corren primero. La compilación reutiliza `build/test-changed`, así que las iteraciones siguientes son incrementales.
+`--dry-run` muestra el plan sin ejecutarlo, `--base main` compara contra otra referencia, `--test NOMBRE` elige pruebas concretas, `--device UUID` otro simulador y `--captures` guarda las capturas de evidencia (por defecto solo se guardan las de fallos). Si la app no cambió, se reutiliza la instalación en el simulador, y la lógica Swift reutiliza su binario mientras sus fuentes no cambien. Las pruebas XCTest añadidas o editadas se corren primero. La compilación reutiliza `build/test-changed`, así que las iteraciones siguientes son incrementales.
 
 Para revisar la interfaz en Xcode:
 

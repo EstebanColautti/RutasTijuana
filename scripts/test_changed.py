@@ -14,6 +14,7 @@ del lote y la CI (ver docs/DESARROLLO.md).
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -120,10 +121,13 @@ def device_name(udid):
     return udid
 
 
-def run_tests(step, command):
+def run_tests(step, command, captures=False):
     """Corre XCTest y muestra solo el resultado de cada caso y los errores."""
     print(f'\n▶ {step}', flush=True)
-    completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    env = dict(os.environ)
+    if not captures:
+        env['TEST_RUNNER_CAPTURE'] = '0'  # XCTest recibe CAPTURE=0: sin capturas de evidencia
+    completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, env=env)
     for line in completed.stdout.splitlines():
         if re.search(r"Test Case .*(passed|failed)|error: .*JourneyTests|Executed \d+ tests|^\[[^]]+\] XCUIAccessibilityAuditType", line):
             print('  ' + line.strip())
@@ -147,6 +151,7 @@ def main():
     parser.add_argument('--max', type=int, default=4, help='Máximo de pruebas de interfaz (0 = todas)')
     parser.add_argument('--dry-run', action='store_true', help='Muestra el plan sin ejecutarlo')
     parser.add_argument('--test', action='append', default=[], help='Prueba de interfaz concreta (repetible); sustituye la selección')
+    parser.add_argument('--captures', action='store_true', help='Guarda las capturas de evidencia (por defecto solo las de fallos)')
     args = parser.parse_args()
 
     paths = changed_paths(args.base)
@@ -184,16 +189,30 @@ def main():
         if not run('Compilación incremental', [*common, 'CATALOG_FIXTURE=YES', 'build-for-testing']):
             return 1
         app = derived / 'Build' / 'Products' / 'Debug-iphonesimulator' / 'RutasTijuana.app'
-        subprocess.run([sys.executable, 'scripts/install_catalog.py', '--source', 'Catalog',
-                        '--destination', str(app / 'Full' / 'Catalog.bundle')], cwd=ROOT, check=True, capture_output=True)
-        subprocess.run(['xcrun', 'simctl', 'install', device, str(app)], cwd=ROOT, check=True)
+        executable = app / 'RutasTijuana.debug.dylib'
+        if not executable.exists():
+            executable = app / 'RutasTijuana'
+        build_id = f'{executable.stat().st_mtime_ns}:{executable.stat().st_size}'
+        stamp = derived / f'instalada-{device[:8]}.txt'
+        container = subprocess.run(['xcrun', 'simctl', 'get_app_container', device, 'com.estebancolautti.rutastijuana'],
+                                   capture_output=True, text=True).stdout.strip()
+        installed = Path(container) / executable.name if container else None
+        same_build = (installed is not None and installed.exists()
+                      and installed.stat().st_size == executable.stat().st_size)
+        if not same_build or not stamp.exists() or stamp.read_text() != build_id:
+            subprocess.run([sys.executable, 'scripts/install_catalog.py', '--source', 'Catalog',
+                            '--destination', str(app / 'Full' / 'Catalog.bundle')], cwd=ROOT, check=True, capture_output=True)
+            subprocess.run(['xcrun', 'simctl', 'install', device, str(app)], cwd=ROOT, check=True)
+            stamp.write_text(build_id)
+        else:
+            print('App sin cambios: se reutiliza la instalación.')
         if steps['ui']:
             result = derived / f'ultima-{device[:8]}.xcresult'
             subprocess.run(['rm', '-rf', str(result)])
             selected = [f'-only-testing:RutasTijuanaUITests/JourneyTests/{t}' for t in steps['ui']]
             testing = [c for c in common if c != '-quiet']
             ok &= run_tests('Interfaz en ' + device_name(device), [*testing, '-parallel-testing-enabled', 'NO', '-resultBundlePath', str(result),
-                                                                  *selected, 'test-without-building'])
+                                                                  *selected, 'test-without-building'], args.captures)
             print(f'Resultados y capturas: {result}')
     print('\n' + ('✓ Todo correcto' if ok else '✗ Hay fallos'))
     return 0 if ok else 1

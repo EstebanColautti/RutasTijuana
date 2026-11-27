@@ -672,7 +672,7 @@ final class JourneyTests: XCTestCase {
     }
 
     private func recordMissingControl(_ identifier: String, reason: String) {
-        capture("Fallo · " + identifier)
+        capture("Fallo · " + identifier, always: true)
         let hierarchy = XCTAttachment(string: app.debugDescription)
         hierarchy.name = "Jerarquía · " + identifier
         hierarchy.lifetime = .keepAlways
@@ -680,7 +680,10 @@ final class JourneyTests: XCTestCase {
         XCTFail(reason + ": " + identifier)
     }
 
-    private func capture(_ name: String) {
+    /// Las capturas de evidencia se omiten si el ejecutor recibe CAPTURE=0 (pruebas locales rápidas);
+    /// las de fallos se guardan siempre.
+    private func capture(_ name: String, always: Bool = false) {
+        guard always || ProcessInfo.processInfo.environment["CAPTURE"] != "0" else { return }
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
