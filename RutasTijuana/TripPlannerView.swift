@@ -371,11 +371,20 @@ struct TripPlannerView: View {
                         })
                         .transition(homeTransition)
                     } else {
-                        ScrollView {
-                            homeDetails.frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16).padding(.bottom, 6)
+                        VStack(spacing: 0) {
+                            ScrollView {
+                                homeDetails.frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 16).padding(.bottom, 6)
+                            }
+                            .scrollBounceBehavior(.basedOnSize)
+                            // Como en el trayecto, la acción principal queda fija y siempre visible sobre el dock.
+                            if trip != nil {
+                                startTripButton
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .transition(homeTransition)
+                            }
                         }
-                        .scrollBounceBehavior(.basedOnSize)
                         .transition(homeTransition)
                     }
                 }
@@ -648,21 +657,22 @@ struct TripPlannerView: View {
             }
             TripLegChips(legs: trip.legs)
             Text(trip.summary).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
-            Button {
-                searchFocused = false
-                alternativeTask?.cancel()
-                selectedLegIndex = nil
-                travelling = true
-            } label: {
-                Text("Iniciar viaje").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(AppActionStyle())
-            .accessibilityIdentifier("trip-begin")
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .appCard()
         .animation(homeMotion, value: trip.duration)
+    }
+
+    private var startTripButton: some View {
+        TripActionButton("Iniciar viaje", fullWidth: true) {
+            searchFocused = false
+            alternativeTask?.cancel()
+            selectedLegIndex = nil
+            travelling = true
+        }
+        .buttonStyle(AppActionStyle())
+        .accessibilityIdentifier("trip-begin")
     }
 
     private func cancelPlaceLookup() {

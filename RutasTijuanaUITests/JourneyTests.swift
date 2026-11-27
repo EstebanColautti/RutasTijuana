@@ -205,7 +205,7 @@ final class JourneyTests: XCTestCase {
         tap("dock-Rutas")
         let search = app.textFields["catalog-search"]
         XCTAssertTrue(search.waitForExistence(timeout: 10))
-        search.tap()
+        focus(search)
         if app.keyboards.firstMatch.waitForExistence(timeout: 3) {
             XCTAssertEqual(dock.frame.minY, resting.minY, accuracy: 1, "El teclado de Rutas no mueve el dock")
             capture("Búsqueda de rutas con teclado")
@@ -227,7 +227,7 @@ final class JourneyTests: XCTestCase {
         XCTAssertFalse(app.buttons["Servicios"].exists, "Sin avisos ni contacto, Servicios no aparece")
         XCTAssertFalse(app.buttons["Borrar búsqueda"].exists)
         let search = app.textFields["catalog-search"]
-        search.tap()
+        focus(search)
         search.typeText("sin coincidencias")
         XCTAssertTrue(app.staticTexts["Sin coincidencias"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["0 rutas"].exists)
@@ -237,7 +237,7 @@ final class JourneyTests: XCTestCase {
         search.typeText("\n")
         XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["1 ruta"].waitForExistence(timeout: 5))
-        search.tap()
+        focus(search)
         // Los acentos se prueban en la lógica («recórrido EJEMPLO»); aquí, mayúsculas con el teclado real.
         search.typeText("RECORRIDO\n")
         XCTAssertTrue(app.buttons["catalog-sample-route"].waitForExistence(timeout: 10), "Búsqueda sin distinguir mayúsculas")
@@ -447,7 +447,7 @@ final class JourneyTests: XCTestCase {
                 capture("Todas las rutas con catálogo completo")
                 let routeSearch = app.textFields["catalog-search"]
                 XCTAssertTrue(routeSearch.waitForExistence(timeout: 5))
-                routeSearch.tap()
+                focus(routeSearch)
                 routeSearch.typeText("Centro")
                 let results = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "catalog-"))
                 XCTAssertTrue(results.firstMatch.waitForExistence(timeout: 10))
@@ -460,7 +460,7 @@ final class JourneyTests: XCTestCase {
             }
             let search = app.textFields["catalog-search"]
             XCTAssertTrue(search.waitForExistence(timeout: 10))
-            search.tap()
+            focus(search)
             if let value = search.value as? String, value == "Centro Murua" {
                 search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
             }
@@ -476,7 +476,7 @@ final class JourneyTests: XCTestCase {
                 tap("dock-Rutas")
                 let fullSearch = app.textFields["catalog-search"]
                 XCTAssertTrue(fullSearch.waitForExistence(timeout: 10))
-                fullSearch.tap()
+                focus(fullSearch)
                 fullSearch.typeText("Fundadores\n")
                 tap("catalog-feature_7eb377470e968bbdb36536f6")
                 capture("Ficha con datos de servicio")
@@ -652,6 +652,7 @@ final class JourneyTests: XCTestCase {
             recordMissingControl(identifier, reason: "No apareció")
             return
         }
+        _ = button.waitForHittable(timeout: 3)
         for _ in 0..<8 {
             let tabBar = app.otherElements["app-dock"]
             let aboveTab = identifier.hasPrefix("dock-") || !tabBar.isHittable || button.frame.midY < tabBar.frame.minY
@@ -660,6 +661,9 @@ final class JourneyTests: XCTestCase {
             let unobscured = aboveTab && aboveAction
             if button.isHittable && unobscured {
                 button.tap()
+                if identifier.hasPrefix("dock-"), !button.waitForSelected(timeout: 3) {
+                    button.tap()
+                }
                 return
             }
             let scroll = app.scrollViews.containing(.button, identifier: identifier).firstMatch
@@ -680,6 +684,20 @@ final class JourneyTests: XCTestCase {
             }
         }
         recordMissingControl(identifier, reason: "No se pudo tocar")
+    }
+
+    /// Toca un campo hasta que tenga el foco: el primer toque puede perderse mientras la vista se anima.
+    private func focus(_ field: XCUIElement) {
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        for _ in 0..<3 {
+            field.tap()
+            let deadline = Date().addingTimeInterval(2)
+            while Date() < deadline {
+                if field.hasKeyboardFocus { return }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            }
+        }
+        XCTFail("El campo no recibió el foco")
     }
 
     private func recordMissingControl(_ identifier: String, reason: String) {
@@ -704,6 +722,17 @@ final class JourneyTests: XCTestCase {
 }
 
 private extension XCUIElement {
+    func waitForSelected(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if exists && isSelected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return exists && isSelected
+    }
+
+    var hasKeyboardFocus: Bool { (value(forKey: "hasKeyboardFocus") as? Bool) ?? false }
+
     func waitForHittable(timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
