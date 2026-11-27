@@ -483,8 +483,12 @@ final class JourneyTests: XCTestCase {
                 XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Horario:")).firstMatch.waitForExistence(timeout: 5))
                 capture("Información del recorrido")
                 tap("catalog-information-close")
+                // La hoja de información debe terminar de cerrarse antes de abrir la de listas.
+                let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["catalog-information-close"])
+                wait(for: [closed], timeout: 10)
+                XCTAssertTrue(app.buttons["Guardar en listas"].waitForHittable(timeout: 5))
                 tap("Guardar en listas")
-                XCTAssertTrue(app.navigationBars["Guardar en listas"].waitForExistence(timeout: 5))
+                XCTAssertTrue(app.navigationBars["Guardar en listas"].waitForExistence(timeout: 10))
                 saveCurrentRoute(inList: "Recorridos habituales")
                 capture("Guardar recorrido real en listas")
                 tap("Listo")
