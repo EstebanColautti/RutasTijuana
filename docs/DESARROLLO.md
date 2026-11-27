@@ -154,7 +154,7 @@ El catálogo ofrece la guía para paradas con coordenada puntual. El planificado
 
 ## Comprobaciones en GitHub
 
-El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pruebas de interfaz en otro runner de macOS. Cada trabajo muestra su resultado y el resumen final reúne los estados y duraciones. Los cambios documentales omiten las compilaciones; los cambios web omiten iPhone; los cambios compartidos o desconocidos ejecutan todo.
+El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pruebas de interfaz en otro runner de macOS. Cada trabajo muestra su resultado y el resumen final reúne los estados y duraciones. Los cambios documentales omiten las compilaciones; los cambios web omiten iPhone; los cambios compartidos o desconocidos ejecutan todo. En un PR en borrador solo corren herramientas, lógica y Release; las pruebas de iPhone corren al marcarlo como listo, en cada push a `main` y en la ejecución manual.
 
 La ejecución manual ofrece `full` y `native`. Desde una ejecución de Actions se pueden repetir únicamente los trabajos fallidos. Una actualización de la rama cancela su ejecución anterior. Las pruebas de iPhone conservan resultados, capturas y diagnósticos durante siete días.
 

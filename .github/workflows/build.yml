@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       mode:
@@ -45,6 +46,7 @@ jobs:
     outputs:
       web: ${{ steps.select.outputs.web }}
       native: ${{ steps.select.outputs.native }}
+      ui: ${{ steps.select.outputs.ui }}
       reason: ${{ steps.select.outputs.reason }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +59,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
           CHECK_MODE: ${{ inputs.mode || 'full' }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: python3 scripts/ci_select.py
       - name: Configuración
         run: |
@@ -141,7 +144,8 @@ jobs:
   ui:
     name: Interfaz iPhone
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
+    # En borradores solo corren lógica, Release y panel; el iPhone corre al marcar el PR como listo.
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.ui == 'true' }}
     runs-on: ${{ matrix.device == 'compact' && 'macos-15' || 'macos-26' }}
     timeout-minutes: 55
     strategy:

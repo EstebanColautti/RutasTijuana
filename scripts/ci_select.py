@@ -29,17 +29,20 @@ def area(path):
     return True, True
 
 
-def select(paths, event='pull_request', mode='full'):
+def select(paths, event='pull_request', mode='full', draft=False):
+    """Elige trabajos. Las pruebas de iPhone esperan a que el PR deje de ser borrador."""
     if event == 'workflow_dispatch':
-        return {'web': mode != 'native', 'native': True, 'reason': 'Ejecución manual: ' + mode}
+        return {'web': mode != 'native', 'native': True, 'ui': True, 'reason': 'Ejecución manual: ' + mode}
     if event != 'pull_request' or paths is None:
-        return {'web': True, 'native': True, 'reason': 'Comprobación completa'}
+        return {'web': True, 'native': True, 'ui': True, 'reason': 'Comprobación completa'}
     web = native = False
     for path in paths:
         needs_web, needs_native = area(path)
         web, native = web or needs_web, native or needs_native
     reason = 'Cambios web y nativos' if web and native else 'Cambios nativos' if native else 'Cambios web' if web else 'Documentación'
-    return {'web': web, 'native': native, 'reason': reason}
+    if native and draft:
+        reason += '; iPhone al marcar el PR como listo'
+    return {'web': web, 'native': native, 'ui': native and not draft, 'reason': reason}
 
 
 def main():
@@ -52,7 +55,8 @@ def main():
         paths = [p for p in names if p]
     except (ValueError, subprocess.SubprocessError, UnicodeError):
         pass
-    result = select(paths, os.environ.get('EVENT_NAME', ''), os.environ.get('CHECK_MODE', 'full'))
+    result = select(paths, os.environ.get('EVENT_NAME', ''), os.environ.get('CHECK_MODE', 'full'),
+                    os.environ.get('DRAFT', '') == 'true')
     print(json.dumps(result, ensure_ascii=False))
     with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
         for key, value in result.items():

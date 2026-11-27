@@ -23,6 +23,19 @@ class CISelectionTests(unittest.TestCase):
                 result = select(files)
                 self.assertEqual((result['web'], result['native']), (web, native))
 
+    def test_draft_waits_for_iphone(self):
+        draft = select(['RutasTijuana/CatalogView.swift'], draft=True)
+        self.assertEqual((draft['native'], draft['ui']), (True, False))
+        self.assertTrue(select(['RutasTijuana/CatalogView.swift'], draft=False)['ui'])
+        self.assertFalse(select(['admin/src/main.tsx'], draft=False)['ui'])
+        self.assertTrue(select([], 'push', draft=True)['ui'])
+        self.assertTrue(select([], 'workflow_dispatch', 'native', draft=True)['ui'])
+        skipped = {'changes': {'result': 'success', 'outputs': {'web': 'false', 'native': 'true', 'ui': 'false'}},
+                   'web': {'result': 'skipped'}, 'native': {'result': 'success'}, 'ui': {'result': 'skipped'}}
+        self.assertTrue(successful(skipped), 'Un borrador sin iPhone no se marca como fallo')
+        skipped['ui'] = {'result': 'failure'}
+        self.assertFalse(successful(skipped))
+
     def test_modes(self):
         self.assertEqual(select([], 'push')['native'], True)
         self.assertEqual(select([], 'workflow_dispatch', 'native')['web'], False)
