@@ -600,7 +600,7 @@ struct TripPlannerView: View {
                 }
             } else {
                 Text("Elige un destino en el mapa o búscalo arriba.")
-                    .font(AppDesign.type(15, relativeTo: .subheadline, weight: .regular))
+                    .font(AppDesign.explanation)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
         }

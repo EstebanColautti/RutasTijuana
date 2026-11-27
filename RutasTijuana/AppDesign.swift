@@ -68,6 +68,8 @@ enum AppDesign {
     static var subtitle: Font { type(14, relativeTo: .subheadline, weight: .semibold) }
     static var body: Font { type(14, relativeTo: .body, weight: .light) }
     static var note: Font { type(12, relativeTo: .footnote, weight: .lightItalic) }
+    /// Texto explicativo de estados vacíos e indicaciones: peso regular para leerse sobre vidrio.
+    static var explanation: Font { type(15, relativeTo: .subheadline, weight: .regular) }
 
     enum Face: String, CaseIterable {
         case light = "Light"

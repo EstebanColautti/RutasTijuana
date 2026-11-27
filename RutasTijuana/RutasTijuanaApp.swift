@@ -57,7 +57,8 @@ private struct MainTabs: View {
                 .tag(AppDestination.routes)
 
                 home
-                    .safeAreaPadding(.bottom, dockHeight)
+                    .padding(.bottom, legacyHome ? dockHeight : 0)
+                    .safeAreaPadding(.bottom, legacyHome ? 0 : dockHeight)
                     .toolbar(.hidden, for: .tabBar)
                     .id("home-\(tabResets[.home, default: 0])")
                     .tag(AppDestination.home)
@@ -84,6 +85,15 @@ private struct MainTabs: View {
         .environment(\.activeAppDestination, selected)
         .environment(\.openAppDestination, select)
         .tint(AppDesign.primary)
+    }
+
+    /// La consulta anterior no está pensada para quedar bajo el dock flotante.
+    private var legacyHome: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--legacy-consultation-test")
+        #else
+        false
+        #endif
     }
 
     @ViewBuilder private var home: some View {

@@ -443,7 +443,7 @@ struct CatalogView: View {
                         .multilineTextAlignment(.center)
                         .accessibilityAddTraits(.isHeader)
                     Text("Toca la estrella en la ficha de una ruta para tenerla aquí.")
-                        .font(AppDesign.body)
+                        .font(AppDesign.explanation)
                         .foregroundStyle(AppDesign.secondaryInk)
                         .multilineTextAlignment(.center)
                     if let openAppDestination {
@@ -1009,14 +1009,14 @@ struct CatalogView: View {
 
     private var trimmedListName: String { listName.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private var listNameIsValid: Bool {
+    private func listNameIsValid(for naming: ListNaming?) -> Bool {
         guard !trimmedListName.isEmpty else { return false }
-        let renaming: UUID? = if case .rename(let id) = listNaming { id } else { nil }
+        let renaming: UUID? = if case .rename(let id) = naming { id } else { nil }
         return !savedLists.contains { $0.id != renaming && normalized($0.name) == normalized(trimmedListName) }
     }
 
-    private func commitListName() {
-        guard listNameIsValid, let naming = listNaming else { return }
+    private func commitListName(_ naming: ListNaming) {
+        guard listNameIsValid(for: naming) else { return }
         withAnimation(reduceMotion ? nil : AppDesign.navigationMotion) {
             switch naming {
             case .create(let routeID):
@@ -1102,7 +1102,7 @@ struct CatalogView: View {
             Text("Aún no tienes listas").font(AppDesign.subtitle).accessibilityAddTraits(.isHeader)
             Text(routeID == nil ? "Agrupa tus rutas, por ejemplo «Trabajo» o «Escuela»."
                                 : "Crea una lista para guardar esta ruta.")
-                .font(AppDesign.body).foregroundStyle(AppDesign.secondaryInk).multilineTextAlignment(.center)
+                .font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk).multilineTextAlignment(.center)
             newListButton(routeID, prominent: true)
         }
         .frame(maxWidth: 300)
@@ -1181,8 +1181,10 @@ struct CatalogView: View {
                isPresented: Binding(get: { listNaming != nil }, set: { if !$0 { listNaming = nil } })) {
             TextField("Nombre de la lista", text: $listName)
             Button("Cancelar", role: .cancel) { listName = "" }
-            Button(listNaming.map { if case .rename = $0 { "Guardar" } else { "Crear" } } ?? "Crear") { commitListName() }
-                .disabled(!listNameIsValid)
+            // Se captura la operación: en iOS 17 el diálogo se cierra (y limpia listNaming) antes de la acción.
+            let naming = listNaming ?? .create(routeID: nil)
+            Button({ if case .rename = naming { "Guardar" } else { "Crear" } }()) { commitListName(naming) }
+                .disabled(!listNameIsValid(for: naming))
         } message: {
             Text("Por ejemplo «Trabajo» o «Escuela».")
         }
@@ -1211,7 +1213,7 @@ struct CatalogView: View {
                         listIcon("bookmark")
                         Text("Esta lista está vacía").font(AppDesign.subtitle)
                         Text("Abre una ruta y toca el marcador para guardarla aquí.")
-                            .font(AppDesign.body).foregroundStyle(AppDesign.secondaryInk).multilineTextAlignment(.center)
+                            .font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
