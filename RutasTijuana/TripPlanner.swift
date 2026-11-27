@@ -98,7 +98,47 @@ struct PlannedTrip: Sendable {
 
 enum TripPlanningError: Error, Sendable { case invalidInput, tryAgainLater }
 
+extension TripService {
+    /// Nombre corto para chips: «R1» de «R1: Del Cedro-Centro»; si no hay prefijo, el nombre completo.
+    var shortName: String {
+        let prefix = name.split(separator: ":", maxSplits: 1).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? name
+        return prefix.count <= 10 && prefix != name ? prefix : name
+    }
+}
+
+extension TripLeg {
+    /// Distancia de la etapa en metros: el camino peatonal o el tramo del recorrido entre subida y bajada.
+    var distance: Double? {
+        switch self {
+        case .walk(_, _, let route): return route.length
+        case .ride(let service, let stops):
+            guard let section = service.section(through: stops), section.count > 1 else { return nil }
+            return RouteMeasure(section).length
+        }
+    }
+
+    /// Duración estimada de la etapa en segundos (sin horarios en tiempo real).
+    var duration: TimeInterval? {
+        switch self {
+        case .walk(_, _, let route): return route.duration
+        case .ride: return distance.map { $0 / TripCost.ridingSpeed }
+        }
+    }
+
+    var isWalk: Bool { if case .walk = self { return true } else { return false } }
+}
+
 extension PlannedTrip {
+    /// Duración total estimada; nil si alguna etapa no tiene trazado medible.
+    var duration: TimeInterval? {
+        var seconds: TimeInterval = 0
+        for leg in legs {
+            guard let value = leg.duration else { return nil }
+            seconds += value
+        }
+        return seconds.isFinite && seconds > 0 ? seconds : nil
+    }
+
     /// Resumen breve del itinerario sin cifras vacías como «0 transbordos · 0 m a pie».
     var summary: String {
         let transferText = transfers == 0 ? "Sin transbordos" : "\(transfers) \(transfers == 1 ? "transbordo" : "transbordos")"

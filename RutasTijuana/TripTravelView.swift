@@ -234,7 +234,7 @@ struct TripTravelView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showingStages = false
+    @State private var stopNames: [String: String] = [:]
     @AccessibilityFocusState private var stageFocused: Bool
     init(trip: PlannedTrip, destinationName: String = "Destino", onReplan: ((GeoPoint) -> Void)? = nil,
          inlineFinish: @escaping () -> Void, onStageChange: ((Int) -> Void)? = nil) {
@@ -254,92 +254,211 @@ struct TripTravelView: View {
         }
     }
 
-    private var stageProgress: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Etapa \(model.index + 1) de \(model.trip.legs.count)")
-                .font(AppDesign.subtitle)
-            ProgressView(value: Double(model.index + 1), total: Double(max(1, model.trip.legs.count)))
-                .tint(AppDesign.accent)
-                .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: model.index)
-                .accessibilityLabel("Progreso por etapas del viaje")
-                .accessibilityValue("Etapa \(model.index + 1) de \(model.trip.legs.count)")
+    // MARK: Presentación por etapas
+
+    /// «Sube en Parada X» o, si la parada es sugerida, «Sube cerca de Calle Y».
+    private func stopPhrase(_ verb: String, _ stop: TransitStop?) -> String {
+        guard let stop else { return verb + " en la parada" }
+        if !stop.suggested { return verb + " en " + stop.name }
+        return stopNames[stop.id].map { verb + " cerca de " + $0 } ?? verb + " en la parada sugerida"
+    }
+
+    private func resolveStopNames() async {
+        guard case .ride(_, let stops)? = model.leg else { return }
+        for stop in [stops.first, stops.last].compactMap({ $0 }) where stop.suggested && stopNames[stop.id] == nil {
+            let place = try? await CLGeocoder().reverseGeocodeLocation(
+                CLLocation(latitude: stop.point.latitude, longitude: stop.point.longitude)).first
+            if let street = place?.thoroughfare ?? place?.subLocality { stopNames[stop.id] = street }
         }
     }
 
-    private func stageTitle(_ leg: TripLeg) -> String {
+    /// Tira de etapas: lila las hechas, el color de su tipo la actual y gris las pendientes.
+    private var stageStrip: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(model.trip.legs.enumerated()), id: \.offset) { item in
+                let done = model.finished || item.offset < model.index
+                let current = !model.finished && item.offset == model.index
+                Capsule()
+                    .fill(done ? AppDesign.accent : current ? (item.element.isWalk ? AppNoticeTone.caution.accent : AppDesign.primary)
+                                                         : Color(uiColor: .tertiarySystemFill))
+                    .frame(height: 5)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: model.index)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progreso por etapas del viaje")
+        .accessibilityValue(model.finished ? "Completado" : "Etapa \(model.index + 1) de \(model.trip.legs.count)")
+        .accessibilityIdentifier("trip-stage-strip")
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            stageStrip
+            Button("Finalizar viaje", systemImage: "xmark") { confirmFinish = true }
+                .buttonStyle(AppIconButtonStyle())
+                .foregroundStyle(AppDesign.secondaryInk)
+                .accessibilityIdentifier("trip-finish")
+                .confirmationDialog("¿Finalizar el viaje?", isPresented: $confirmFinish, titleVisibility: .visible) {
+                    Button("Finalizar", role: .destructive) { closeTrip() }
+                    Button("Cancelar", role: .cancel) {}
+                }
+        }
+    }
+
+    private func metric(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(AppDesign.title).contentTransition(.numericText())
+            Text(label).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func hero(_ title: String, _ subtitle: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(AppDesign.type(21, relativeTo: .title2, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+            if let subtitle { Text(subtitle).font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityFocused($stageFocused)
+    }
+
+    private var nextLegIsRide: Bool {
+        model.trip.legs.indices.contains(model.index + 1) && !model.trip.legs[model.index + 1].isWalk
+    }
+
+    @ViewBuilder private func stageContent(_ leg: TripLeg) -> some View {
         switch leg {
         case .walk(_, _, let route):
-            return "Caminata · " + WalkingFormat.distance(route.length)
-        case .ride(let service, let stops):
-            if let first = stops.first, let last = stops.last {
-                return "\(service.name) · \(first.name) a \(last.name)"
+            let steps = route.steps.map { WalkingFormat.spanish($0.instruction) }
+            stageBadge(symbol: "figure.walk", fill: AppNoticeTone.caution.accent, ink: AppDesign.header)
+            hero(steps.first ?? (nextLegIsRide ? "Camina a la parada" : "Camina a tu destino"),
+                 nextLegIsRide ? "Hacia la parada donde subes" : "Hacia " + destinationName)
+            HStack(spacing: 24) {
+                metric(WalkingFormat.distance(route.length), "a pie")
+                metric(WalkingFormat.minutes(route.duration), nextLegIsRide ? "a la parada" : "al destino")
             }
-            return service.name
+            if steps.count > 1 {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(steps.dropFirst().enumerated()), id: \.offset) { step in
+                        if step.offset > 0 { Divider().padding(.leading, 40) }
+                        Label {
+                            Text(step.element).font(AppDesign.body).fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: WalkingFormat.turnSymbol(step.element))
+                                .foregroundStyle(AppDesign.primary).frame(width: 24)
+                        }
+                        .padding(.vertical, 10)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .appCard()
+            }
+        case .ride(let service, let stops):
+            stageBadge(symbol: "bus.fill", fill: AppDesign.primary, ink: .white)
+            if model.aboard {
+                hero(stopPhrase("Baja", stops.last), service.name)
+                HStack(spacing: 24) {
+                    if let meters = model.remaining ?? leg.distance { metric(WalkingFormat.distance(meters), "para bajar") }
+                    if let meters = model.remaining ?? leg.distance { metric(WalkingFormat.minutes(meters / TripCost.ridingSpeed), "aprox.") }
+                }
+            } else {
+                hero(stopPhrase("Sube", stops.first), service.name)
+                HStack(spacing: 24) {
+                    if let seconds = leg.duration { metric(WalkingFormat.minutes(seconds), "en transporte") }
+                    if let meters = leg.distance { metric(WalkingFormat.distance(meters), "de recorrido") }
+                }
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "bus.fill")
+                    .font(model.aboard ? AppDesign.body : AppDesign.title)
+                    .foregroundStyle(model.aboard ? AppDesign.secondaryInk : .primary)
+                Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
+                    .font(model.aboard ? AppDesign.title : AppDesign.body)
+                    .foregroundStyle(model.aboard ? .primary : AppDesign.secondaryInk)
+                if let direction = service.direction, !WalkingFormat.sameText(direction, service.name) {
+                    Label(direction, systemImage: "arrow.triangle.turn.up.right.diamond")
+                        .font(AppDesign.body).foregroundStyle(AppDesign.secondaryInk)
+                }
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .appCard()
+            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: model.aboard)
+            if stops.contains(where: \.suggested) {
+                Text("Confirma con el conductor dónde subir y bajar.").font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+            }
         }
     }
 
-    private var allStages: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button { showingStages.toggle() } label: {
-                HStack {
-                    Text("Ver etapas del viaje")
-                    Spacer()
-                    Image(systemName: showingStages ? "chevron.down" : "chevron.right")
-                        .accessibilityHidden(true)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
+    @AppStorage("favorite-routes") private var favoriteData = Data()
+
+    private var finishedContent: some View {
+        let rides = model.trip.legs.compactMap { leg -> TripService? in
+            if case .ride(let service, _) = leg { return service } else { return nil }
+        }
+        let walked = model.trip.legs.filter(\.isWalk).compactMap(\.distance).reduce(0, +)
+        let route = rides.first?.catalogRouteID
+        let saved = route.map { FavoriteRoutes.decode(favoriteData).contains($0) } ?? true
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("Llegaste al destino", systemImage: "checkmark.circle.fill")
+                .font(AppDesign.type(21, relativeTo: .title2, weight: .semibold))
+                .foregroundStyle(AppDesign.primary)
+                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
+            Text(destinationName).font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk)
+            HStack(spacing: 24) {
+                if let seconds = model.trip.duration { metric(WalkingFormat.minutes(seconds), "de viaje") }
+                if walked >= 1 { metric(WalkingFormat.distance(walked), "a pie") }
             }
-            .accessibilityValue(showingStages ? "Expandido" : "Contraído")
-            .accessibilityIdentifier("trip-stages")
-            if showingStages {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(model.trip.legs.enumerated()), id: \.offset) { item in
-                        let status = model.finished || item.offset < model.index ? "Completada" : item.offset == model.index ? "Actual" : "Pendiente"
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Etapa \(item.offset + 1) · \(status)").font(.caption.weight(.semibold))
-                            Text(stageTitle(item.element))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityValue(status)
-                        .accessibilityIdentifier("trip-stage-\(item.offset + 1)")
+            if !rides.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(rides.enumerated()), id: \.offset) { ride in
+                        Label(ride.element.name, systemImage: "bus.fill").font(AppDesign.body)
                     }
                 }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .appCard()
+            }
+            if let route, !saved {
+                Button("Guardar ruta en favoritos", systemImage: "star") {
+                    favoriteData = FavoriteRoutes.toggle(route, in: favoriteData)
+                }
+                .font(AppDesign.subtitle)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("trip-save-favorite")
             }
         }
     }
 
     @ViewBuilder private func stageAction(stage: Int) -> some View {
-        if model.finished {
-            TripActionButton("Terminar") { closeTrip() }.frame(minHeight: 44)
-        } else if let leg = model.leg {
-            switch leg {
-            case .walk:
-                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
-                layout {
-                    TripActionButton("Ya llegué") { model.advance(from: stage) }
+        Group {
+            if model.finished {
+                TripActionButton("Terminar", fullWidth: true) { closeTrip() }
+                    .accessibilityIdentifier("trip-close")
+            } else if let leg = model.leg {
+                switch leg {
+                case .walk:
+                    TripActionButton(nextLegIsRide ? "Ya llegué a la parada" : "Ya llegué", fullWidth: true) { model.advance(from: stage) }
                         .accessibilityIdentifier("trip-walk-arrived")
-                        .buttonStyle(AppActionStyle())
-                }
-            case .ride:
-                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
-                layout {
+                case .ride:
                     if model.aboard && model.paused {
-                        TripActionButton("Continuar seguimiento") { model.resume() }.frame(minHeight: 44)
-                    }
-                    if model.aboard {
-                        TripActionButton("Ya bajé") { model.advance(from: stage) }
+                        TripActionButton("Continuar seguimiento", fullWidth: true) { model.resume() }
+                    } else if model.aboard {
+                        TripActionButton("Ya bajé", fullWidth: true) { model.advance(from: stage) }
                             .accessibilityIdentifier("trip-alight")
-                            .buttonStyle(AppActionStyle())
                     } else {
-                        TripActionButton("Ya subí") { model.board(from: stage) }
+                        TripActionButton("Ya subí", fullWidth: true) { model.board(from: stage) }
                             .accessibilityIdentifier("trip-board")
-                            .buttonStyle(AppActionStyle())
                     }
                 }
             }
         }
+        .buttonStyle(AppActionStyle())
+        .frame(maxWidth: .infinity)
     }
 
     private func closeTrip() {
@@ -357,94 +476,38 @@ struct TripTravelView: View {
             .contentTransition(reduceMotion ? .identity : .opacity)
     }
 
+    /// Avisos que requieren atención; el avance normal ya lo cuentan el título y las métricas.
+    private var attentionMessage: String? {
+        guard !model.message.isEmpty else { return nil }
+        if model.paused || model.missedStop || model.message.hasPrefix("Se acerca") || model.message.hasPrefix("No ")
+            || model.message.contains("ubicación") || model.message.hasPrefix("Confirma") { return model.message }
+        return nil
+    }
+
     private func travelPanel(stage: Int) -> some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    AppPanelHeading(title: model.finished ? "Viaje finalizado" : "Trayecto en curso") {
-                        EmptyView()
-                    }
-                    .overlay(alignment: .leading) {
-                        Button {
-                            confirmFinish = true
-                        } label: {
-                            Image(systemName: "arrow.left").frame(width: 44, height: 44).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Finalizar viaje")
-                        .accessibilityIdentifier("trip-finish")
-                        .confirmationDialog("¿Finalizar el viaje?", isPresented: $confirmFinish, titleVisibility: .visible) {
-                            Button("Finalizar", role: .destructive) { closeTrip() }
-                            Button("Cancelar", role: .cancel) {}
-                        }
-                    }
-                    if !model.finished && model.trip.legs.count > 1 { stageProgress }
+                VStack(alignment: .leading, spacing: 14) {
+                    header
                     if model.finished {
-                        Label("Llegaste al destino", systemImage: "checkmark.circle")
-                            .font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
-                            .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
-                            .onAppear { stageFocused = true }
+                        finishedContent
                     } else if let leg = model.leg {
-                        switch leg {
-                        case .walk(_, _, let route):
-                            stageBadge(symbol: "figure.walk", fill: AppNoticeTone.caution.accent, ink: AppDesign.header)
-                                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
-                                .onAppear { stageFocused = true }
-                            Text(WalkingFormat.distance(route.length))
-                                .font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
-                            if !route.steps.isEmpty {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(Array(route.steps.enumerated()), id: \.offset) { step in
-                                        if step.offset > 0 { Divider().padding(.leading, 40) }
-                                        Label {
-                                            Text(step.element.instruction).font(AppDesign.body)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        } icon: {
-                                            Image(systemName: WalkingFormat.turnSymbol(step.element.instruction))
-                                                .foregroundStyle(AppDesign.primary)
-                                                .frame(width: 24)
-                                        }
-                                        .padding(.vertical, 10)
-                                    }
-                                }
-                                .padding(.horizontal, 14)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .appCard()
-                            }
-                        case .ride(let service, let stops):
-                            stageBadge(symbol: "bus.fill", fill: AppDesign.primary, ink: .white)
-                            Text(service.name).font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
-                                .accessibilityAddTraits(.isHeader).accessibilityFocused($stageFocused)
-                                .onAppear { stageFocused = true }
-                            Text(service.direction ?? "Sigue el sentido indicado en el recorrido").font(AppDesign.body)
-                            VStack(alignment: .leading, spacing: 12) {
-                                Label(stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")", systemImage: "bus.fill")
-                                    .font(model.aboard ? AppDesign.body : AppDesign.title)
-                                    .foregroundStyle(model.aboard ? .secondary : .primary)
-                                Label(stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")", systemImage: "mappin.circle.fill")
-                                    .font(model.aboard ? AppDesign.title : AppDesign.body)
-                                    .foregroundStyle(model.aboard ? .primary : .secondary)
-                            }
-                            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                            .appCard()
-                            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: model.aboard)
-                            if stops.contains(where: \.suggested) {
-                                Text("Confirma con el conductor dónde puedes subir y bajar.").font(AppDesign.note)
-                            }
-                            if let meters = model.remaining { Text("Faltan \(WalkingFormat.distance(meters)) para la bajada") }
-                        }
+                        stageContent(leg)
                     }
-                    if !model.finished, model.index > 0 {
-                        TripActionButton("Volver a la etapa anterior") { model.previousLeg(from: stage) }.frame(minHeight: 44)
+                    if let attention = attentionMessage {
+                        AppNotice(text: attention, tone: .caution).accessibilityIdentifier("trip-travel-status")
                     }
-                    allStages
-                    if !model.message.isEmpty { Text(model.message).accessibilityIdentifier("trip-travel-status") }
                     if model.missedStop, model.point != nil, let onReplan {
                         TripActionButton("Recalcular desde aquí") {
                             guard model.missedStop, model.locationIsCurrent, let point = model.point else { return }
                             model.finish()
                             onReplan(point)
                         }.frame(minHeight: 44).disabled(!model.locationIsCurrent)
+                    }
+                    if !model.finished, model.index > 0 {
+                        Button("Volver a la etapa anterior", systemImage: "arrow.uturn.backward") { model.previousLeg(from: stage) }
+                            .font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                            .frame(minHeight: 44)
                     }
                 }
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -462,6 +525,7 @@ struct TripTravelView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         }
+        .task(id: model.index) { await resolveStopNames() }
     }
 
     var body: some View {

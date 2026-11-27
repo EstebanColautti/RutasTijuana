@@ -105,7 +105,11 @@ final class JourneyTests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: name.count + 2))
         let renamed = name.replacingOccurrences(of: "Escuela", with: "Trabajo")
         field.typeText(renamed)
-        rename.buttons["Guardar"].tap()
+        let save = rename.buttons["Guardar"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        // Con el teclado activo, el primer toque a veces solo cierra la sugerencia del teclado.
+        if rename.waitForExistence(timeout: 2), save.isHittable { save.tap() }
         XCTAssertTrue(app.navigationBars[renamed].waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons[renamed].waitForExistence(timeout: 10))
@@ -555,7 +559,9 @@ final class JourneyTests: XCTestCase {
             throw XCTSkip("No se obtuvo un itinerario con rutas peatonales durante la captura.")
         }
         XCTAssertTrue(app.buttons["trip-begin"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.staticTexts["Punto de origen"].exists, "La captura usa la dirección real del origen")
+        // La dirección se resuelve en segundo plano; se espera a que reemplace el rótulo provisional.
+        let resolved = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.staticTexts["Punto de origen"])
+        wait(for: [resolved], timeout: 15)
         let emptyFigures = NSPredicate(format: "label CONTAINS '0 transbordos' OR label CONTAINS ' 0 m a pie'")
         XCTAssertFalse(app.staticTexts.containing(emptyFigures).firstMatch.exists, "Sin cifras vacías en el resumen")
         let begin = app.buttons["trip-begin"].frame
@@ -630,7 +636,8 @@ final class JourneyTests: XCTestCase {
         XCTAssertTrue(app.buttons["trip-alight"].waitForExistence(timeout: 10))
         tap("trip-alight")
         if arrive.isHittable { arrive.tap() }
-        XCTAssertTrue(app.staticTexts["Viaje finalizado"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Llegaste al destino"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["trip-close"].exists, "Terminar es el botón principal al llegar")
         capture("Viaje finalizado con recorrido real")
         try XCTUnwrap(app.buttons.matching(identifier: "dock-Inicio")
             .allElementsBoundByIndex.last(where: \.isHittable)).tap()

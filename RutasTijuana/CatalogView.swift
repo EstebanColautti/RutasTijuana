@@ -992,6 +992,29 @@ struct CatalogView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Contenido de los diálogos de listas. Lo presenta la pantalla visible (raíz o detalle): desde iOS 18 un
+    /// diálogo del contenedor no recibe sus botones mientras hay una pantalla apilada encima.
+    private var listDialogContent: ListDialogContent {
+        let naming = listNaming ?? .create(routeID: nil)
+        return ListDialogContent(
+            title: { if case .rename = naming { "Renombrar lista" } else { "Nueva lista" } }(),
+            confirm: { if case .rename = naming { "Guardar" } else { "Crear" } }(),
+            text: $listName,
+            valid: listNameIsValid(for: naming),
+            commit: { commitListName(naming) },
+            cancel: { listName = "" })
+    }
+
+    private var listDeletionContent: ListDeletionContent {
+        let name = listPendingDeletion.flatMap { id in savedLists.first { $0.id == id } }?.name ?? ""
+        return ListDeletionContent(title: "¿Eliminar «\(name)»?", delete: {
+            guard let id = listPendingDeletion else { return }
+            withAnimation(reduceMotion ? nil : AppDesign.navigationMotion) { savedLists = savedLists.filter { $0.id != id } }
+            listPath.removeAll { $0 == id }
+            listPendingDeletion = nil
+        })
+    }
+
     private func listEditor(routeID: String?) -> some View {
         NavigationStack(path: $listPath) {
             ScrollView {
@@ -1057,37 +1080,13 @@ struct CatalogView: View {
                     Button("Listo") { savingToLists = false; showingLists = false }
                 }
             }
-            .navigationDestination(for: UUID.self) { listDetail($0) }
-        }
-        .alert(listNaming.map { if case .rename = $0 { "Renombrar lista" } else { "Nueva lista" } } ?? "",
-               isPresented: Binding(get: { listNaming != nil }, set: { if !$0 { listNaming = nil } })) {
-            TextField("Nombre de la lista", text: $listName)
-            Button("Cancelar", role: .cancel) { listName = "" }
-            // Se captura la operación: el diálogo puede cerrarse (y limpiar listNaming) antes de la acción.
-            let naming = listNaming ?? .create(routeID: nil)
-            // El campo puede entregar el texto después de la acción: se confirma en el siguiente ciclo.
-            Button({ if case .rename = naming { "Guardar" } else { "Crear" } }()) {
-                Task { @MainActor in
-                    await Task.yield()
-                    commitListName(naming)
-                }
+            .listDialogs(active: listPath.isEmpty, naming: $listNaming, pendingDeletion: $listPendingDeletion,
+                         content: listDialogContent, deletion: listDeletionContent)
+            .navigationDestination(for: UUID.self) { id in
+                listDetail(id)
+                    .listDialogs(active: listPath.last == id, naming: $listNaming, pendingDeletion: $listPendingDeletion,
+                                 content: listDialogContent, deletion: listDeletionContent)
             }
-                .disabled(!listNameIsValid(for: naming))
-        } message: {
-            Text("Por ejemplo «Trabajo» o «Escuela».")
-        }
-        .confirmationDialog(listPendingDeletion.flatMap { id in savedLists.first { $0.id == id } }.map { "¿Eliminar «\($0.name)»?" } ?? "",
-                            isPresented: Binding(get: { listPendingDeletion != nil }, set: { if !$0 { listPendingDeletion = nil } }),
-                            titleVisibility: .visible) {
-            Button("Eliminar lista", role: .destructive) {
-                guard let id = listPendingDeletion else { return }
-                withAnimation(reduceMotion ? nil : AppDesign.navigationMotion) { savedLists = savedLists.filter { $0.id != id } }
-                listPath.removeAll { $0 == id }
-                listPendingDeletion = nil
-            }
-            Button("Cancelar", role: .cancel) { listPendingDeletion = nil }
-        } message: {
-            Text("Las rutas siguen disponibles en Rutas.")
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
         .onDisappear { listPath = [] }
@@ -1289,4 +1288,46 @@ struct CatalogView: View {
 
 private extension CatalogPosition {
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+}
+
+struct ListDialogContent {
+    let title: String
+    let confirm: String
+    let text: Binding<String>
+    let valid: Bool
+    let commit: () -> Void
+    let cancel: () -> Void
+}
+
+struct ListDeletionContent {
+    let title: String
+    let delete: () -> Void
+}
+
+private extension View {
+    /// Diálogos de crear, renombrar y eliminar listas, presentados solo por la pantalla visible.
+    func listDialogs<Naming: Equatable>(active: Bool, naming: Binding<Naming?>, pendingDeletion: Binding<UUID?>,
+                                        content: ListDialogContent, deletion: ListDeletionContent) -> some View {
+        self
+            .alert(content.title, isPresented: Binding(get: { active && naming.wrappedValue != nil },
+                                                       set: { if !$0 { naming.wrappedValue = nil } })) {
+                TextField("Nombre de la lista", text: content.text)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.sentences)
+                Button("Cancelar", role: .cancel) { content.cancel() }
+                // El campo puede entregar el texto después de la acción: se confirma en el siguiente ciclo.
+                Button(content.confirm) { Task { @MainActor in await Task.yield(); content.commit() } }
+                    .disabled(!content.valid)
+            } message: {
+                Text("Por ejemplo «Trabajo» o «Escuela».")
+            }
+            .confirmationDialog(deletion.title, isPresented: Binding(get: { active && pendingDeletion.wrappedValue != nil },
+                                                                     set: { if !$0 { pendingDeletion.wrappedValue = nil } }),
+                                titleVisibility: .visible) {
+                Button("Eliminar lista", role: .destructive) { deletion.delete() }
+                Button("Cancelar", role: .cancel) { pendingDeletion.wrappedValue = nil }
+            } message: {
+                Text("Las rutas siguen disponibles en Rutas.")
+            }
+    }
 }

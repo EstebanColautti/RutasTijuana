@@ -748,3 +748,35 @@ func testPresentationRules() {
     print("Pruebas de reglas de presentación correctas")
 }
 testPresentationRules()
+
+func testTripPresentation() {
+    check(WalkingFormat.spanish("Take a right onto Calle Cañón Zacatecas") == "Gira a la derecha en Calle Cañón Zacatecas", "Traduce giro a la derecha")
+    check(WalkingFormat.spanish("Turn left onto Avenida González Bocanegra") == "Gira a la izquierda en Avenida González Bocanegra", "Traduce giro a la izquierda")
+    check(WalkingFormat.spanish("Continue onto Calle Las Plazas") == "Continúa por Calle Las Plazas", "Traduce continuar")
+    check(WalkingFormat.spanish("Head north on Avenida Revolución") == "Camina hacia el norte por Avenida Revolución", "Traduce rumbo")
+    check(WalkingFormat.spanish("Arrive at the destination") == "Llegaste al destino", "Traduce llegada")
+    check(WalkingFormat.spanish("The destination is on your left") == "El destino está a tu izquierda", "Traduce lado del destino")
+    check(WalkingFormat.spanish("Da vuelta a la derecha por Calle Plaza México") == "Da vuelta a la derecha por Calle Plaza México", "Conserva el español")
+    check(WalkingFormat.spanish("Take the stairs") == "Take the stairs", "Conserva frases desconocidas")
+
+    check(WalkingFormat.minutes(30) == "1 min", "Mínimo un minuto")
+    check(WalkingFormat.minutes(240) == "4 min", "Minutos")
+    check(WalkingFormat.minutes(3_900) == "1 h 5 min", "Horas y minutos")
+    check(WalkingFormat.minutes(3_600) == "1 h", "Hora exacta")
+    let noon = Calendar(identifier: .gregorian).date(from: DateComponents(timeZone: .current, year: 2026, month: 11, day: 27, hour: 9, minute: 41))!
+    check(WalkingFormat.arrival(after: 1_620, from: noon) == "10:08", "Hora de llegada")
+
+    let a = GeoPoint(latitude: 32.50, longitude: -117.0), b = GeoPoint(latitude: 32.51, longitude: -117.0)
+    let named = TripService(id: "r1", name: "R1: Del Cedro-Centro", direction: nil, stops: [], circular: false)
+    let plain = TripService(id: "x", name: "Ruta Violeta #1", direction: nil, stops: [], circular: false)
+    check(named.shortName == "R1", "Nombre corto con prefijo")
+    check(plain.shortName == "Ruta Violeta #1", "Nombre sin prefijo")
+    let walk = TripLeg.walk(from: a, to: b, route: WalkingRoute(points: [a, b], steps: [], duration: 600))
+    check(walk.isWalk && walk.duration == 600, "Duración de caminata")
+    check(abs((walk.distance ?? 0) - a.distance(to: b)) < 1, "Distancia de caminata")
+    let trip = PlannedTrip(catalogVersion: "v", legs: [walk, walk], transfers: 0, walkingMeters: 0, exceedsPreferences: false)
+    check(trip.duration == 1_200, "Duración total")
+    check(PlannedTrip(catalogVersion: "v", legs: [], transfers: 0, walkingMeters: 0, exceedsPreferences: false).duration == nil, "Sin etapas no hay duración")
+    print("Pruebas de presentación del trayecto correctas")
+}
+testTripPresentation()
