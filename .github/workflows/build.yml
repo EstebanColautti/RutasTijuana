@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       mode:
@@ -45,9 +46,10 @@ jobs:
     outputs:
       web: ${{ steps.select.outputs.web }}
       native: ${{ steps.select.outputs.native }}
+      ui: ${{ steps.select.outputs.ui }}
       reason: ${{ steps.select.outputs.reason }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -57,6 +59,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
           CHECK_MODE: ${{ inputs.mode || 'full' }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: python3 scripts/ci_select.py
       - name: Configuración
         run: |
@@ -74,17 +77,17 @@ jobs:
     steps:
       - id: begin
         run: echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
       - name: pnpm
         run: |
           npm install --global pnpm@11.25.0
           echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-node24.22.1-pnpm11.25.0-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml') }}
@@ -116,7 +119,7 @@ jobs:
     steps:
       - id: begin
         run: echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Lógica
@@ -131,7 +134,7 @@ jobs:
         env:
           STARTED: ${{ steps.begin.outputs.started }}
         run: echo "seconds=$(($(date +%s)-STARTED))" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: Release-diagnostics-${{ github.run_attempt }}
@@ -141,21 +144,22 @@ jobs:
   ui:
     name: Interfaz iPhone
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.native == 'true' }}
-    runs-on: macos-15
+    # En borradores solo corren lógica, Release y panel; el iPhone corre al marcar el PR como listo.
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.ui == 'true' }}
+    runs-on: ${{ matrix.device == 'compact' && 'macos-15' || 'macos-26' }}
     timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
         device: [standard, compact]
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.device == 'compact' && '/Applications/Xcode_16.4.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
     outputs:
       seconds: ${{ steps.elapsed.outputs.seconds }}
     steps:
       - id: begin
         run: echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Preparar simulador
@@ -163,13 +167,11 @@ jobs:
           PROFILE: ${{ matrix.device }}
         run: |
           if [ "$PROFILE" = compact ]; then
-            runtime=com.apple.CoreSimulator.SimRuntime.iOS-17-5
-            if ! xcrun simctl list runtimes available | grep -Fq "$runtime"; then
-              xcodebuild -downloadPlatform iOS -buildVersion 17.5
-            fi
+            # iOS 18, el mínimo de la app, con el runtime que trae la imagen de macOS 15.
+            runtime=$(xcrun simctl list runtimes available -j | python3 -c 'import json,sys; r=[x["identifier"] for x in json.load(sys.stdin)["runtimes"] if x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-18")]; print(sorted(r)[-1])')
             simulator=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
           else
-            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-18" in k for v in d[k] if "iPhone" in v["name"]))')
+            simulator=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k in sorted(d, reverse=True) if "iOS-26" in k for v in d[k] if v["name"] == "iPhone 17"))')
           fi
           echo "SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$simulator"
@@ -190,15 +192,27 @@ jobs:
         run: |
           if [ -d "$RUNNER_TEMP/UITests.xcresult" ]; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/UITests.xcresult" > "$RUNNER_TEMP/ui-summary.json"
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UITests.xcresult" --output-path "$RUNNER_TEMP/ui-captures"
-            python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-summary.json" "$GITHUB_STEP_SUMMARY"
           fi
+          python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-summary.json" "$GITHUB_STEP_SUMMARY" "${{ matrix.device }}"
+      - name: Exportar capturas
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/UITests.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UITests.xcresult" --output-path "$RUNNER_TEMP/ui-captures"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: iPhone-summary-${{ matrix.device }}
+          path: ${{ runner.temp }}/ui-summary.json
+          overwrite: true
+          retention-days: 7
       - id: elapsed
         if: always()
         env:
           STARTED: ${{ steps.begin.outputs.started }}
         run: echo "seconds=$(($(date +%s)-STARTED))" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: iPhone-tests-${{ matrix.device }}-${{ github.run_attempt }}
@@ -209,14 +223,6 @@ jobs:
             ${{ runner.temp }}/ui-captures
           retention-days: 7
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: iPhone-captures-${{ matrix.device }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/ui-captures
-            ${{ runner.temp }}/ui-summary.json
-          retention-days: 7
 
   result:
     name: Resultado
@@ -225,10 +231,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ needs.ui.result != 'skipped' }}
+        with:
+          pattern: iPhone-summary-*
+          path: ${{ runner.temp }}/ui-reports
+      - name: Diagnóstico de interfaz
+        if: ${{ !cancelled() && needs.ui.result != 'skipped' }}
+        run: python3 scripts/ci_ui_summary.py "$RUNNER_TEMP/ui-reports" "$GITHUB_STEP_SUMMARY"
       - name: Resumen
+        if: always()
         env:
           JOB_RESULTS: ${{ toJSON(needs) }}
         run: python3 scripts/ci_summary.py

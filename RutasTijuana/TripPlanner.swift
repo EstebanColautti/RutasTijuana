@@ -15,10 +15,12 @@ struct TripService: Sendable {
            let start = accessPositions[first.id], let end = accessPositions[last.id], let points = geometry.first {
             let measure = RouteMeasure(points)
             if end > start { return measure.section(from: start, to: end) }
-            if circular, let a = measure.section(from: start, to: measure.length), let b = measure.section(from: 0, to: end) {
-                return a + b.dropFirst()
-            }
-            return nil
+            guard circular, points.first == points.last else { return nil }
+            if end == 0 { return measure.section(from: start, to: measure.length) }
+            if start == measure.length { return measure.section(from: 0, to: end) }
+            guard let beforeSeam = measure.section(from: start, to: measure.length),
+                  let afterSeam = measure.section(from: 0, to: end) else { return nil }
+            return beforeSeam + afterSeam.dropFirst()
         }
         return JourneyScenario(schemaVersion: 1, name: name, coverageRadius: 1000,
             stops: stops, places: [], circular: circular, routeGeometry: geometry).mappedSection(for: selected)
@@ -95,6 +97,15 @@ struct PlannedTrip: Sendable {
 }
 
 enum TripPlanningError: Error, Sendable { case invalidInput, tryAgainLater }
+
+extension PlannedTrip {
+    /// Resumen breve del itinerario sin cifras vacías como «0 transbordos · 0 m a pie».
+    var summary: String {
+        let transferText = transfers == 0 ? "Sin transbordos" : "\(transfers) \(transfers == 1 ? "transbordo" : "transbordos")"
+        let walkingText = walkingMeters < 1 ? "sin caminar" : WalkingFormat.distance(walkingMeters) + " a pie"
+        return transferText + " · " + walkingText
+    }
+}
 
 enum TripSearchResult: Sendable {
     case found(PlannedTrip)
@@ -231,6 +242,36 @@ actor TripPlanner {
         generation = UUID()
         progress = nil
         await provider.cancel()
+    }
+
+    func searchContinuously(from origin: GeoPoint, to destination: GeoPoint,
+                            timeout: Duration = .seconds(150)) async throws -> TripSearchResult {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        var failures = 0
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            do {
+                let result = try await search(from: origin, to: destination)
+                if case .paused = result {
+                    await Task.yield()
+                    continue
+                }
+                return result
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch TripPlanningError.invalidInput {
+                throw TripPlanningError.invalidInput
+            } catch {
+                let delays = [5, 12, 30, 60]
+                guard failures < delays.count else { throw error }
+                let resume = clock.now.advanced(by: .seconds(delays[failures]))
+                guard resume < deadline else { throw error }
+                failures += 1
+                try await clock.sleep(until: resume)
+            }
+        }
+        throw TripPlanningError.tryAgainLater
     }
 
     func search(from origin: GeoPoint, to destination: GeoPoint) async throws -> TripSearchResult {
@@ -510,17 +551,15 @@ actor TripPlanner {
                 next.tie += key + ";"
                 let distanceKey = "\(service.id.count):\(service.id):\(position)"
                 if rideDistances[distanceKey] == nil {
-                    if let start = service.accessPositions[service.stops[position].id], let end = service.accessPositions[nextStop.id] {
-                        let length = end > start ? end - start : (service.circular ? RouteMeasure(service.geometry[0]).length - start + end : .infinity)
-                        rideDistances[distanceKey] = length
+                    let stop = service.stops[position]
+                    if let start = service.accessPositions[stop.id], let end = service.accessPositions[nextStop.id], end > start {
+                        rideDistances[distanceKey] = end - start
+                    } else if let path = service.section(through: [stop, nextStop]) {
+                        rideDistances[distanceKey] = zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
+                    } else if service.geometry.isEmpty {
+                        rideDistances[distanceKey] = stop.point.distance(to: nextStop.point)
                     } else {
-                        if let path = service.section(through: [service.stops[position], nextStop]) {
-                            rideDistances[distanceKey] = zip(path, path.dropFirst()).reduce(0) { $0 + $1.0.distance(to: $1.1) }
-                        } else if service.geometry.isEmpty {
-                            rideDistances[distanceKey] = service.stops[position].point.distance(to: nextStop.point)
-                        } else {
-                            rideDistances[distanceKey] = .infinity
-                        }
+                        rideDistances[distanceKey] = .infinity
                     }
                 }
                 guard let rideDistance = rideDistances[distanceKey], rideDistance.isFinite else { continue }

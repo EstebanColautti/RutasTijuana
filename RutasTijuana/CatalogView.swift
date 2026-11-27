@@ -4,9 +4,14 @@ import UniformTypeIdentifiers
 import Accessibility
 
 struct CatalogView: View {
+    @Environment(\.openAppDestination) private var openAppDestination
+    @Environment(\.tabReset) private var tabReset
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
+    @FocusState private var routeSearchFocused: Bool
+    @Environment(\.dynamicTypeSize) private var textSize
+    @State private var showingRouteSearch = false
     @ObservedObject private var repository = CatalogRepository.shared
     @AppStorage("favorite-routes") private var favoriteData = Data()
     @AppStorage("route-lists") private var listData = Data()
@@ -14,8 +19,10 @@ struct CatalogView: View {
     @State private var showingLists = false
     @State private var savingToLists = false
     @State private var listName = ""
-    @State private var activeListID: UUID?
     @State private var routeToUse: String?
+    @State private var listPath: [UUID] = []
+    @State private var listNaming: ListNaming?
+    @State private var listPendingDeletion: UUID?
     private let routesTab: Bool
     private let favoritesOnly: Bool
 
@@ -61,7 +68,7 @@ struct CatalogView: View {
     @State private var groupID: String?
     @State private var filter = CatalogFilter.routes
     @State private var selectedID: String?
-    @State private var favoritePulse = 0
+    @State private var routeSummaryHeight: CGFloat?
     @State private var favoriteNotice = ""
     @State private var reference: GeoPoint?
     @State private var walkingDestination: WalkingDestination?
@@ -69,13 +76,8 @@ struct CatalogView: View {
     @State private var loading = false
     @State private var showingInformation = false
     @State private var showingServices = false
-    private struct PlannedRoute: Identifiable {
-        let id: String
-        let scenario: JourneyScenario
-    }
-    @State private var plannedRoute: PlannedRoute?
     @State private var errorMessage: String?
-    @State private var camera: MapCameraPosition = .automatic
+    @State private var camera: MapCameraPosition = .region(AppDesign.city)
 
     init(initialFilter: CatalogFilter = .routes, favoritesOnly: Bool = false, routesTab: Bool = false) {
         self.routesTab = routesTab
@@ -88,8 +90,9 @@ struct CatalogView: View {
         if routesTab {
             let term = normalized(query)
             return all.filter { feature in
-                term.isEmpty || normalized(([feature.name, feature.routeDetails?.code ?? "",
-                    feature.routeDetails?.direction ?? "", zone(feature)] + zones(feature)).joined(separator: " ")).contains(term)
+                let fields = [feature.name, feature.routeDetails?.code ?? "",
+                              feature.routeDetails?.direction ?? "", groupName(feature.groupID), zone(feature)]
+                return term.isEmpty || (fields + zones(feature)).contains { normalized($0).contains(term) }
             }.sorted {
                 let order = $0.name.localizedStandardCompare($1.name)
                 return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
@@ -106,12 +109,9 @@ struct CatalogView: View {
     private var selection: CatalogFeature? { matches.first { $0.id == selectedID } }
 
     private var mapFeatures: [CatalogFeature] {
-        if routesTab, let selection { return [selection] }
-        var features = matches
-        if let index = features.firstIndex(where: { $0.id == selectedID }) {
-            features.append(features.remove(at: index))
-        }
-        return features
+        if let selection { return [selection] }
+        if !routesTab && filter == .routes && reference == nil { return [] }
+        return matches
     }
 
     var body: some View {
@@ -119,49 +119,27 @@ struct CatalogView: View {
             if let catalog {
                 if !catalog.readyForDistribution {
                     Label("Catálogo local", systemImage: "info.circle")
-                        .font(.caption).padding(10).frame(maxWidth: .infinity)
+                        .font(AppDesign.note).padding(10).frame(maxWidth: .infinity)
                         .background(.orange.opacity(0.1))
                 }
-                if routesTab {
+                if favoritesOnly {
+                    favoritesContent(catalog)
+                } else if routesTab {
                     ZStack {
-                        VStack(spacing: 0) {
-                            filters
-                            Picker("Organización", selection: $grouped) {
-                                Text("Por zona").tag(true)
-                                Text("Todas").tag(false)
-                            }.pickerStyle(.segmented).padding(.horizontal)
-                            Button("Mis listas", systemImage: "bookmark") {
-                                activeListID = nil
-                                listName = ""
-                                showingLists = true
-                            }.frame(minHeight: 44)
-                            featureList
-                        }
-                        .opacity(selection == nil ? 1 : 0)
-                        .accessibilityHidden(selection != nil)
-                        .allowsHitTesting(selection == nil)
-                        if let selection {
-                            ScrollView {
-                                VStack(spacing: 0) {
-                                    map.frame(height: 220)
-                                    detail(selection)
-                                }
+                        if selection == nil {
+                            VStack(spacing: 0) {
+                                routeFilters
+                                featureList
+                                    .refreshable { privateCatalog = nil; await repository.update(force: true) }
                             }
-                            .background(Color(uiColor: .systemBackground))
+                            .transition(reduceMotion ? .identity : .opacity)
+                        }
+                        if let selection {
+                            routeSelection(selection)
+                            .transition(reduceMotion ? .identity : .opacity)
                         }
                     }
-                } else {
-                    map.frame(minHeight: 180, maxHeight: 310)
-                    filters
-                    if favoritesOnly && matches.isEmpty {
-                        NavigationLink("Explorar recorridos") { CatalogView() }
-                            .frame(minHeight: 44)
-                    }
-                    Group {
-                        if let selection { detail(selection).transition(reduceMotion ? .identity : .opacity) }
-                    }
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: selectedID)
-                    featureList
+                    .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectedID)
                 }
             } else {
                 ContentUnavailableView {
@@ -169,22 +147,38 @@ struct CatalogView: View {
                 } description: {
                     Text("Descarga el catálogo para consultar sus recorridos y referencias.")
                 } actions: {
-                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(.borderedProminent).disabled(repository.isUpdating)
+                    Button("Descargar catálogo") { Task { await repository.update(force: true) } }.buttonStyle(AppActionStyle()).disabled(repository.isUpdating)
                 }
             }
-            if loading || repository.isUpdating { ProgressView("Actualizando catálogo…").padding() }
+            if loading || repository.isUpdating {
+                AppLoadingView(title: "Actualizando catálogo…", symbol: "arrow.triangle.2.circlepath", compact: true)
+                    .padding(.horizontal, 16)
+            }
             if !favoriteNotice.isEmpty {
-                Text(favoriteNotice).font(.footnote).padding(10)
+                Text(favoriteNotice).font(AppDesign.note).padding(10)
                     .accessibilityIdentifier("favorite-notice")
                     .task(id: favoriteNotice) {
                         do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
                         favoriteNotice = ""
                     }
             }
-            if let message = repository.message { Text(message).font(.footnote).foregroundStyle(.primary).padding(10) }
+            if let message = repository.message { Text(message).font(AppDesign.note).foregroundStyle(.primary).padding(10) }
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
-        .sheet(isPresented: $savingToLists) { if let selection { listEditor(routeID: selection.id) } }
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
+        .sheet(isPresented: $showingRouteSearch) {
+            routeSearchSheet
+                .presentationDetents([.fraction(0.83), .large])
+                .presentationCornerRadius(AppDesign.panelRadius)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $savingToLists) {
+            if let selection {
+                listEditor(routeID: selection.id)
+                    .presentationDetents([.medium, .large])
+                    .presentationCornerRadius(AppDesign.panelRadius)
+                    .presentationDragIndicator(.visible)
+            }
+        }
         .sheet(isPresented: $showingLists, onDismiss: {
             if let id = routeToUse, let feature = catalog?.features.first(where: { $0.id == id }) {
                 query = ""
@@ -196,41 +190,55 @@ struct CatalogView: View {
                 }
             }
             routeToUse = nil
-        }) { listEditor(routeID: nil) }
+        }) {
+            listEditor(routeID: nil)
+                .presentationCornerRadius(AppDesign.panelRadius)
+                .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showingInformation) {
-            if let selection { informationSheet(selection).tint(.blue) }
+            if let selection { informationSheet(selection)
+                    .tint(.blue)
+                    .presentationDetents([.fraction(0.72), .large])
+                    .presentationDragIndicator(.visible) }
         }
         .sheet(isPresented: $showingServices) {
-            NavigationStack { services }.tint(.blue)
-        }
-        .fullScreenCover(item: $plannedRoute) { route in
-            ContentView(scenario: route.scenario)
+            NavigationStack { services }
+                .tint(.blue)
+                .presentationDetents([.fraction(0.72), .large])
+                .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle(favoritesOnly ? "Favoritos" : routesTab ? "Rutas" : filter == .stops ? "Paradas" : "Recorridos")
+        .navigationBarBackButtonHidden(catalog != nil && !routesTab)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.black, for: .navigationBar)
+        .toolbarBackground(AppDesign.header, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
         .tint(.white)
-        .preferredColorScheme(catalogTestColorScheme)
+
         .toolbar {
-            ToolbarItem {
-                Button("Servicios", systemImage: "info.circle") { showingServices = true }
+            if !favoritesOnly {
+                if catalog == nil {
+                    ToolbarItem {
+                        Button("Servicios", systemImage: "info.circle") { showingServices = true }
+                    }
+                    ToolbarItem {
+                        Button("Actualizar ahora", systemImage: "arrow.clockwise", action: refreshCatalog)
+                            .disabled(repository.isUpdating)
+                    }
+                    #if DEBUG
+                    ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
+                    #endif
+                }
             }
-            ToolbarItem { Button("Actualizar ahora", systemImage: "arrow.clockwise") {
-                privateCatalog = nil
-                Task { await repository.update(force: true) }
-            }.disabled(repository.isUpdating) }
-            #if DEBUG
-            ToolbarItem { Button("Abrir catálogo", systemImage: "folder") { importing = true }.disabled(loading) }
-            #endif
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Listo") { searchFocused = false }
-                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+                    .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
@@ -245,15 +253,6 @@ struct CatalogView: View {
         .task {
             await repository.open()
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { privateCatalog = .sample }
-            if ProcessInfo.processInfo.arguments.contains("--catalog-pale-sample") {
-                let sample = RouteCatalog.sample
-                let feature = sample.features[0]
-                privateCatalog = RouteCatalog(schemaVersion: sample.schemaVersion, version: sample.version,
-                    publishable: sample.publishable, licenseStatus: sample.licenseStatus, groups: sample.groups,
-                    features: [CatalogFeature(id: feature.id, name: feature.name, groupID: feature.groupID,
-                        kind: feature.kind, color: "#FFFF99", verified: false, geometry: feature.geometry)])
-            }
             if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { privateCatalog = .informationSample }
             if ProcessInfo.processInfo.arguments.contains("--catalog-services-sample") {
                 let sample = RouteCatalog.informationSample
@@ -263,9 +262,26 @@ struct CatalogView: View {
             }
             #endif
         }
+        .onChange(of: tabReset) { _, _ in
+            withAnimation(reduceMotion ? nil : AppDesign.navigationMotion) {
+                searchFocused = false
+                query = ""
+                groupID = nil
+                reference = nil
+                selectedID = nil
+            }
+            for sheet in [$showingLists, $savingToLists, $showingInformation, $showingServices, $showingRouteSearch] { sheet.wrappedValue = false }
+        }
         .onChange(of: query) { _, _ in selectedID = nil }
-        .onChange(of: groupID) { _, _ in selectedID = nil; camera = .automatic }
-        .onChange(of: filter) { _, _ in selectedID = nil; reference = nil; camera = .automatic }
+        .onChange(of: groupID) { _, _ in
+            selectedID = nil
+            camera = !routesTab && filter == .routes && reference == nil ? .region(AppDesign.city) : .automatic
+        }
+        .onChange(of: filter) { _, next in
+            selectedID = nil
+            reference = nil
+            camera = !routesTab && next == .routes ? .region(AppDesign.city) : .automatic
+        }
     }
 
     private var services: some View {
@@ -284,29 +300,114 @@ struct CatalogView: View {
             }
         }
         .navigationTitle("Servicios")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } }
+            #if DEBUG
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Abrir catálogo", systemImage: "folder") { showingServices = false; importing = true }.disabled(loading)
+            }
+            #endif
+        }
+    }
+
+    private func refreshCatalog() {
+        privateCatalog = nil
+        Task { await repository.update(force: true) }
     }
 
     private var featureList: some View {
-        List {
-            if routesTab && grouped {
-                let sections = Dictionary(grouping: matches, by: zone)
-                ForEach(sections.keys.sorted {
-                    if $0 == "Otras rutas" { return false }
-                    if $1 == "Otras rutas" { return true }
-                    return $0.localizedStandardCompare($1) == .orderedAscending
-                }, id: \.self) { name in
-                    Section(name) { ForEach(sections[name] ?? []) { row($0) } }
+            List {
+                if grouped {
+                    let sections = Dictionary(grouping: matches, by: zone)
+                    ForEach(sections.keys.sorted {
+                        if $0 == "Otras rutas" { return false }
+                        if $1 == "Otras rutas" { return true }
+                        return $0.localizedStandardCompare($1) == .orderedAscending
+                    }, id: \.self) { name in
+                        Section {
+                            ForEach(sections[name] ?? []) { feature in
+                                row(feature)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                            }
+                        } header: {
+                            Text(name).font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk).textCase(nil)
+                        }
+                    }
+                } else {
+                    ForEach(matches) { feature in
+                        row(feature)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .listRowSeparator(.hidden)
+                    }
                 }
-            } else {
-                ForEach(matches) { row($0) }
             }
-        }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: grouped)
+            .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: matches.count)
             .overlay {
                 if matches.isEmpty { emptySearch }
             }
+    }
+
+    private func favoritesContent(_ catalog: RouteCatalog) -> some View {
+        VStack(spacing: 0) {
+            AppPanelHeading(title: "Favoritos") { EmptyView() }
+                .padding(.horizontal, 14).padding(.top, 8)
+            Group {
+            if let selection {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        map.frame(height: 220)
+                        detail(selection)
+                    }
+                }
+            } else if matches.isEmpty {
+                VStack(spacing: 14) {
+                    AppFavoriteIcon(scale: textSize.isAccessibilitySize ? 2.6 : 4)
+                        .foregroundStyle(AppDesign.accent)
+                        .frame(width: 88, height: 88)
+                        .background(AppDesign.selectionFill, in: Circle())
+                    Text("No hay rutas guardadas.")
+                        .font(AppDesign.subtitle)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Toca la estrella en la ficha de una ruta para tenerla aquí.")
+                        .font(AppDesign.explanation)
+                        .foregroundStyle(AppDesign.secondaryInk)
+                        .multilineTextAlignment(.center)
+                    if let openAppDestination {
+                        Button("Explorar rutas") { openAppDestination(.routes) }
+                            .buttonStyle(AppActionStyle())
+                    } else {
+                        NavigationLink("Explorar rutas") { CatalogView(routesTab: true) }
+                            .buttonStyle(AppActionStyle())
+                    }
+                }
+                .frame(maxWidth: 300)
+                .padding(24)
+                .transition(reduceMotion ? .identity : .opacity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(matches) { feature in
+                            let layout = textSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                                : AnyLayout(HStackLayout(spacing: 8))
+                            layout {
+                                row(feature)
+                            }
+                            .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.97)))
+                        }
+                    }.padding(16)
+                }
+            }
+        }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(uiColor: .systemBackground))
     }
 
     private var emptySearch: some View {
@@ -331,28 +432,42 @@ struct CatalogView: View {
             fit(feature)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: feature.kind == .route ? "point.topleft.down.curvedto.point.bottomright.up" : feature.kind == .stop ? "bus.fill" : "square.dashed")
-                    .foregroundStyle(feature.kind == .route ? routeColor(feature) : color(feature.color))
+                if favoritesOnly {
+                    AppFavoriteIcon(filled: true)
+                } else {
+                    if feature.kind == .route {
+                        AppGlyph(icon: .turn).foregroundStyle(routeColor(feature))
+                    } else {
+                        AppGlyph(icon: feature.kind == .stop ? .vehicle : .pin)
+                            .foregroundStyle(color(feature.color))
+                    }
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(feature.name).fontWeight(.medium)
-                    Text(routesTab ? zone(feature) : groupName(feature.groupID)).font(.caption).foregroundStyle(.primary)
-                    if routesTab, let direction = feature.routeDetails?.direction, direction != feature.name {
-                        Text(direction).font(.caption).foregroundStyle(.secondary)
+                    if !(routesTab && grouped) {
+                        Text(routesTab || favoritesOnly ? zone(feature) : groupName(feature.groupID)).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                    }
+                    if (routesTab || favoritesOnly), let direction = feature.routeDetails?.direction, !WalkingFormat.sameText(direction, feature.name) {
+                        Text(direction).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
                     }
                     if let reference, let distance = feature.distance(to: reference) {
                         Text(distanceCaption(feature, meters: distance))
-                            .font(.caption).foregroundStyle(.primary)
+                            .font(AppDesign.note).foregroundStyle(.primary)
                     }
                 }
                 Spacer(minLength: 0)
-                if feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
-                    Image(systemName: "star.fill").accessibilityHidden(true)
+                if !favoritesOnly && feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) {
+                    AppFavoriteIcon(filled: true)
                 }
                 if selectedID == feature.id { Image(systemName: "checkmark") }
             }
-            .padding(.vertical, 4)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .appCard(selected: selectedID == feature.id)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppPressStyle())
         .accessibilityValue([
             selectedID == feature.id ? "Seleccionado" : nil,
             feature.kind == .route && FavoriteRoutes.decode(favoriteData).contains(feature.id) ? "Favorito" : nil
@@ -360,57 +475,178 @@ struct CatalogView: View {
         .accessibilityIdentifier("catalog-\(feature.id)")
     }
 
-    private var filters: some View {
-        VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Buscar nombre, grupo o información").font(.subheadline)
-                TextField("Buscar nombre, grupo o información", text: $query, prompt: Text(""))
+    private var routeSearchSheet: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                AppPanelHeading(title: "Buscar recorridos", backLabel: "Cerrar", back: {
+                    routeSearchFocused = false
+                    showingRouteSearch = false
+                }) { EmptyView() }
+                HStack(spacing: 10) {
+                    TextField("Buscar recorridos", text: $query)
+                        .focused($routeSearchFocused)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit { routeSearchFocused = false }
+                        .accessibilityIdentifier("route-search-field")
+                        .appField(focused: routeSearchFocused)
+                    Button("Buscar") { routeSearchFocused = false }
+                        .buttonStyle(AppActionStyle())
+                        .controlSize(.large)
+                        .frame(minHeight: 44)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if matches.isEmpty { emptySearch }
+                        ForEach(matches) { feature in
+                            Button {
+                                routeSearchFocused = false
+                                selectedID = feature.id
+                                fit(feature)
+                                showingRouteSearch = false
+                            } label: {
+                                Label {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(feature.name).font(AppDesign.subtitle)
+                                        let subtitle = feature.routeDetails?.direction ?? groupName(feature.groupID)
+                                        if !subtitle.isEmpty, !WalkingFormat.sameText(subtitle, feature.name) {
+                                            Text(subtitle).font(AppDesign.note)
+                                        }
+                                    }
+                                    .fixedSize(horizontal: false, vertical: true)
+                                } icon: {
+                                    AppGlyph(icon: feature.kind == .route ? .navigation : .pin)
+                                }
+                                .multilineTextAlignment(.leading)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                                .appCard()
+                            }
+                            .buttonStyle(AppPressStyle())
+                            .accessibilityIdentifier("route-search-result-\(feature.id)")
+                        }
+                    }
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .padding(16)
+            .toolbar(.hidden, for: .navigationBar)
+            .tint(AppDesign.primary)
+        }
+    }
+
+    private var routeFilters: some View {
+        VStack(spacing: 12) {
+            AppPanelHeading(title: "Rutas") { EmptyView() }
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(AppDesign.secondaryInk).accessibilityHidden(true)
+                TextField("Buscar ruta o zona", text: $query, prompt: Text("Buscar ruta o zona").foregroundStyle(AppDesign.secondaryInk))
+                    .frame(minHeight: 44)
                     .focused($searchFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .submitLabel(.search)
                     .onSubmit { searchFocused = false }
                     .accessibilityLabel("Buscar nombre, grupo o información")
                     .accessibilityIdentifier("catalog-search")
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary))
-                    .contentShape(Rectangle())
-            }
-            HStack {
-                Picker("Grupo", selection: $groupID) {
-                    Text("Todos los grupos").tag(String?.none)
-                    ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
-                }
-                .labelsHidden()
-                if !favoritesOnly && !routesTab {
-                    Picker("Contenido", selection: $filter) {
-                        ForEach(CatalogFilter.allCases) { Text($0.title).tag($0) }
-                    }.accessibilityIdentifier("catalog-filter")
+                if !query.isEmpty {
+                    Button("Borrar búsqueda", systemImage: "xmark.circle.fill") { query = "" }
+                        .buttonStyle(AppIconButtonStyle()).foregroundStyle(AppDesign.secondaryInk)
+                        .transition(reduceMotion ? .identity : .opacity)
                 }
             }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 50)
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .onTapGesture { searchFocused = true }
+            .appSearchSurface()
+            .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: query.isEmpty)
+            HStack(spacing: 8) {
+                Picker("Organización", selection: $grouped) {
+                    Text("Por zona").tag(true)
+                    Text("Todas").tag(false)
+                }
+                .pickerStyle(.segmented)
+                AppGlassGroup(spacing: 8) {
+                HStack(spacing: 8) {
+                Menu {
+                    Picker("Grupo", selection: $groupID) {
+                        Text("Todos los grupos").tag(String?.none)
+                        ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
+                    }
+                } label: {
+                    routeTool(groupID == nil ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                }
+                .accessibilityLabel(groupID == nil ? "Filtrar por grupo" : "Filtro de grupo activo")
+                Button { listName = ""; showingLists = true } label: { routeTool("bookmark") }
+                    .buttonStyle(AppPressStyle())
+                    .accessibilityLabel("Mis listas")
+                if hasServiceNotices || catalog?.serviceContact != nil {
+                    Button { showingServices = true } label: {
+                        routeTool("info.circle")
+                            .overlay(alignment: .topTrailing) {
+                                if hasServiceNotices {
+                                    Circle().fill(AppDesign.accent)
+                                        .frame(width: 11, height: 11)
+                                        .overlay { Circle().strokeBorder(Color(uiColor: .systemBackground), lineWidth: 2) }
+                                        .offset(x: -3, y: 3)
+                                        .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
+                                }
+                            }
+                    }
+                    .buttonStyle(AppPressStyle())
+                    .accessibilityLabel("Servicios")
+                    .accessibilityValue(hasServiceNotices ? "Hay avisos" : "")
+                    .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
+                }
+                }
+                }
+            }
             HStack {
-                Text("Resultados: \(matches.count)").font(.caption).foregroundStyle(.primary)
+                let count = "\(matches.count) \(matches.count == 1 ? "ruta" : "rutas")"
+                Text(count)
+                    .font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                    .contentTransition(.numericText())
+                    .accessibilityLabel(count)
+                    .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: matches.count)
                 Spacer()
                 if reference != nil {
                     Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
-                        .font(.caption)
+                        .font(AppDesign.note)
                 }
             }
-        }.padding(12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    private var hasServiceNotices: Bool {
+        !(catalog?.serviceNotices.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? []).isEmpty
+    }
+
+    private func routeTool(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.body.weight(.medium))
+            .foregroundStyle(routeActionInk)
+            .frame(width: 44, height: 44)
+            .appGlass(in: Circle(), interactive: true)
+            .contentShape(Circle())
     }
 
     private var map: some View {
         MapReader { proxy in
             Map(position: $camera) {
                 ForEach(mapFeatures) { feature in
-                    ForEach(Array(feature.geometry.lines.enumerated()), id: \.offset) { part in
+                    let lines = feature.kind == .route ? feature.geometry.routeDisplayLines : feature.geometry.lines
+                    ForEach(Array(lines.enumerated()), id: \.offset) { part in
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(.white, lineWidth: selectedID == feature.id ? 11 : 7)
                         MapPolyline(coordinates: part.element.map(\.coordinate))
-                            .stroke(.black, lineWidth: selectedID == feature.id ? 9 : 5)
+                            .stroke(.black, style: StrokeStyle(lineWidth: selectedID == feature.id ? 9 : 5, lineCap: .round, lineJoin: .round))
                         MapPolyline(coordinates: part.element.map(\.coordinate))
                             .stroke(feature.kind == .route ? routeColor(feature) : color(feature.color),
-                                    lineWidth: selectedID == feature.id ? 7 : 3)
+                                    style: StrokeStyle(lineWidth: selectedID == feature.id ? 6 : 3, lineCap: .round, lineJoin: .round))
                     }
                     ForEach(Array(feature.geometry.polygons.enumerated()), id: \.offset) { area in
                         MapPolygon(polygon(area.element))
@@ -431,81 +667,206 @@ struct CatalogView: View {
             }
             .mapStyle(.standard(elevation: .flat))
             .onTapGesture { position in
-                guard filter.supportsProximity, let point = proxy.convert(position, from: .local) else { return }
+                guard !routesTab, filter.supportsProximity, let point = proxy.convert(position, from: .local) else { return }
                 selectedID = nil
                 reference = GeoPoint(latitude: point.latitude, longitude: point.longitude)
             }
             .overlay(alignment: .topLeading) {
-                if routesTab, let selection {
-                    Text(zone(selection))
-                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                        .padding(10).allowsHitTesting(false)
-                } else {
+                if !routesTab {
                     Text(filter.supportsProximity ? "Toca el mapa para consultar a 1 km" : filter.title)
-                        .font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .font(AppDesign.note).padding(8).appGlass(in: Capsule())
                         .padding(10).allowsHitTesting(false)
                 }
             }
         }
     }
 
+    private func routeSelection(_ feature: CatalogFeature) -> some View {
+        let hasTrace = !feature.geometry.routeDisplayLines.isEmpty
+        return GeometryReader { geometry in
+            VStack(spacing: -AppDesign.panelOverlap) {
+                map
+                    .frame(maxHeight: .infinity)
+                    .clipShape(Rectangle())
+                    .overlay(alignment: .topTrailing) {
+                        if feature.kind != .route || hasTrace {
+                            Button {
+                                fit(feature)
+                            } label: {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.body.weight(.semibold))
+                                    .frame(width: 44, height: 44)
+                                    .appGlass(in: Circle(), interactive: true)
+                            }
+                            .buttonStyle(AppPressStyle())
+                            .foregroundStyle(AppDesign.primary)
+                            .accessibilityLabel("Volver a encuadrar")
+                            .padding(12)
+                        }
+                    }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 4) {
+                        if textSize.isAccessibilitySize {
+                            Spacer(minLength: 0)
+                        } else {
+                            routeTitle(feature)
+                        }
+                        selectionActions(feature)
+                            .foregroundStyle(routeActionInk)
+                    }
+                    ScrollView {
+                        routeSummary(feature, hasTrace: hasTrace)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                                routeSummaryHeight = height
+                            }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: min(routeSummaryHeight ?? 160, geometry.size.height * 0.45))
+
+                    if feature.kind == .stop, case .point(let point) = feature.geometry {
+                        Button {
+                            walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: point.point)
+                        } label: {
+                            Text("Ir a la parada").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(AppActionStyle())
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background { AppDesign.panelSurface() }
+                .zIndex(1)
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+    }
+
+    private var routeActionInk: Color {
+        colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary
+    }
+
+    private func routeTitle(_ feature: CatalogFeature) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            if feature.kind == .route {
+                AppGlyph(icon: .turn, size: 20)
+                    .foregroundStyle(routeActionInk)
+                    .frame(width: 30, height: 30)
+                    .background(colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill,
+                                in: RoundedRectangle(cornerRadius: 9))
+                    .accessibilityHidden(true)
+            }
+            Text(feature.name).font(AppDesign.title)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .foregroundStyle(.primary)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    }
+
+    private func summaryRow(_ symbol: String, _ text: String) -> some View {
+        Label {
+            Text(text).font(AppDesign.body).fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(routeActionInk).frame(width: 24)
+        }
+    }
+
+    private func routeSummary(_ feature: CatalogFeature, hasTrace: Bool) -> some View {
+        let fields = CatalogPublic.information(feature.information, description: false)?.fields ?? []
+        return VStack(alignment: .leading, spacing: 6) {
+            if textSize.isAccessibilitySize { routeTitle(feature) }
+            if feature.kind == .route {
+                summaryRow("map", "Zona: " + zone(feature))
+                if !hasTrace {
+                    summaryRow("exclamationmark.triangle", "Trazado no disponible")
+                }
+                if let direction = feature.routeDetails?.direction, !direction.isEmpty, !WalkingFormat.sameText(direction, feature.name) {
+                    summaryRow("arrow.triangle.turn.up.right.diamond", "Sentido: " + direction)
+                }
+                ForEach(["fare", "schedule"], id: \.self) { category in
+                    if let field = fields.first(where: { $0.category == category && !$0.value.isEmpty }) {
+                        let title = category == "fare" ? "Tarifa" : "Horario"
+                        summaryRow(category == "fare" ? "dollarsign.circle" : "clock",
+                                   field.value.localizedCaseInsensitiveContains(title + ":") ? field.value : title + ": " + field.value)
+                    }
+                }
+            }
+            if feature.kind == .route || feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
+                Button { showingInformation = true } label: {
+                    Label("Ver información", systemImage: "info.circle")
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                    .font(AppDesign.subtitle)
+                    .foregroundStyle(routeActionInk)
+                    .buttonStyle(AppPressStyle())
+                    .accessibilityIdentifier("catalog-information")
+            }
+        }
+        .foregroundStyle(.primary)
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
+    }
+
+    private func selectionActions(_ feature: CatalogFeature) -> some View {
+        HStack(spacing: 0) {
+            if feature.kind == .route && privateCatalog == nil {
+                let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
+                Button {
+                    favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
+                    favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
+                    AccessibilityNotification.Announcement(favoriteNotice).post()
+                } label: {
+                    AppFavoriteIcon(filled: saved)
+                        .contentTransition(reduceMotion ? .identity : .opacity)
+                        .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .labelStyle(.iconOnly)
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityLabel(saved ? "Quitar de favoritos" : "Guardar en favoritos")
+                .accessibilityIdentifier("favorite-toggle")
+            }
+            if feature.kind == .route {
+                let saved = savedLists.contains { $0.routes.contains(feature.id) }
+                Button("Guardar en listas", systemImage: saved ? "bookmark.fill" : "bookmark") {
+                    listName = ""
+                    savingToLists = true
+                }
+                .buttonStyle(AppIconButtonStyle())
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : AppDesign.selectionMotion, value: saved)
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
+            }
+            Button("Cerrar", systemImage: "xmark") { selectedID = nil }
+                .buttonStyle(AppIconButtonStyle())
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     private func detail(_ feature: CatalogFeature) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(feature.name).font(.headline)
+                Text(feature.name).font(AppDesign.title)
                 Spacer()
-                if feature.kind == .route && privateCatalog == nil {
-                    let saved = FavoriteRoutes.decode(favoriteData).contains(feature.id)
-                    Button {
-                        favoriteData = FavoriteRoutes.toggle(feature.id, in: favoriteData)
-                        favoriteNotice = saved ? "Quitado de favoritos" : "Guardado en favoritos"
-                        AccessibilityNotification.Announcement(favoriteNotice).post()
-                        if !reduceMotion { favoritePulse += 1 }
-                    } label: {
-                        Label(saved ? "Quitar de favoritos" : "Guardar en favoritos", systemImage: saved ? "star.fill" : "star")
-                            .symbolEffect(.bounce, value: favoritePulse)
-                    }
-                    .labelStyle(.iconOnly)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityIdentifier("favorite-toggle")
-                }
-                if feature.kind == .route {
-                    let saved = savedLists.contains { $0.routes.contains(feature.id) }
-                    Button("Guardar en listas", systemImage: saved ? "bookmark.fill" : "bookmark") {
-                        listName = ""
-                        savingToLists = true
-                    }
-                    .labelStyle(.iconOnly)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityValue(saved ? "Guardado en listas" : "Sin guardar")
-                }
-                Button("Cerrar", systemImage: "xmark") { selectedID = nil }
-                    .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                selectionActions(feature)
             }
             Text(feature.kind == .route ? "Recorrido" : feature.kind == .stop ? "Parada" : "Área de referencia")
-                .font(.caption).foregroundStyle(.primary)
+                .font(AppDesign.note).foregroundStyle(.primary)
+            if !routesTab, let direction = feature.routeDetails?.direction, !direction.isEmpty, direction != feature.name {
+                Text(direction).font(AppDesign.body)
+            }
             if feature.kind == .stop, case .point(let point) = feature.geometry {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                if routesTab {
-                    Text("Zona: " + zone(feature)).font(.caption)
-                    if let direction = feature.routeDetails?.direction { Text("Sentido: " + direction).font(.caption) }
-                    Button("Volver a encuadrar", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        fit(feature)
-                    }.frame(minHeight: 44)
-                }
-                if routesTab, let catalog, catalog.readyForDistribution {
-                    NavigationLink("Usar esta ruta") {
-                        TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
-                    }.frame(minHeight: 44)
-                } else if let catalog, catalog.readyForDistribution, let scenario = catalog.journeyScenario(for: feature) {
-                    Button("Planear este recorrido") {
-                        plannedRoute = PlannedRoute(id: feature.id, scenario: scenario)
-                    }.frame(minHeight: 44)
-                }
                 Text("Distancia al trazado en línea recta.")
-                    .font(.caption).foregroundStyle(.primary)
+                    .font(AppDesign.note).foregroundStyle(.primary)
             }
             if feature.kind == .route || feature.information != nil || feature.routeDetails != nil || !(feature.media ?? []).isEmpty {
                 Button("Ver información disponible") { showingInformation = true }
@@ -513,59 +874,301 @@ struct CatalogView: View {
             }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background {
+            if favoritesOnly {
+                Color(uiColor: .secondarySystemBackground)
+            } else {
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(colorScheme == .dark ? AppDesign.accent.opacity(0.22) : AppDesign.selectionFill)
+            }
+        }
+    }
+
+    private enum ListNaming: Equatable {
+        case create(routeID: String?)
+        case rename(UUID)
+    }
+
+    private var trimmedListName: String { listName.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private func listNameIsValid(for naming: ListNaming?) -> Bool {
+        guard !trimmedListName.isEmpty else { return false }
+        let renaming: UUID? = if case .rename(let id) = naming { id } else { nil }
+        return !savedLists.contains { $0.id != renaming && normalized($0.name) == normalized(trimmedListName) }
+    }
+
+    private func commitListName(_ naming: ListNaming) {
+        guard listNameIsValid(for: naming) else { return }
+        withAnimation(reduceMotion ? nil : AppDesign.navigationMotion) {
+            switch naming {
+            case .create(let routeID):
+                savedLists = savedLists + [SavedList(name: trimmedListName, routes: routeID.map { [$0] } ?? [])]
+            case .rename(let id):
+                savedLists = savedLists.map { item in
+                    var changed = item
+                    if changed.id == id { changed.name = trimmedListName }
+                    return changed
+                }
+            }
+        }
+        listName = ""
+        listNaming = nil
+    }
+
+    private func routeCount(_ count: Int) -> String { "\(count) \(count == 1 ? "ruta" : "rutas")" }
+
+    private func listIcon(_ symbol: String = "list.bullet") -> some View {
+        Image(systemName: symbol)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(AppDesign.primary)
+            .frame(width: 40, height: 40)
+            .background(AppDesign.selectionFill, in: Circle())
+            .accessibilityHidden(true)
+    }
+
+    private func listRow(_ list: SavedList, trailing: String, highlighted: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            listIcon()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(list.name).font(AppDesign.subtitle).foregroundStyle(.primary)
+                Text(routeCount(list.routes.count)).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                    .contentTransition(.numericText())
+            }
+            Spacer(minLength: 0)
+            Image(systemName: trailing)
+                .font(.title3)
+                .foregroundStyle(highlighted ? AppDesign.primary : AppDesign.secondaryInk)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .accessibilityHidden(true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .appCard(selected: highlighted)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func newListButton(_ routeID: String?, prominent: Bool) -> some View {
+        Group {
+            if prominent {
+                Button("Nueva lista", systemImage: "plus") { listName = ""; listNaming = .create(routeID: routeID) }
+                    .buttonStyle(AppActionStyle())
+            } else {
+                Button { listName = ""; listNaming = .create(routeID: routeID) } label: {
+                    HStack(spacing: 12) {
+                        listIcon("plus")
+                        Text("Nueva lista").font(AppDesign.subtitle).foregroundStyle(AppDesign.primary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(AppDesign.secondaryInk.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(AppPressStyle())
+            }
+        }
+        .accessibilityIdentifier("list-new")
+    }
+
+    private func listsEmptyState(_ routeID: String?) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(AppDesign.accent)
+                .frame(width: 88, height: 88)
+                .background(AppDesign.selectionFill, in: Circle())
+                .accessibilityHidden(true)
+            Text("Aún no tienes listas").font(AppDesign.subtitle).accessibilityAddTraits(.isHeader)
+            Text(routeID == nil ? "Agrupa tus rutas, por ejemplo «Trabajo» o «Escuela»."
+                                : "Crea una lista para guardar esta ruta.")
+                .font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk).multilineTextAlignment(.center)
+            newListButton(routeID, prominent: true)
+        }
+        .frame(maxWidth: 300)
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
     }
 
     private func listEditor(routeID: String?) -> some View {
-        NavigationStack {
-            List {
-                if let activeListID, let list = savedLists.first(where: { $0.id == activeListID }), routeID == nil {
-                    TextField("Nombre de la lista", text: $listName)
-                    Button("Renombrar") {
-                        let name = listName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !name.isEmpty, !savedLists.contains(where: { $0.id != list.id && normalized($0.name) == normalized(name) }) else { return }
-                        savedLists = savedLists.map { item in
-                            var changed = item
-                            if changed.id == list.id { changed.name = name }
-                            return changed
+        NavigationStack(path: $listPath) {
+            ScrollView {
+                VStack(spacing: 12) {
+                    if let routeID, let feature = catalog?.features.first(where: { $0.id == routeID }) {
+                        HStack(spacing: 12) {
+                            AppGlyph(icon: .turn).foregroundStyle(routeColor(feature))
+                                .frame(width: 40, height: 40)
+                                .background(Color(uiColor: .systemBackground), in: Circle())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Ruta").font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                                Text(feature.name).font(AppDesign.subtitle).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(14)
+                        .appCard()
+                        .accessibilityElement(children: .combine)
+                        if !savedLists.isEmpty {
+                            Text("Elige en qué listas guardarla")
+                                .font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 8)
                         }
                     }
-                    ForEach(list.routes, id: \.self) { id in
-                        if let feature = catalog?.features.first(where: { $0.id == id }) {
-                            Button(feature.name) { routeToUse = id; showingLists = false }
-                        } else { Text("Ruta no disponible") }
-                        Button("Quitar de la lista", role: .destructive) { toggleRoute(id, listID: list.id) }
+                    if savedLists.isEmpty {
+                        listsEmptyState(routeID)
+                    } else {
+                        ForEach(savedLists) { list in
+                            if let routeID {
+                                let included = list.routes.contains(routeID)
+                                Button { withAnimation(reduceMotion ? nil : AppDesign.selectionMotion) { toggleRoute(routeID, listID: list.id) } } label: {
+                                    listRow(list, trailing: included ? "checkmark.circle.fill" : "circle", highlighted: included)
+                                }
+                                .buttonStyle(AppPressStyle())
+                                .sensoryFeedback(.selection, trigger: included)
+                                .accessibilityLabel(list.name)
+                                .accessibilityValue(included ? "Guardada, " + routeCount(list.routes.count) : "Sin guardar, " + routeCount(list.routes.count))
+                                .accessibilityAddTraits(included ? .isSelected : [])
+                            } else {
+                                NavigationLink(value: list.id) {
+                                    listRow(list, trailing: "chevron.right")
+                                }
+                                .buttonStyle(AppPressStyle())
+                                .accessibilityLabel(list.name)
+                                .accessibilityValue(routeCount(list.routes.count))
+                                .contextMenu {
+                                    Button("Renombrar", systemImage: "pencil") { listName = list.name; listNaming = .rename(list.id) }
+                                    Button("Eliminar lista", systemImage: "trash", role: .destructive) { listPendingDeletion = list.id }
+                                }
+                            }
+                        }
+                        newListButton(routeID, prominent: false)
                     }
-                    Button("Eliminar lista", role: .destructive) {
-                        savedLists = savedLists.filter { $0.id != list.id }
-                        self.activeListID = nil
-                        listName = ""
-                    }
-                    Button("Volver a Mis listas") { self.activeListID = nil; listName = "" }
-                } else {
-                    ForEach(savedLists) { list in
-                        Button {
-                            if let routeID { toggleRoute(routeID, listID: list.id) }
-                            else { activeListID = list.id; listName = list.name }
-                        } label: {
-                            let included = routeID.map { list.routes.contains($0) } ?? false
-                            Label(list.name, systemImage: included ? "checkmark.circle.fill" : "list.bullet")
-                                .accessibilityValue(included ? "Guardado" : "")
-                        }.frame(minHeight: 44)
-                    }
-                    TextField("Nombre de la lista", text: $listName)
-                    Button("Crear lista") {
-                        let name = listName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !name.isEmpty, !savedLists.contains(where: { normalized($0.name) == normalized(name) }) else { return }
-                        savedLists = savedLists + [SavedList(name: name, routes: routeID.map { [$0] } ?? [])]
-                        listName = ""
-                    }.frame(minHeight: 44)
                 }
+                .padding(16)
+                .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: savedLists.map(\.id))
             }
             .navigationTitle(routeID == nil ? "Mis listas" : "Guardar en listas")
-            .toolbar { Button("Listo") { savingToLists = false; showingLists = false } }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Listo") { savingToLists = false; showingLists = false }
+                }
+            }
+            .navigationDestination(for: UUID.self) { listDetail($0) }
         }
-        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : Color(red: 0.02, green: 0.29, blue: 0.57))
+        .alert(listNaming.map { if case .rename = $0 { "Renombrar lista" } else { "Nueva lista" } } ?? "",
+               isPresented: Binding(get: { listNaming != nil }, set: { if !$0 { listNaming = nil } })) {
+            TextField("Nombre de la lista", text: $listName)
+            Button("Cancelar", role: .cancel) { listName = "" }
+            // Se captura la operación: el diálogo puede cerrarse (y limpiar listNaming) antes de la acción.
+            let naming = listNaming ?? .create(routeID: nil)
+            // El campo puede entregar el texto después de la acción: se confirma en el siguiente ciclo.
+            Button({ if case .rename = naming { "Guardar" } else { "Crear" } }()) {
+                Task { @MainActor in
+                    await Task.yield()
+                    commitListName(naming)
+                }
+            }
+                .disabled(!listNameIsValid(for: naming))
+        } message: {
+            Text("Por ejemplo «Trabajo» o «Escuela».")
+        }
+        .confirmationDialog(listPendingDeletion.flatMap { id in savedLists.first { $0.id == id } }.map { "¿Eliminar «\($0.name)»?" } ?? "",
+                            isPresented: Binding(get: { listPendingDeletion != nil }, set: { if !$0 { listPendingDeletion = nil } }),
+                            titleVisibility: .visible) {
+            Button("Eliminar lista", role: .destructive) {
+                guard let id = listPendingDeletion else { return }
+                withAnimation(reduceMotion ? nil : AppDesign.navigationMotion) { savedLists = savedLists.filter { $0.id != id } }
+                listPath.removeAll { $0 == id }
+                listPendingDeletion = nil
+            }
+            Button("Cancelar", role: .cancel) { listPendingDeletion = nil }
+        } message: {
+            Text("Las rutas siguen disponibles en Rutas.")
+        }
+        .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
+        .onDisappear { listPath = [] }
+    }
+
+    @ViewBuilder private func listDetail(_ id: UUID) -> some View {
+        if let list = savedLists.first(where: { $0.id == id }) {
+            List {
+                if list.routes.isEmpty {
+                    VStack(spacing: 12) {
+                        listIcon("bookmark")
+                        Text("Esta lista está vacía").font(AppDesign.subtitle)
+                        Text("Abre una ruta y toca el marcador para guardarla aquí.")
+                            .font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk).multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+                ForEach(list.routes, id: \.self) { routeID in
+                    let feature = catalog?.features.first { $0.id == routeID }
+                    Button {
+                        guard feature != nil else { return }
+                        routeToUse = routeID
+                        showingLists = false
+                    } label: {
+                        HStack(spacing: 12) {
+                            if let feature {
+                                AppGlyph(icon: .turn).foregroundStyle(routeColor(feature))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(feature.name).font(AppDesign.subtitle).foregroundStyle(.primary)
+                                    Text(zone(feature)).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                                }
+                            } else {
+                                Image(systemName: "exclamationmark.triangle").foregroundStyle(AppDesign.secondaryInk)
+                                Text("Ruta no disponible").font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                            }
+                            Spacer(minLength: 0)
+                            if feature != nil {
+                                Image(systemName: "chevron.right").foregroundStyle(AppDesign.secondaryInk).accessibilityHidden(true)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                        .appCard()
+                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(AppPressStyle())
+                    .accessibilityIdentifier("list-route-" + routeID)
+                    .accessibilityHint(feature == nil ? "" : "Abre la ruta")
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions {
+                        Button("Quitar", systemImage: "minus.circle", role: .destructive) { toggleRoute(routeID, listID: id) }
+                    }
+                    .contextMenu {
+                        Button("Quitar de la lista", systemImage: "minus.circle", role: .destructive) { toggleRoute(routeID, listID: id) }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: list.routes)
+            .navigationTitle(list.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Renombrar", systemImage: "pencil") { listName = list.name; listNaming = .rename(id) }
+                        Button("Eliminar lista", systemImage: "trash", role: .destructive) { listPendingDeletion = id }
+                    } label: {
+                        Label("Opciones de la lista", systemImage: "ellipsis.circle")
+                    }
+                    .accessibilityIdentifier("list-options")
+                }
+            }
+        } else {
+            ContentUnavailableView("Lista eliminada", systemImage: "trash")
+        }
     }
 
     private func toggleRoute(_ routeID: String, listID: UUID) {
@@ -586,7 +1189,7 @@ struct CatalogView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(feature.name)
-                        .font(.title2.bold())
+                        .font(AppDesign.type(17, relativeTo: .title2, weight: .semibold))
                         .accessibilityAddTraits(.isHeader)
                     if let description = information?.description, !description.isEmpty {
                         Text(description).textSelection(.enabled)
@@ -612,7 +1215,7 @@ struct CatalogView: View {
                         }
                         ForEach(Array(fields.enumerated()), id: \.offset) { item in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(item.element.label).font(.headline)
+                                Text(item.element.label).font(AppDesign.title)
                                 Text(item.element.value).textSelection(.enabled)
                             }
                         }
@@ -623,6 +1226,7 @@ struct CatalogView: View {
                 .padding(20)
             }
             .navigationTitle("Información")
+
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -660,22 +1264,13 @@ struct CatalogView: View {
 
     private func groupName(_ id: String) -> String { catalog?.groups.first { $0.id == id }?.name ?? "" }
 
-    private var catalogTestColorScheme: ColorScheme? {
-        #if DEBUG
-        return ProcessInfo.processInfo.arguments.contains("--catalog-dark") ? .dark : nil
-        #else
-        return nil
-        #endif
-    }
-
     private func fit(_ feature: CatalogFeature) {
-        let points = feature.geometry.positions
-        guard let minLat = points.map(\.latitude).min(), let maxLat = points.map(\.latitude).max(),
-              let minLon = points.map(\.longitude).min(), let maxLon = points.map(\.longitude).max() else { return }
-        camera = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-            span: MKCoordinateSpan(latitudeDelta: max(0.005, (maxLat - minLat) * 1.25),
-                                  longitudeDelta: max(0.005, (maxLon - minLon) * 1.25))))
+        let positions = feature.kind == .route ? feature.geometry.routeDisplayLines.flatMap { $0 } : feature.geometry.positions
+        if let position = AppDesign.routeCamera(positions.map(\.point), minimumSpan: 0.004) {
+            camera = position
+        } else if feature.kind == .route {
+            camera = .region(AppDesign.city)
+        }
     }
 
     private func polygon(_ rings: [[CatalogPosition]]) -> MKPolygon {

@@ -8,7 +8,7 @@ def successful(results):
     if selection.get('result') != 'success' or any(outputs.get(key) not in ('true', 'false') for key in ('web', 'native')):
         return False
     for name in ('web', 'native', 'ui'):
-        required = outputs['native' if name == 'ui' else name] == 'true'
+        required = outputs.get(name, outputs['native']) == 'true'
         if results.get(name, {}).get('result') not in (('success',) if required else ('success', 'skipped')):
             return False
     return True

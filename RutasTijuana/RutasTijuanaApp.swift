@@ -4,18 +4,22 @@ import MapKit
 @main
 struct RutasTijuanaApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @ViewBuilder private var root: some View {
+
+    init() {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
-            NavigationStack { TripPlannerView(catalog: .tripSample) }
-        } else { MainTabs() }
-        #else
-        MainTabs()
+        // Las pruebas de interfaz empiezan sin favoritos ni listas guardadas por ejecuciones anteriores.
+        if ProcessInfo.processInfo.arguments.contains("--reset-saved-data") {
+            for key in ["favorite-routes", "route-lists"] { UserDefaults.standard.removeObject(forKey: key) }
+        }
         #endif
+    }
+    @ViewBuilder private var root: some View {
+        MainTabs()
     }
     var body: some Scene {
         WindowGroup {
             root
+                .font(AppDesign.body)
                 .task { await NavigationActivityController.clearPreviousSession(); await CatalogRepository.shared.open() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { Task { await CatalogRepository.shared.update(force: false) } }
@@ -25,68 +29,69 @@ struct RutasTijuanaApp: App {
 }
 
 private struct MainTabs: View {
-    private enum Section: Hashable { case stops, home, map }
-    @State private var selected: Section = .home
+    @State private var selected: AppDestination = .home
+    @State private var tabResets: [AppDestination: Int] = [:]
+    @State private var tripActive = false
+    @State private var dockHeight: CGFloat = 66
     @ObservedObject private var repository = CatalogRepository.shared
 
     var body: some View {
-        TabView(selection: $selected) {
-            NavigationStack {
-                CatalogView(routesTab: true)
-                    .toolbarBackground(.black, for: .navigationBar)
-                    .toolbarBackground(.visible, for: .navigationBar)
-                    .toolbarColorScheme(.dark, for: .navigationBar)
-            }
-            .tabItem { Label("Rutas", systemImage: "map") }
-            .tag(Section.stops)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selected) {
+                NavigationStack {
+                    CatalogView(routesTab: true)
+                        .toolbarBackground(AppDesign.header, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
+                }
+                .padding(.bottom, dockHeight)
+                .toolbar(.hidden, for: .tabBar)
+                // Sin .id: recrear el NavigationStack durante su maquetación aborta en iOS 18.
+                .environment(\.tabReset, tabResets[.routes, default: 0])
+                .tag(AppDestination.routes)
 
-            ContentView()
-                .tabItem { Label("Inicio", systemImage: "house") }
-                .tag(Section.home)
+                integratedPlanner
+                    .safeAreaPadding(.bottom, dockHeight)
+                    .toolbar(.hidden, for: .tabBar)
+                    .id("home-\(tabResets[.home, default: 0])")
+                    .tag(AppDestination.home)
 
-            NavigationStack {
-                mapHome
+                NavigationStack {
+                    CatalogView(favoritesOnly: true)
+                        .toolbarBackground(AppDesign.header, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
+                }
+                    .padding(.bottom, dockHeight)
+                    .toolbar(.hidden, for: .tabBar)
+                    .environment(\.tabReset, tabResets[.favorites, default: 0])
+                    .tag(AppDestination.favorites)
             }
-            .tabItem { Label("Mapa", systemImage: "mappin") }
-            .tag(Section.map)
+
+            AppDock(selection: selected, confirmsSelection: selected == .home && tripActive,
+                    confirmsReselectionOnly: true, onSelect: select)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
-        .tint(.primary)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .environment(\.homeTripActive, $tripActive)
+        .environment(\.activeAppDestination, selected)
+        .environment(\.openAppDestination, select)
+        .tint(AppDesign.primary)
     }
 
-    private var mapHome: some View {
-        ZStack(alignment: .bottom) {
-            Map(initialPosition: .region(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 32.531, longitude: -117.012),
-                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-            )))
-            .accessibilityLabel("Mapa de Tijuana")
-            VStack(spacing: 12) {
-                Text("¿A dónde quieres ir hoy?")
-                    .font(.title3.bold())
-                    .accessibilityAddTraits(.isHeader)
-                if let catalog = repository.catalog, catalog.readyForDistribution {
-                    NavigationLink { TripPlannerView(catalog: catalog) } label: {
-                        Text("Empezar viaje").frame(minWidth: 160, minHeight: 44)
-                    }
-                    .accessibilityIdentifier("map-start")
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                } else {
-                    NavigationLink { CatalogView() } label: {
-                        Text("Consultar recorridos").frame(minWidth: 160, minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.02, green: 0.29, blue: 0.57))
-                }
-            }
-            .padding(16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .padding(20)
+    private var integratedPlanner: some View {
+        TripPlannerView(
+            catalog: repository.catalog ?? RouteCatalog(schemaVersion: 1, version: "", publishable: false,
+                                                        licenseStatus: "", groups: [], features: [])
+        )
+    }
+
+    private func select(_ destination: AppDestination) {
+        if selected == destination {
+            if destination == .home { tripActive = false }
+            tabResets[destination, default: 0] += 1
         }
-        .navigationTitle("Rutas Tijuana")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.black, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        selected = destination
     }
 }

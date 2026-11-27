@@ -149,6 +149,13 @@ check(informationRoundTrip.matching("lugar $9").count == 1, "Búsqueda en descri
 let geometryA = GeoPoint(latitude: 0, longitude: 0)
 let geometryB = GeoPoint(latitude: 0.001, longitude: 0.001)
 let geometryC = GeoPoint(latitude: 0.001, longitude: 0.002)
+let straightTrace = [geometryA, geometryB, GeoPoint(latitude: 0.002, longitude: 0.002)]
+    .map { CatalogPosition(longitude: $0.longitude, latitude: $0.latitude) }
+let curvedTrace = [geometryA, geometryB, geometryC, geometryA]
+    .map { CatalogPosition(longitude: $0.longitude, latitude: $0.latitude) }
+check(CatalogGeometry.line(Array(straightTrace.prefix(2))).routeDisplayLines.isEmpty, "A two-point route is hidden from the map")
+check(CatalogGeometry.multiLine([straightTrace, curvedTrace]).routeDisplayLines == [curvedTrace],
+      "Only shaped route parts are drawn and a closed path remains visible")
 let geometryStops = [geometryA, geometryB, geometryC].enumerated().map {
     TransitStop(id: String($0.offset), name: String($0.offset), point: $0.element)
 }
@@ -683,6 +690,14 @@ print("Pruebas de imágenes correctas")
     check(recovered.transfers == trip.transfers && abs(recovered.walkingMeters - trip.walkingMeters) < 0.01,
           "Resuming must preserve the itinerary")
     check(recoveringProvider.calls == coldProvider.calls + 1, "Only the failed request should be repeated")
+    let automaticProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    automaticProvider.failOnCall = 2
+    let automatic = TripPlanner(network: fixture, provider: automaticProvider,
+                                preferences: .init(requestsPerBatch: 1))
+    guard case .found(let automaticTrip) = try await automatic.searchContinuously(
+        from: origin, to: destination, timeout: .seconds(30)
+    ) else { fatalError("The planner must resume batches and retry a temporary provider failure") }
+    check(automaticTrip.transfers == trip.transfers, "Automatic resumption preserves the itinerary")
     let updated=try await planner.search(from:.init(latitude:32.001,longitude:-117),to:destination)
     if case .found(let changed)=updated {check(changed.catalogVersion=="transfer","Changing the origin rebuilds measured edges")}
     let loop=TripService(id:"loop",name:"Loop",direction:nil,stops:[],circular:true,geometry:[[origin,middle,destination,origin]])
@@ -690,8 +705,46 @@ print("Pruebas de imágenes correctas")
     check(prepared.circular,"Only declared closed geometry wraps")
     let end=prepared.stops.last!, start=prepared.stops[1]
     check(prepared.section(through:[end,start]) != nil,"Circular clip follows the declared seam")
+    let seam = prepared.stops.first!
+    let approach = prepared.section(through: [end, seam])
+    check(approach?.last == seam.point && approach?.count ?? 0 > 1, "Circular clip may end exactly at its seam")
+    var disconnected = prepared
+    disconnected.geometry[0].removeLast()
+    check(disconnected.section(through: [end, start]) == nil, "Open geometry never jumps across a seam")
     let open=TripService(id:"open",name:"Open",direction:nil,stops:[],circular:true,geometry:[[origin,middle]])
     check(!(try RouteAccess.services([open],origin:origin,destination:middle))[0].circular,"Circular declaration never invents missing geometry")
     print("Pruebas de conexiones sugeridas correctas")
 }
 try await testCalculatedTransfers()
+
+func testPresentationRules() {
+    check(WalkingFormat.turnSymbol("Gira a la izquierda en Calle 2") == "arrow.turn.up.left", "Giro a la izquierda en español")
+    check(WalkingFormat.turnSymbol("Take a right onto Calle Emiliano Zapata") == "arrow.turn.up.right", "Giro a la derecha en inglés")
+    check(WalkingFormat.turnSymbol("Da vuelta a la DERECHA por Calle Plaza México") == "arrow.turn.up.right", "Giro sin distinguir mayúsculas")
+    check(WalkingFormat.turnSymbol("Llegaste al destino") == "mappin.and.ellipse", "Llegada")
+    check(WalkingFormat.turnSymbol("Arrive at the destination") == "mappin.and.ellipse", "Llegada en inglés")
+    check(WalkingFormat.turnSymbol("Continúa por Calle Las Plazas") == "arrow.up", "Seguir de frente")
+    check(WalkingFormat.turnSymbol("") == "arrow.up", "Indicación vacía")
+
+    check(WalkingFormat.sameText("5 y 10-10 de Mayo (Blanco/Dorado)", "5 y 10 → 10 de Mayo (Blanco/Dorado)"), "Sentido repetido con flecha")
+    check(WalkingFormat.sameText("5 y 10-CETYS-Jardín Dorado", "5 y 10 → CETYS → Jardin dorado"), "Repetición sin acentos ni mayúsculas")
+    check(WalkingFormat.sameText("5 y 10-Homex blanco y naranja", "5 y 10 → Homex (blanco/naranja)") == false, "Un texto con palabras distintas se conserva")
+    check(!WalkingFormat.sameText("Recorrido de ejemplo", "Sentido de ejemplo"), "Textos distintos se conservan")
+    check(!WalkingFormat.sameText("Centro", "Centro Murúa"), "Un prefijo no es una repetición")
+
+    check(WalkingFormat.distance(0) == "0 m", "Distancia cero")
+    check(WalkingFormat.distance(215.4) == "215 m", "Metros redondeados")
+    check(WalkingFormat.distance(-5) == "0 m", "Distancia negativa")
+    check(WalkingFormat.distance(2_400) == "2,4 km", "Kilómetros con coma decimal")
+    check(WalkingFormat.distance(.infinity) == "—", "Distancia no finita")
+
+    func trip(transfers: Int, walking: Double) -> PlannedTrip {
+        PlannedTrip(catalogVersion: "v", legs: [], transfers: transfers, walkingMeters: walking, exceedsPreferences: false)
+    }
+    check(trip(transfers: 0, walking: 0).summary == "Sin transbordos · sin caminar", "Resumen sin cifras vacías")
+    check(trip(transfers: 0, walking: 0.4).summary == "Sin transbordos · sin caminar", "Caminata menor a un metro")
+    check(trip(transfers: 1, walking: 215).summary == "1 transbordo · 215 m a pie", "Singular de transbordo")
+    check(trip(transfers: 2, walking: 2_400).summary == "2 transbordos · 2,4 km a pie", "Plural y kilómetros")
+    print("Pruebas de reglas de presentación correctas")
+}
+testPresentationRules()

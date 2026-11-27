@@ -38,7 +38,7 @@ El servidor solo entrega los archivos de `preview`. El catálogo se procesa en e
 
 ## Componentes
 
-`ContentView` contiene el flujo de inicio, origen, destino y resultado. `TransitRoute` calcula paradas cercanas y el recorrido de un circuito en sentido único. `LocationService` obtiene una ubicación puntual en iOS, solo después de pedirla; permite continuar manualmente si no está disponible.
+`TripPlannerView` reúne en Inicio el mapa, la búsqueda, el cálculo y el trayecto. `TransitRoute` calcula paradas cercanas y el recorrido de un circuito en sentido único. `LocationService` obtiene una ubicación puntual en iOS, solo después de pedirla; permite continuar manualmente si no está disponible.
 
 Las seis paradas y sus coordenadas son ficticias. Las distancias se calculan en línea recta, no como caminos peatonales. El mapa base necesita conexión. No se guardan ubicaciones ni consultas.
 
@@ -54,7 +54,7 @@ xcodebuild -project RutasTijuana.xcodeproj -scheme RutasTijuana \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-El destino de la app es iPhone con iOS 17 o posterior.
+El destino de la app es iPhone con iOS 18 o posterior. En la CI el perfil compacto usa iPhone SE con iOS 18 y el estándar iPhone 17 con iOS 26.
 
 ## Validación
 
@@ -65,6 +65,18 @@ Las pruebas de lógica se ejecutan en el runner de macOS de GitHub Actions:
 ```sh
 bash scripts/test-logic.sh
 ```
+
+### Pruebas por niveles
+
+No hace falta correr toda la matriz en cada cambio:
+
+| Momento | Qué correr | Tiempo aproximado |
+|---|---|---|
+| Cada iteración | `python3 scripts/test_changed.py`: lógica, Python, compilación incremental y hasta 4 pruebas de interfaz del área modificada en el iPhone 17 | 2–4 min |
+| Cierre de un lote | `python3 scripts/test_changed.py --max 0`: todas las pruebas de interfaz de las áreas modificadas | 8–10 min |
+| Antes de publicar o integrar | Todo en el iPhone 17 y en el iPhone SE, más la CI de GitHub | 25 min |
+
+`--dry-run` muestra el plan sin ejecutarlo, `--base main` compara contra otra referencia, `--test NOMBRE` elige pruebas concretas, `--device UUID` otro simulador y `--captures` guarda las capturas de evidencia (por defecto solo se guardan las de fallos). Si la app no cambió, se reutiliza la instalación en el simulador, y la lógica Swift reutiliza su binario mientras sus fuentes no cambien. Las pruebas XCTest añadidas o editadas se corren primero. La compilación reutiliza `build/test-changed`, así que las iteraciones siguientes son incrementales.
 
 Para revisar la interfaz en Xcode:
 
@@ -142,7 +154,7 @@ El catálogo ofrece la guía para paradas con coordenada puntual. El planificado
 
 ## Comprobaciones en GitHub
 
-El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pruebas de interfaz en otro runner de macOS. Cada trabajo muestra su resultado y el resumen final reúne los estados y duraciones. Los cambios documentales omiten las compilaciones; los cambios web omiten iPhone; los cambios compartidos o desconocidos ejecutan todo.
+El flujo separa herramientas y panel en Linux, lógica y Release en macOS, y pruebas de interfaz en otro runner de macOS. Cada trabajo muestra su resultado y el resumen final reúne los estados y duraciones. Los cambios documentales omiten las compilaciones; los cambios web omiten iPhone; los cambios compartidos o desconocidos ejecutan todo. En un PR en borrador solo corren herramientas, lógica y Release; las pruebas de iPhone corren al marcarlo como listo, en cada push a `main` y en la ejecución manual.
 
 La ejecución manual ofrece `full` y `native`. Desde una ejecución de Actions se pueden repetir únicamente los trabajos fallidos. Una actualización de la rama cancela su ejecución anterior. Las pruebas de iPhone conservan resultados, capturas y diagnósticos durante siete días.
 

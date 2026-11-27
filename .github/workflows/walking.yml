@@ -30,7 +30,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Preparar catálogo
@@ -49,8 +49,9 @@ jobs:
           try:
               event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
               encoded = (event.get('inputs') or {}).get('catalog_package') or ''
-              fixture = 'YES'
-              capture = 'testWalkingLiveRoute'
+              # Sin paquete se usa el catálogo público incluido en Catalog/.
+              fixture = 'NO'
+              capture = 'testAppScreensWithCatalog'
               package = ''
               if encoded:
                   if not isinstance(encoded, str) or len(encoded) > ((2 * 1024 * 1024 + 2) // 3) * 4:
@@ -111,7 +112,7 @@ jobs:
           openssl rand -hex 32 > "$RUNNER_TEMP/password"
           openssl enc -aes-256-cbc -pbkdf2 -salt -in "$RUNNER_TEMP/results.tar.gz" -out "$RUNNER_TEMP/encrypted/results.enc" -pass file:"$RUNNER_TEMP/password"
           openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/public.pem" -in "$RUNNER_TEMP/password" -out "$RUNNER_TEMP/encrypted/key.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: walking-results
