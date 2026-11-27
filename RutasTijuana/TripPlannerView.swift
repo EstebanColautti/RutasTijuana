@@ -19,12 +19,74 @@ struct TransitStopDot: View {
     }
 }
 
+/// Ícono de etapa: naranja para caminar y azul de marca para el transporte, como las cápsulas del trayecto.
+struct TripLegIcon: View {
+    let leg: TripLeg
+    var size: CGFloat = 32
+
+    var body: some View {
+        Image(systemName: leg.isWalk ? "figure.walk" : "bus.fill")
+            .font(.system(size: size * 0.45, weight: .semibold))
+            .foregroundStyle(leg.isWalk ? AppDesign.header : .white)
+            .frame(width: size, height: size)
+            .background(leg.isWalk ? AppNoticeTone.caution.accent : AppDesign.primary, in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// Tira del itinerario: 🚶 4 min › 🚌 R1 › 🚶 2 min.
+struct TripLegChips: View {
+    let legs: [TripLeg]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollView(.horizontal, showsIndicators: false) { row }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(legs.map { leg -> String in
+            switch leg {
+            case .walk(_, _, let route): return "Caminar " + WalkingFormat.minutes(route.duration)
+            case .ride(let service, _): return "Transporte " + service.name
+            }
+        }.joined(separator: ", "))
+    }
+
+    private var row: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(legs.enumerated()), id: \.offset) { item in
+                if item.offset > 0 {
+                    Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(AppDesign.secondaryInk)
+                }
+                chip(item.element)
+            }
+        }
+    }
+
+    private func chip(_ leg: TripLeg) -> some View {
+        let walking = leg.isWalk
+        let text: String = switch leg {
+        case .walk(_, _, let route): WalkingFormat.minutes(route.duration)
+        case .ride(let service, _): service.shortName
+        }
+        return Label(text, systemImage: walking ? "figure.walk" : "bus.fill")
+            .font(AppDesign.subtitle)
+            .lineLimit(1)
+            .foregroundStyle(walking ? AppDesign.header : .white)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(walking ? AppNoticeTone.caution.accent : AppDesign.primary, in: Capsule())
+    }
+}
+
 struct TripActionButton: View {
     let title: String
+    let fullWidth: Bool
     let action: () -> Void
 
-    init(_ title: String, action: @escaping () -> Void) {
+    init(_ title: String, fullWidth: Bool = false, action: @escaping () -> Void) {
         self.title = title
+        self.fullWidth = fullWidth
         self.action = action
     }
 
@@ -33,7 +95,7 @@ struct TripActionButton: View {
             Text(title)
                 .font(AppDesign.subtitle)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 44, minHeight: 44)
+                .frame(minWidth: 44, maxWidth: fullWidth ? .infinity : nil, minHeight: 44)
                 .contentShape(Rectangle())
         }
     }
@@ -532,14 +594,14 @@ struct TripPlannerView: View {
                         .pickerStyle(.segmented)
                         .transition(homeTransition)
                     }
-                    DisclosureGroup("Ver etapas", isExpanded: $homeStagesExpanded) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Etapas").font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                            .accessibilityAddTraits(.isHeader)
                         ForEach(Array(trip.legs.enumerated()), id: \.offset) { row in
                             tripLegCard(row.element, index: row.offset, total: trip.legs.count)
                         }
                     }
-                    .font(AppDesign.subtitle)
-                    .padding(.vertical, 6)
-                    .animation(homeMotion, value: homeStagesExpanded)
+                    .padding(.top, 4)
                 }
             } else {
                 Text("Elige un destino en el mapa o búscalo arriba.")
@@ -573,35 +635,34 @@ struct TripPlannerView: View {
     }
 
     private func homeItineraryCard(_ trip: PlannedTrip) -> some View {
-        let layout = textSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
-        return layout {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(estimatedDuration(trip).map { WalkingFormat.duration($0, arrived: false) } ?? "Itinerario")
-                    .font(AppDesign.title)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(trip.duration.map { WalkingFormat.minutes($0) } ?? "Itinerario")
+                    .font(AppDesign.type(24, relativeTo: .title, weight: .semibold))
                     .contentTransition(.numericText())
                     .accessibilityIdentifier("trip-result")
-                if let service = primaryService { Text(service.name).font(AppDesign.note) }
-                Text(trip.summary)
-                    .font(AppDesign.note)
-                    .foregroundStyle(AppDesign.secondaryInk)
+                if let seconds = trip.duration {
+                    Text("Llegada " + WalkingFormat.arrival(after: seconds))
+                        .font(AppDesign.explanation).foregroundStyle(AppDesign.secondaryInk)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            TripLegChips(legs: trip.legs)
+            Text(trip.summary).font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
             Button {
                 searchFocused = false
                 alternativeTask?.cancel()
                 selectedLegIndex = nil
                 travelling = true
             } label: {
-                Text("Iniciar viaje")
+                Text("Iniciar viaje").frame(maxWidth: .infinity)
             }
             .buttonStyle(AppActionStyle())
             .accessibilityIdentifier("trip-begin")
         }
-        .padding(12)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .appCard()
-        .animation(homeMotion, value: estimatedDuration(trip))
+        .animation(homeMotion, value: trip.duration)
     }
 
     private func cancelPlaceLookup() {
@@ -691,50 +752,40 @@ struct TripPlannerView: View {
     }
 
     private func tripLegCard(_ leg: TripLeg, index: Int, total: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Paso \(index + 1) de \(total)").font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
-            legSummary(leg)
-            if selectedLegIndex == index {
-                Label("Etapa seleccionada", systemImage: "checkmark.circle.fill").font(AppDesign.note)
+        Button {
+            selectedLegIndex = selectedLegIndex == index ? nil : index
+            if selectedLegIndex != nil { showLeg(leg) }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                TripLegIcon(leg: leg)
+                VStack(alignment: .leading, spacing: 2) {
+                    switch leg {
+                    case .walk(_, _, let route):
+                        Text("Camina \(WalkingFormat.distance(route.length))").font(AppDesign.subtitle)
+                        Text(index == total - 1 ? "Hasta tu destino" : "Hasta la parada").font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                    case .ride(let service, let stops):
+                        Text(service.name).font(AppDesign.subtitle).fixedSize(horizontal: false, vertical: true)
+                        Text(stops.first?.suggested == true ? "Subida y bajada sugeridas" : "\(stops.first?.name ?? "") → \(stops.last?.name ?? "")")
+                            .font(AppDesign.note).foregroundStyle(AppDesign.secondaryInk)
+                    }
+                }
+                Spacer(minLength: 0)
+                if let seconds = leg.duration {
+                    Text(WalkingFormat.minutes(seconds)).font(AppDesign.subtitle).foregroundStyle(AppDesign.secondaryInk)
+                }
             }
-            Button {
-                selectedLegIndex = index
-                showLeg(leg)
-            } label: {
-                Text("Mostrar etapa en el mapa")
-                    .frame(minWidth: 44, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
-            .accessibilityValue(selectedLegIndex == index ? "Seleccionada" : "")
-            .accessibilityIdentifier("trip-show-leg-\(index)")
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .appCard(selected: selectedLegIndex == index)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-        .background(selectedLegIndex == index ? Color.blue.opacity(0.12) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .buttonStyle(AppPressStyle())
+        .accessibilityHint("Muestra la etapa en el mapa")
+        .accessibilityAddTraits(selectedLegIndex == index ? .isSelected : [])
+        .accessibilityIdentifier("trip-show-leg-\(index)")
     }
 
-    private func estimatedDuration(_ trip: PlannedTrip) -> TimeInterval? {
-        var seconds: TimeInterval = 0
-        for leg in trip.legs {
-            switch leg {
-            case .walk(_, _, let route):
-                seconds += route.duration
-            case .ride(let service, let stops):
-                guard let section = service.section(through: stops), section.count > 1 else { return nil }
-                seconds += RouteMeasure(section).length / TripCost.ridingSpeed
-            }
-        }
-        return seconds.isFinite && seconds > 0 ? seconds : nil
-    }
-
-    private var primaryService: TripService? {
-        guard let trip else { return nil }
-        for leg in trip.legs {
-            if case .ride(let service, _) = leg { return service }
-        }
-        return nil
-    }
+    private func estimatedDuration(_ trip: PlannedTrip) -> TimeInterval? { trip.duration }
 
     @MapContentBuilder private var mapContents: some MapContent {
 
@@ -747,7 +798,8 @@ struct TripPlannerView: View {
                 .tint(colorScheme == .dark ? .indigo : .black)
         }
         if let trip {
-            if let leg = trip.legs.first(where: {
+            // Durante el viaje el tiempo ya está en el panel; el rótulo taparía paradas.
+            if !travelling, let leg = trip.legs.first(where: {
                 if case .ride = $0 { return true }
                 return false
             }), case let .ride(service, stops) = leg,
@@ -795,52 +847,6 @@ struct TripPlannerView: View {
                 }
             }
         }
-    }
-
-    @ViewBuilder private func legSummary(_ leg: TripLeg) -> some View {
-        switch leg {
-        case .walk(_, _, let route):
-            Label("Camina \(WalkingFormat.distance(route.length)) · \(WalkingFormat.duration(route.duration, arrived: false))", systemImage: "figure.walk")
-        case .ride(let service, let stops):
-            VStack(alignment: .leading, spacing: 12) {
-                Label(service.name, systemImage: "bus").font(AppDesign.title)
-                Text(service.direction ?? "Sentido del recorrido").font(AppDesign.body)
-                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
-                layout {
-                    boardingPoint(
-                        stops.first?.suggested == true ? "Punto de subida sugerido" : "Sube en \(stops.first?.name ?? "")",
-                        symbol: "arrow.up.circle.fill", color: .blue
-                    )
-                    boardingPoint(
-                        stops.last?.suggested == true ? "Punto de bajada sugerido" : "Baja en \(stops.last?.name ?? "")",
-                        symbol: "arrow.down.circle.fill", color: .orange
-                    )
-                }
-                if stops.contains(where: \.suggested) {
-                    Text("Confirma con el conductor dónde puedes subir y bajar.").font(AppDesign.note)
-                }
-                DisclosureGroup("Información del recorrido") {
-                    let feature = catalog.features.first { $0.id == (service.catalogRouteID ?? service.id) }
-                    let schedules = feature?.publishedValues(for: "schedule") ?? []
-                    let fares = feature?.publishedValues(for: "fare") ?? []
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(schedules.isEmpty ? "Horario no disponible" : "Horario: " + schedules.joined(separator: "; "))
-                        Text(fares.isEmpty ? "Tarifa no disponible" : "Tarifa: " + fares.joined(separator: "; "))
-                        if service.section(through: stops) == nil {
-                            Text("El seguimiento de esta etapa usa confirmación manual.")
-                        }
-                    }.font(AppDesign.note)
-                }
-            }
-        }
-    }
-
-    private func boardingPoint(_ title: String, symbol: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: symbol).foregroundStyle(color).accessibilityHidden(true)
-            Text(title).fontWeight(.semibold)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func invalidate() {

@@ -217,6 +217,56 @@ enum WalkingFormat {
         if value < 1000 { return "\(Int(value.rounded())) m" }
         return String(format: "%.1f km", value / 1000).replacingOccurrences(of: ".", with: ",")
     }
+    /// Minutos para métricas y chips: «4 min», «1 h 5 min»; «1 min» como mínimo.
+    static func minutes(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "—" }
+        let total = max(1, Int(ceil(seconds / 60)))
+        return total < 60 ? "\(total) min" : "\(total / 60) h" + (total % 60 == 0 ? "" : " \(total % 60) min")
+    }
+
+    /// Hora de llegada estimada, «10:08».
+    static func arrival(after seconds: Double, from now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_MX")
+        formatter.dateFormat = "H:mm"
+        return formatter.string(from: now.addingTimeInterval(seconds))
+    }
+
+    /// Traduce al español las indicaciones peatonales que MapKit entrega en el idioma del teléfono.
+    static func spanish(_ instruction: String) -> String {
+        let text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rules: [(String, String)] = [
+            (#"^(?:Turn|Take a) (?:slight )?right (?:onto|on) (.+)$"#, "Gira a la derecha en $1"),
+            (#"^(?:Turn|Take a) (?:slight )?left (?:onto|on) (.+)$"#, "Gira a la izquierda en $1"),
+            (#"^Slight right (?:onto|on) (.+)$"#, "Gira ligeramente a la derecha en $1"),
+            (#"^Slight left (?:onto|on) (.+)$"#, "Gira ligeramente a la izquierda en $1"),
+            (#"^(?:Turn|Take a) right$"#, "Gira a la derecha"),
+            (#"^(?:Turn|Take a) left$"#, "Gira a la izquierda"),
+            (#"^Continue (?:onto|on) (.+)$"#, "Continúa por $1"),
+            (#"^Continue straight$"#, "Sigue derecho"),
+            (#"^Head (north|south|east|west|northeast|northwest|southeast|southwest) (?:on|toward) (.+)$"#, "Camina hacia el $1 por $2"),
+            (#"^Make a U-turn$"#, "Da la vuelta"),
+            (#"^The destination is on your right$"#, "El destino está a tu derecha"),
+            (#"^The destination is on your left$"#, "El destino está a tu izquierda"),
+            (#"^Arrive at (?:the )?destination$"#, "Llegaste al destino"),
+            (#"^Arrive at (.+)$"#, "Llegaste a $1"),
+        ]
+        let compass = ["north": "norte", "south": "sur", "east": "este", "west": "oeste", "northeast": "noreste",
+                       "northwest": "noroeste", "southeast": "sureste", "southwest": "suroeste"]
+        for (pattern, template) in rules {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { continue }
+            var result = template
+            for group in stride(from: match.numberOfRanges - 1, through: 1, by: -1) {
+                guard let range = Range(match.range(at: group), in: text) else { continue }
+                let value = String(text[range])
+                result = result.replacingOccurrences(of: "$\(group)", with: compass[value.lowercased()] ?? value)
+            }
+            return result
+        }
+        return text
+    }
+
     static func duration(_ seconds: Double, arrived: Bool = false) -> String {
         if arrived { return "Llegaste" }
         guard seconds.isFinite else { return "—" }
