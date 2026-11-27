@@ -4,6 +4,31 @@ import re
 import subprocess
 
 
+# Archivos que usan ambos trabajos: el web los prueba con Python y el nativo los ejecuta al compilar.
+SHARED_SCRIPTS = {'scripts/install_catalog.py', 'scripts/check_app_bundle.py', 'scripts/build_catalog.py',
+                  'scripts/prepare_catalog.py', 'scripts/catalog_information.py', 'tests/catalog_http.py'}
+NATIVE_PREFIXES = ('RutasTijuana/', 'NavigationWidget/', 'Config/', 'RutasTijuana.xcodeproj/', 'RutasTijuanaUITests/', 'Catalog/')
+WEB_PREFIXES = ('admin/', 'preview/', 'shared/', 'supabase/')
+
+
+def area(path):
+    """Devuelve (web, nativo) para un archivo modificado."""
+    filename = path.rsplit('/', 1)[-1]
+    if path.endswith('.md'):
+        return False, False
+    if path in SHARED_SCRIPTS or path.startswith('Catalog/') or path.startswith('.github/'):
+        return True, True
+    if filename in ('Package.swift', 'Package.resolved'):
+        return False, True
+    if filename in ('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json', 'vite.config.ts'):
+        return True, False
+    if path in ('tests/main.swift', 'scripts/test-logic.sh') or path.startswith(NATIVE_PREFIXES):
+        return False, True
+    if path.startswith(WEB_PREFIXES) or path.startswith(('tests/', 'scripts/')):
+        return True, False
+    return True, True
+
+
 def select(paths, event='pull_request', mode='full'):
     if event == 'workflow_dispatch':
         return {'web': mode != 'native', 'native': True, 'reason': 'Ejecución manual: ' + mode}
@@ -11,19 +36,10 @@ def select(paths, event='pull_request', mode='full'):
         return {'web': True, 'native': True, 'reason': 'Comprobación completa'}
     web = native = False
     for path in paths:
-        parts = path.split('/')
-        filename = parts[-1]
-        if any(part.lower() in ('tests', '__tests__', 'rutastijuanauitests') for part in parts) or re.search(r'\.(test|spec)\.', filename) or filename in ('package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'Package.swift', 'Package.resolved'):
-            return {'web': True, 'native': True, 'reason': 'Pruebas o dependencias'}
-        if path.endswith('.md'):
-            continue
-        if path.startswith(('admin/', 'preview/', 'shared/')):
-            web = True
-        elif path.startswith(('RutasTijuana/', 'NavigationWidget/', 'Config/', 'RutasTijuana.xcodeproj/', 'RutasTijuanaUITests/')):
-            native = True
-        else:
-            return {'web': True, 'native': True, 'reason': 'Cambios compartidos o configuración'}
-    return {'web': web, 'native': native, 'reason': 'Cambios web y nativos' if web and native else 'Cambios nativos' if native else 'Cambios web' if web else 'Documentación'}
+        needs_web, needs_native = area(path)
+        web, native = web or needs_web, native or needs_native
+    reason = 'Cambios web y nativos' if web and native else 'Cambios nativos' if native else 'Cambios web' if web else 'Documentación'
+    return {'web': web, 'native': native, 'reason': reason}
 
 
 def main():

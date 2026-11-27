@@ -643,10 +643,11 @@ struct AppActionStyle: ButtonStyle {
     /// Botón principal: vidrio teñido con el color de la acción (equivalente a `.glassProminent`).
     @ViewBuilder private func surface(_ label: some View, pressed: Bool) -> some View {
         if isEnabled {
+            // El color va sobre el vidrio y bajo el texto: el brillo del vidrio no reduce el contraste.
             label
+                .background(pressed ? pressedFill : fill, in: Capsule())
                 .appGlass(in: Capsule(), interactive: true, tint: pressed ? pressedFill : fill,
                           glassTint: pressed ? pressedFill : glassFill)
-                .background(pressed ? pressedFill : fill, in: Capsule())
                 .shadow(color: fill.opacity(pressed || !AppDesign.hasLiquidGlass ? 0 : 0.28), radius: 6, y: 3)
         } else {
             label.background(Color(white: 0.88), in: Capsule())

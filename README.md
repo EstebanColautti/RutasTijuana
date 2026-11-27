@@ -33,7 +33,8 @@ La app incluye el catálogo para consultar recorridos sin conexión. Seleccionar
 ```text
 RutasTijuana/
   RutasTijuanaApp.swift
-  ContentView.swift
+  TripPlannerView.swift
+  CatalogView.swift
   TransitRoute.swift
   LocationService.swift
   Assets.xcassets/

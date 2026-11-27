@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 import Accessibility
 
 struct CatalogView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.openAppDestination) private var openAppDestination
     @Environment(\.tabReset) private var tabReset
     @Environment(\.colorScheme) private var colorScheme
@@ -141,37 +140,6 @@ struct CatalogView: View {
                         }
                     }
                     .animation(reduceMotion ? nil : AppDesign.navigationMotion, value: selectedID)
-                } else {
-                    map.frame(height: textSize.isAccessibilitySize ? 154 : 232)
-                        .contentShape(Rectangle())
-                        .clipped()
-                    VStack(spacing: 0) {
-                        AppPanelHeading(title: filter == .stops ? "Paradas" : "Recorridos",
-                                        back: { dismiss() }, sideWidth: 88) {
-                            HStack(spacing: 0) {
-                                Button { showingServices = true } label: {
-                                    Image(systemName: "info.circle")
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .accessibilityLabel("Servicios")
-                                Button(action: refreshCatalog) {
-                                    Image(systemName: "arrow.clockwise")
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .accessibilityLabel("Actualizar ahora")
-                                .disabled(repository.isUpdating)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 10)
-                        filters
-                        catalogPanelList
-                    }
-                    .background { AppDesign.panelSurface() }
-                    .padding(.top, -AppDesign.panelOverlap)
-                    .zIndex(1)
                 }
             } else {
                 ContentUnavailableView {
@@ -250,7 +218,6 @@ struct CatalogView: View {
         .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
         .tint(.white)
 
-        .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             if !favoritesOnly {
                 if catalog == nil {
@@ -286,15 +253,6 @@ struct CatalogView: View {
         .task {
             await repository.open()
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--catalog-sample") { privateCatalog = .sample }
-            if ProcessInfo.processInfo.arguments.contains("--catalog-pale-sample") {
-                let sample = RouteCatalog.sample
-                let feature = sample.features[0]
-                privateCatalog = RouteCatalog(schemaVersion: sample.schemaVersion, version: sample.version,
-                    publishable: sample.publishable, licenseStatus: sample.licenseStatus, groups: sample.groups,
-                    features: [CatalogFeature(id: feature.id, name: feature.name, groupID: feature.groupID,
-                        kind: feature.kind, color: "#FFFF99", verified: false, geometry: feature.geometry)])
-            }
             if ProcessInfo.processInfo.arguments.contains("--catalog-info-sample") { privateCatalog = .informationSample }
             if ProcessInfo.processInfo.arguments.contains("--catalog-services-sample") {
                 let sample = RouteCatalog.informationSample
@@ -355,32 +313,6 @@ struct CatalogView: View {
     private func refreshCatalog() {
         privateCatalog = nil
         Task { await repository.update(force: true) }
-    }
-
-    private var catalogPanelList: some View {
-        ScrollViewReader { scroll in
-            List {
-                if let selection {
-                    detail(selection)
-                        .buttonStyle(.borderless)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 24, bottom: 5, trailing: 24))
-                        .listRowSeparator(.hidden)
-                        .id(selection.id)
-                }
-                ForEach(matches.filter { $0.id != selectedID }) { feature in
-                    row(feature)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 24, bottom: 5, trailing: 24))
-                        .listRowSeparator(.hidden)
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .overlay { if matches.isEmpty { emptySearch } }
-            .onChange(of: selectedID) { _, id in
-                if let id { scroll.scrollTo(id, anchor: .top) }
-            }
-        }
     }
 
     private var featureList: some View {
@@ -700,56 +632,6 @@ struct CatalogView: View {
             .frame(width: 44, height: 44)
             .appGlass(in: Circle(), interactive: true)
             .contentShape(Circle())
-    }
-
-    private var filters: some View {
-        VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Buscar nombre, grupo o información").font(AppDesign.subtitle)
-                let layout = textSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                    : AnyLayout(HStackLayout(spacing: 10))
-                layout {
-                    TextField("Buscar nombre, grupo o información", text: $query, prompt: Text("Buscar…"))
-                        .focused($searchFocused)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.search)
-                        .onSubmit { searchFocused = false }
-                        .accessibilityLabel("Buscar nombre, grupo o información")
-                        .accessibilityIdentifier("catalog-search")
-                        .appField(focused: searchFocused)
-                    Button("Buscar") {
-                        searchFocused = false
-                        showingRouteSearch = true
-                    }
-                    .buttonStyle(AppActionStyle())
-                    .accessibilityIdentifier("catalog-open-search")
-                }
-            }
-            HStack {
-                Text("Filtros").font(AppDesign.subtitle)
-                    .accessibilityHidden(true)
-                Picker("Grupo", selection: $groupID) {
-                    Text("Todos los grupos").tag(String?.none)
-                    ForEach(catalog?.groups ?? []) { group in Text(group.name).tag(Optional(group.id)) }
-                }
-                .labelsHidden()
-                if !favoritesOnly && !routesTab {
-                    Picker("Contenido", selection: $filter) {
-                        ForEach(CatalogFilter.allCases) { Text($0.title).tag($0) }
-                    }.accessibilityIdentifier("catalog-filter")
-                }
-            }
-            HStack {
-                Text("Resultados: \(matches.count)").font(AppDesign.note).foregroundStyle(.primary)
-                Spacer()
-                if reference != nil {
-                    Button("Quitar cercanía") { reference = nil; selectedID = nil; camera = .automatic }
-                        .font(AppDesign.note)
-                }
-            }
-        }.padding(12)
     }
 
     private var map: some View {
@@ -1375,14 +1257,6 @@ struct CatalogView: View {
     }
 
     private func groupName(_ id: String) -> String { catalog?.groups.first { $0.id == id }?.name ?? "" }
-
-    private var catalogTestColorScheme: ColorScheme? {
-        #if DEBUG
-        return ProcessInfo.processInfo.arguments.contains("--catalog-dark") ? .dark : nil
-        #else
-        return nil
-        #endif
-    }
 
     private func fit(_ feature: CatalogFeature) {
         let positions = feature.kind == .route ? feature.geometry.routeDisplayLines.flatMap { $0 } : feature.geometry.positions

@@ -14,13 +14,7 @@ struct RutasTijuanaApp: App {
         #endif
     }
     @ViewBuilder private var root: some View {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--trip-fixture") {
-            NavigationStack { TripPlannerView(catalog: .tripSample) }
-        } else { MainTabs() }
-        #else
         MainTabs()
-        #endif
     }
     var body: some Scene {
         WindowGroup {
@@ -56,9 +50,8 @@ private struct MainTabs: View {
                 .environment(\.tabReset, tabResets[.routes, default: 0])
                 .tag(AppDestination.routes)
 
-                home
-                    .padding(.bottom, legacyHome ? dockHeight : 0)
-                    .safeAreaPadding(.bottom, legacyHome ? 0 : dockHeight)
+                integratedPlanner
+                    .safeAreaPadding(.bottom, dockHeight)
                     .toolbar(.hidden, for: .tabBar)
                     .id("home-\(tabResets[.home, default: 0])")
                     .tag(AppDestination.home)
@@ -87,30 +80,10 @@ private struct MainTabs: View {
         .tint(AppDesign.primary)
     }
 
-    /// La consulta anterior no está pensada para quedar bajo el dock flotante.
-    private var legacyHome: Bool {
-        #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("--legacy-consultation-test")
-        #else
-        false
-        #endif
-    }
-
-    @ViewBuilder private var home: some View {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--legacy-consultation-test") {
-            ContentView()
-        } else { integratedPlanner }
-        #else
-        integratedPlanner
-        #endif
-    }
-
     private var integratedPlanner: some View {
         TripPlannerView(
             catalog: repository.catalog ?? RouteCatalog(schemaVersion: 1, version: "", publishable: false,
-                                                        licenseStatus: "", groups: [], features: []),
-            integratedHome: true
+                                                        licenseStatus: "", groups: [], features: [])
         )
     }
 

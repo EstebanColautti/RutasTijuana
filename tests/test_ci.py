@@ -18,7 +18,7 @@ successful = load('ci_summary').successful
 
 class CISelectionTests(unittest.TestCase):
     def test_selection(self):
-        for files, web, native in [(['README.md'], False, False), (['docs/DESARROLLO.md'], False, False), (['admin/src/main.tsx'], True, False), (['preview/app.js'], True, False), (['RutasTijuana/WalkingNavigation.swift'], False, True), (['NavigationWidget/Info.plist'], False, True), (['Config/Debug.xcconfig'], False, True), (['tests/main.swift'], True, True), (['scripts/test-logic.sh'], True, True), (['.github/workflows/build.yml'], True, True), (['pnpm-lock.yaml'], True, True), (['unknown'], True, True), (None, True, True)]:
+        for files, web, native in [(['README.md'], False, False), (['docs/DESARROLLO.md'], False, False), (['admin/src/main.tsx'], True, False), (['preview/app.js'], True, False), (['RutasTijuana/WalkingNavigation.swift'], False, True), (['NavigationWidget/Info.plist'], False, True), (['Config/Debug.xcconfig'], False, True), (['tests/main.swift'], False, True), (['scripts/test-logic.sh'], False, True), (['RutasTijuanaUITests/JourneyTests.swift'], False, True), (['tests/test_published_catalog.py'], True, False), (['tests/backend.test.ts'], True, False), (['scripts/test_changed.py'], True, False), (['scripts/install_catalog.py'], True, True), (['Catalog/catalog.json'], True, True), (['.github/workflows/build.yml'], True, True), (['pnpm-lock.yaml'], True, False), (['unknown'], True, True), (None, True, True)]:
             with self.subTest(files=files):
                 result = select(files)
                 self.assertEqual((result['web'], result['native']), (web, native))
@@ -27,9 +27,11 @@ class CISelectionTests(unittest.TestCase):
         self.assertEqual(select([], 'push')['native'], True)
         self.assertEqual(select([], 'workflow_dispatch', 'native')['web'], False)
         self.assertEqual(select([], 'workflow_dispatch')['web'], True)
-        for path in ('admin/package.json', 'admin/src/form.test.tsx', 'shared/__tests__/catalog.ts', 'RutasTijuanaUITests/JourneyTests.swift', 'RutasTijuana.xcodeproj/xcshareddata/swiftpm/Package.resolved'):
+        for path, expected in (('admin/package.json', (True, False)), ('admin/src/form.test.tsx', (True, False)),
+                               ('shared/__tests__/catalog.ts', (True, False)), ('RutasTijuanaUITests/JourneyTests.swift', (False, True)),
+                               ('RutasTijuana.xcodeproj/xcshareddata/swiftpm/Package.resolved', (False, True))):
             with self.subTest(path=path):
-                self.assertEqual((select([path])['web'], select([path])['native']), (True, True))
+                self.assertEqual((select([path])['web'], select([path])['native']), expected)
 
     def test_ui_report_keeps_all_failures(self):
         render = load('ci_ui_summary').render
