@@ -12,8 +12,9 @@ struct ContentView: View {
     private enum Stage { case home, origin, destination, journey }
     @State private var scenario: JourneyScenario
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openAppDestination) private var openAppDestination
+    @Environment(\.activeAppDestination) private var activeAppDestination
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var textSize
     @ObservedObject private var catalogRepository = CatalogRepository.shared
     private var route: TransitRoute { scenario.route }
@@ -123,7 +124,7 @@ struct ContentView: View {
                 NavigationStack {
                     panel
                         .navigationTitle(title)
-                        .modifier(AppFavoritesToolbar(confirmBeforeOpening: simulationStep != nil))
+
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
                         .toolbarBackground(AppDesign.header, for: .navigationBar)
@@ -179,8 +180,8 @@ struct ContentView: View {
         VStack(spacing: 0) {
             welcomeHeader
             GeometryReader { geometry in
-                let preferredMapHeight: CGFloat = textSize.isAccessibilitySize ? 216 : 302
-                let availableMapHeight = max(100, geometry.size.height - 309)
+                let preferredMapHeight: CGFloat = textSize.isAccessibilitySize ? 280 : 366
+                let availableMapHeight = max(100, geometry.size.height - 245)
                 welcomeContent(mapHeight: min(preferredMapHeight, availableMapHeight))
             }
         }
@@ -195,39 +196,16 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 52)
-                .frame(maxWidth: .infinity, minHeight: 56)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-title")
         }
-        .overlay(alignment: .trailing) {
-            NavigationLink { CatalogView(favoritesOnly: true) } label: {
-                AppFavoriteIcon(scale: 1.26)
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Favoritos")
-            .accessibilityIdentifier("Favoritos")
-            .padding(.trailing, 8)
-        }
+        .padding(.bottom, 10)
         .background { AppDesign.header.ignoresSafeArea(edges: .top) }
     }
 
     private func welcomeContent(mapHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("¿A dónde quieres ir hoy?")
-                .font(AppDesign.type(24, relativeTo: .title2, weight: .semibold))
-                .foregroundStyle(colorSchemeContrast == .increased ? AppDesign.header : .white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: 64)
-                .background {
-                    UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14)
-                        .fill(AppDesign.accent)
-                }
-                .accessibilityAddTraits(.isHeader)
-                .zIndex(1)
             VStack(spacing: 0) {
                 Map(position: $welcomeCamera) {
                     #if os(iOS)
@@ -525,6 +503,13 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
             .clipped()
             .accessibilityIdentifier("consultation-scroll")
+            if let openAppDestination {
+                AppDock(selection: activeAppDestination,
+                        confirmsSelection: simulationStep.map { $0 < trip.count } ?? false) { destination in
+                    reset()
+                    openAppDestination(destination)
+                }
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if textSize.isAccessibilitySize, stage == .journey, simulationStep == nil {
@@ -886,7 +871,7 @@ struct ContentView: View {
                     recentPlannedData = Data()
                 }
             }
-        }.navigationTitle("Consultas recientes").modifier(AppFavoritesToolbar(darkHeader: false)).toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
+        }.navigationTitle("Consultas recientes").toolbar(.visible, for: .navigationBar).onAppear { storeRecents(recents) }
     }
 
     private var searchField: some View {

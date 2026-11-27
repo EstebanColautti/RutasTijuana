@@ -157,7 +157,7 @@ struct AppPanelHeading<Trailing: View>: View {
 
     var body: some View {
         Text(title)
-            .font(AppDesign.title)
+            .font(AppDesign.type(21, relativeTo: .title2, weight: .semibold).bold())
             .multilineTextAlignment(centered ? .center : .leading)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.leading, sideWidth)
@@ -181,63 +181,14 @@ struct AppPanelHeading<Trailing: View>: View {
     }
 }
 
-struct AppFavoritesToolbar: ViewModifier {
-    @Environment(\.insideFavorites) private var insideFavorites
-    var enabled = true
-    var darkHeader = true
-    var confirmBeforeOpening = false
-    @State private var showingFavorites = false
-    @State private var confirming = false
-
-    init(enabled: Bool = true, darkHeader: Bool = true, confirmBeforeOpening: Bool = false) {
-        self.enabled = enabled
-        self.darkHeader = darkHeader
-        self.confirmBeforeOpening = confirmBeforeOpening
-    }
-
-    func body(content: Content) -> some View {
-        content
-            .toolbar {
-                if enabled && !insideFavorites {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            if confirmBeforeOpening { confirming = true }
-                            else { showingFavorites = true }
-                        } label: {
-                            AppFavoriteIcon(scale: 1.26)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(darkHeader ? Color.white : Color.primary)
-                        .accessibilityLabel("Favoritos")
-                        .accessibilityIdentifier("header-favorites")
-                    }.appHeaderControl()
-                }
-            }
-            .confirmationDialog("¿Abrir Favoritos?", isPresented: $confirming, titleVisibility: .visible) {
-                Button("Abrir Favoritos") { showingFavorites = true }
-                Button("Cancelar", role: .cancel) {}
-            } message: {
-                Text("Podrás volver a la pantalla actual al cerrar Favoritos.")
-            }
-            .sheet(isPresented: $showingFavorites) {
-                NavigationStack {
-                    CatalogView(favoritesOnly: true)
-                }
-                .environment(\.insideFavorites, true)
-            }
-    }
-}
-
-private struct InsideFavorites: EnvironmentKey {
-    static let defaultValue = false
+private struct HomeTripActiveKey: EnvironmentKey {
+    static let defaultValue: Binding<Bool>? = nil
 }
 
 extension EnvironmentValues {
-    var insideFavorites: Bool {
-        get { self[InsideFavorites.self] }
-        set { self[InsideFavorites.self] = newValue }
+    var homeTripActive: Binding<Bool>? {
+        get { self[HomeTripActiveKey.self] }
+        set { self[HomeTripActiveKey.self] = newValue }
     }
 }
 
@@ -264,13 +215,13 @@ struct MapRouteBadge: View {
 enum AppDestination: String, CaseIterable {
     case routes = "Rutas"
     case home = "Inicio"
-    case map = "Mapa"
+    case favorites = "Favoritos"
 
     var icon: AppIcon {
         switch self {
         case .routes: return .compass
         case .home: return .home
-        case .map: return .pin
+        case .favorites: return .star
         }
     }
 
@@ -326,6 +277,8 @@ struct AppDock: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @ScaledMetric(relativeTo: .body) private var iconSize = 23.0
     var selection: AppDestination?
+    var confirmsSelection = false
+    var confirmsReselectionOnly = false
     var onSelect: (AppDestination) -> Void
 
     var body: some View {
@@ -344,9 +297,14 @@ struct AppDock: View {
         .accessibilityIdentifier("app-dock")
     }
 
+    @State private var confirmationDestination: AppDestination?
+
     private func destinationButton(_ destination: AppDestination) -> some View {
         Button {
-            onSelect(destination)
+            if confirmsSelection && (!confirmsReselectionOnly || selection == destination) {
+                confirmationDestination = destination
+            }
+            else { onSelect(destination) }
         } label: {
             VStack(spacing: 2) {
                 if !textSize.isAccessibilitySize {
@@ -373,6 +331,13 @@ struct AppDock: View {
         .accessibilityLabel(destination.rawValue)
         .accessibilityIdentifier("dock-" + destination.rawValue)
         .accessibilityAddTraits(selection == destination ? .isSelected : [])
+        .confirmationDialog("¿Finalizar el trayecto?", isPresented: Binding(
+            get: { confirmationDestination == destination },
+            set: { if !$0 && confirmationDestination == destination { confirmationDestination = nil } }
+        ), titleVisibility: .visible) {
+            Button("Finalizar trayecto", role: .destructive) { onSelect(destination) }
+            Button("Cancelar", role: .cancel) {}
+        }
     }
 }
 

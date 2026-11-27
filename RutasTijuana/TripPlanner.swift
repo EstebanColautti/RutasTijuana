@@ -235,6 +235,36 @@ actor TripPlanner {
         await provider.cancel()
     }
 
+    func searchContinuously(from origin: GeoPoint, to destination: GeoPoint,
+                            timeout: Duration = .seconds(150)) async throws -> TripSearchResult {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        var failures = 0
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            do {
+                let result = try await search(from: origin, to: destination)
+                if case .paused = result {
+                    await Task.yield()
+                    continue
+                }
+                return result
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch TripPlanningError.invalidInput {
+                throw TripPlanningError.invalidInput
+            } catch {
+                let delays = [5, 12, 30, 60]
+                guard failures < delays.count else { throw error }
+                let resume = clock.now.advanced(by: .seconds(delays[failures]))
+                guard resume < deadline else { throw error }
+                failures += 1
+                try await clock.sleep(until: resume)
+            }
+        }
+        throw TripPlanningError.tryAgainLater
+    }
+
     func search(from origin: GeoPoint, to destination: GeoPoint) async throws -> TripSearchResult {
         guard origin.latitude.isFinite, origin.longitude.isFinite, destination.latitude.isFinite, destination.longitude.isFinite,
               abs(origin.latitude) <= 90, abs(destination.latitude) <= 90, abs(origin.longitude) <= 180,

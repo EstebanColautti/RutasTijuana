@@ -690,6 +690,14 @@ print("Pruebas de imágenes correctas")
     check(recovered.transfers == trip.transfers && abs(recovered.walkingMeters - trip.walkingMeters) < 0.01,
           "Resuming must preserve the itinerary")
     check(recoveringProvider.calls == coldProvider.calls + 1, "Only the failed request should be repeated")
+    let automaticProvider = SyntheticTripWalkingProvider(maximumDistance: 100)
+    automaticProvider.failOnCall = 2
+    let automatic = TripPlanner(network: fixture, provider: automaticProvider,
+                                preferences: .init(requestsPerBatch: 1))
+    guard case .found(let automaticTrip) = try await automatic.searchContinuously(
+        from: origin, to: destination, timeout: .seconds(30)
+    ) else { fatalError("The planner must resume batches and retry a temporary provider failure") }
+    check(automaticTrip.transfers == trip.transfers, "Automatic resumption preserves the itinerary")
     let updated=try await planner.search(from:.init(latitude:32.001,longitude:-117),to:destination)
     if case .found(let changed)=updated {check(changed.catalogVersion=="transfer","Changing the origin rebuilds measured edges")}
     let loop=TripService(id:"loop",name:"Loop",direction:nil,stops:[],circular:true,geometry:[[origin,middle,destination,origin]])

@@ -27,6 +27,8 @@ struct RutasTijuanaApp: App {
 
 private struct MainTabs: View {
     @State private var selected: AppDestination = .home
+    @State private var tabResets: [AppDestination: Int] = [:]
+    @State private var tripActive = false
     @State private var dockHeight: CGFloat = 66
     @ObservedObject private var repository = CatalogRepository.shared
 
@@ -40,84 +42,54 @@ private struct MainTabs: View {
                         .toolbarColorScheme(.dark, for: .navigationBar)
                 }
                 .toolbar(.hidden, for: .tabBar)
+                .id("routes-\(tabResets[.routes, default: 0])")
                 .tag(AppDestination.routes)
 
-                ContentView()
+                home
                     .toolbar(.hidden, for: .tabBar)
+                    .id("home-\(tabResets[.home, default: 0])")
                     .tag(AppDestination.home)
 
-                NavigationStack {
-                    mapHome
-                }
-                .toolbar(.hidden, for: .tabBar)
-                .tag(AppDestination.map)
+                NavigationStack { CatalogView(favoritesOnly: true) }
+                    .toolbar(.hidden, for: .tabBar)
+                    .id("favorites-\(tabResets[.favorites, default: 0])")
+                    .tag(AppDestination.favorites)
             }
-            .padding(.bottom, selected == .map ? 0 : dockHeight)
+            .padding(.bottom, dockHeight)
 
-            AppDock(selection: selected) { selected = $0 }
+            AppDock(selection: selected, confirmsSelection: selected == .home && tripActive,
+                    confirmsReselectionOnly: true, onSelect: select)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
         }
+        .environment(\.homeTripActive, $tripActive)
         .environment(\.activeAppDestination, selected)
-        .environment(\.openAppDestination) { selected = $0 }
+        .environment(\.openAppDestination, select)
         .tint(AppDesign.primary)
     }
 
-    private var mapHome: some View {
-        ZStack(alignment: .bottom) {
-            Map(initialPosition: .region(AppDesign.city))
-                .mapStyle(.standard(elevation: .flat))
-                .ignoresSafeArea(.container, edges: .bottom)
-                .accessibilityLabel("Mapa de Tijuana")
-            VStack(spacing: 8) {
-                Text("¿A dónde quieres ir hoy?")
-                    .font(AppDesign.subtitle)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                if let catalog = repository.catalog, catalog.readyForDistribution {
-                    NavigationLink {
-                        TripPlannerView(catalog: catalog).padding(.bottom, dockHeight)
-                    } label: {
-                        Text("Empezar viaje").frame(minWidth: 150)
-                    }
-                    .accessibilityIdentifier("map-start")
-                    .buttonStyle(AppActionStyle())
-                } else {
-                    NavigationLink {
-                        CatalogView().padding(.bottom, dockHeight)
-                    } label: {
-                        Text("Consultar recorridos").padding(.horizontal, 14)
-                    }
-                    .buttonStyle(AppActionStyle())
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity, minHeight: 128)
-            .foregroundStyle(.primary)
-            .background {
-                RoundedRectangle(cornerRadius: 58)
-                    .fill(Color(uiColor: .systemBackground))
-                    .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
-            }
-            .padding(.horizontal, 40)
-            .padding(.bottom, dockHeight + 12)
+    @ViewBuilder private var home: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--legacy-consultation-test") {
+            ContentView()
+        } else { integratedPlanner }
+        #else
+        integratedPlanner
+        #endif
+    }
+
+    private var integratedPlanner: some View {
+        TripPlannerView(
+            catalog: repository.catalog ?? RouteCatalog(schemaVersion: 1, version: "", publishable: false,
+                                                        licenseStatus: "", groups: [], features: []),
+            integratedHome: true
+        )
+    }
+
+    private func select(_ destination: AppDestination) {
+        if selected == destination {
+            if destination == .home { tripActive = false }
+            tabResets[destination, default: 0] += 1
         }
-        .navigationTitle("Rutas Tijuana")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) { AppBrandTitle() }
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink { CatalogView(favoritesOnly: true).padding(.bottom, dockHeight) } label: {
-                    AppFavoriteIcon(scale: 1.26).frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .accessibilityLabel("Favoritos")
-            }.appHeaderControl()
-        }
-        .toolbarBackground(AppDesign.header, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        selected = destination
     }
 }

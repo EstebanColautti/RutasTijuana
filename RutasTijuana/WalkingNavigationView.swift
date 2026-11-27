@@ -7,8 +7,6 @@ struct WalkingNavigationView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openAppDestination) private var openAppDestination
     @Environment(\.activeAppDestination) private var activeAppDestination
-    @State private var pendingDestination: AppDestination?
-    @State private var confirmingDestination = false
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -127,6 +125,9 @@ struct WalkingNavigationView: View {
                                         .buttonStyle(.plain)
                                         .accessibilityLabel("Finalizar")
                                         .accessibilityIdentifier("walking-finish")
+                                        .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
+                                            Button("Terminar guía", role: .destructive) { model.finish(); dismiss() }
+                                        }
                                         Text(model.destination.title)
                                             .font(AppDesign.subtitle)
                                             .accessibilityAddTraits(.isHeader)
@@ -204,33 +205,22 @@ struct WalkingNavigationView: View {
                             .padding(.vertical, 6)
                     }
                     if openAppDestination != nil {
-                        AppDock(selection: activeAppDestination) { destination in
-                            pendingDestination = destination
-                            confirmingDestination = true
+                        AppDock(selection: activeAppDestination, confirmsSelection: true) { destination in
+                            model.finish()
+                            dismiss()
+                            openAppDestination?(destination)
                         }
                     }
                 }
                 .background(Color(uiColor: .systemBackground))
             }
-            .confirmationDialog("¿Salir de la guía?", isPresented: $confirmingDestination, titleVisibility: .visible) {
-                Button("Salir", role: .destructive) {
-                    guard let pendingDestination else { return }
-                    model.finish()
-                    dismiss()
-                    openAppDestination?(pendingDestination)
-                }
-                Button("Cancelar", role: .cancel) { pendingDestination = nil }
-            }
             .navigationTitle(showingSteps ? "Indicaciones" : model.destination.title)
-            .modifier(AppFavoritesToolbar(confirmBeforeOpening: model.phase == .navigating))
+
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
             .toolbarBackground(AppDesign.header, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .confirmationDialog("¿Finalizar la guía?", isPresented: $confirmEnd, titleVisibility: .visible) {
-                Button("Terminar guía", role: .destructive) { model.finish(); dismiss() }
-            }
 
         }
         .preferredColorScheme(testColorScheme)

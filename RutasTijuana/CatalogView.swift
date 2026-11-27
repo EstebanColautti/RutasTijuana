@@ -5,7 +5,6 @@ import Accessibility
 
 struct CatalogView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.insideFavorites) private var insideFavorites
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var searchFocused: Bool
@@ -74,11 +73,6 @@ struct CatalogView: View {
     @State private var loading = false
     @State private var showingInformation = false
     @State private var showingServices = false
-    private struct PlannedRoute: Identifiable {
-        let id: String
-        let scenario: JourneyScenario
-    }
-    @State private var plannedRoute: PlannedRoute?
     @State private var errorMessage: String?
     @State private var camera: MapCameraPosition = .region(AppDesign.city)
 
@@ -146,7 +140,7 @@ struct CatalogView: View {
                         .accessibilityHidden(selection != nil)
                         .allowsHitTesting(selection == nil)
                         if let selection {
-                            routeSelection(selection, catalog: catalog)
+                            routeSelection(selection)
                             .transition(reduceMotion ? .identity : .opacity)
                         }
                     }
@@ -208,9 +202,11 @@ struct CatalogView: View {
             routeSearchSheet
                 .presentationDetents([.fraction(0.83), .large])
                 .presentationCornerRadius(AppDesign.panelRadius)
-                .presentationDragIndicator(.hidden)
+                .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $savingToLists) { if let selection { listEditor(routeID: selection.id) } }
+        .sheet(isPresented: $savingToLists) {
+            if let selection { listEditor(routeID: selection.id).presentationDragIndicator(.visible) }
+        }
         .sheet(isPresented: $showingLists, onDismiss: {
             if let id = routeToUse, let feature = catalog?.features.first(where: { $0.id == id }) {
                 query = ""
@@ -222,15 +218,18 @@ struct CatalogView: View {
                 }
             }
             routeToUse = nil
-        }) { listEditor(routeID: nil) }
+        }) { listEditor(routeID: nil).presentationDragIndicator(.visible) }
         .sheet(isPresented: $showingInformation) {
-            if let selection { informationSheet(selection).tint(.blue) }
+            if let selection { informationSheet(selection)
+                    .tint(.blue)
+                    .presentationDetents([.fraction(0.72), .large])
+                    .presentationDragIndicator(.visible) }
         }
         .sheet(isPresented: $showingServices) {
-            NavigationStack { services }.tint(.blue)
-        }
-        .fullScreenCover(item: $plannedRoute) { route in
-            ContentView(scenario: route.scenario)
+            NavigationStack { services }
+                .tint(.blue)
+                .presentationDetents([.fraction(0.72), .large])
+                .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $walkingDestination) { WalkingNavigationView(destination: $0) }
         .navigationTitle(favoritesOnly ? "Favoritos" : routesTab ? "Rutas" : filter == .stops ? "Paradas" : "Recorridos")
@@ -242,8 +241,7 @@ struct CatalogView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .principal) { AppBrandTitle() } }
         .tint(.white)
-        .modifier(AppFavoritesToolbar(enabled: !favoritesOnly))
-        .environment(\.insideFavorites, insideFavorites || favoritesOnly)
+
         .preferredColorScheme(catalogTestColorScheme)
         .toolbar {
             if !favoritesOnly {
@@ -326,7 +324,7 @@ struct CatalogView: View {
             }
         }
         .navigationTitle("Servicios")
-        .modifier(AppFavoritesToolbar(darkHeader: false))
+
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Cerrar") { showingServices = false } } }
     }
 
@@ -423,16 +421,6 @@ struct CatalogView: View {
                                 : AnyLayout(HStackLayout(spacing: 8))
                             layout {
                                 row(feature)
-                                if catalog.readyForDistribution {
-                                    NavigationLink {
-                                        TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
-                                    } label: {
-                                        Text("Iniciar ruta")
-                                            .font(AppDesign.type(14, relativeTo: .subheadline, weight: .semibold))
-                                            .multilineTextAlignment(.center)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }.buttonStyle(AppActionStyle())
-                                }
                             }
                             .padding(10)
                             .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 24))
@@ -677,7 +665,7 @@ struct CatalogView: View {
         }
     }
 
-    private func routeSelection(_ feature: CatalogFeature, catalog: RouteCatalog) -> some View {
+    private func routeSelection(_ feature: CatalogFeature) -> some View {
         let hasTrace = !feature.geometry.routeDisplayLines.isEmpty
         return GeometryReader { geometry in
             VStack(spacing: -AppDesign.panelOverlap) {
@@ -722,14 +710,7 @@ struct CatalogView: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .frame(height: min(routeSummaryHeight ?? 160, geometry.size.height * 0.45))
 
-                    if feature.kind == .route && hasTrace && catalog.readyForDistribution {
-                        NavigationLink {
-                            TripPlannerView(catalog: catalog, requiredRouteID: feature.id)
-                        } label: {
-                            Text("Usar esta ruta").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(AppActionStyle())
-                    } else if feature.kind == .stop, case .point(let point) = feature.geometry {
+                    if feature.kind == .stop, case .point(let point) = feature.geometry {
                         Button {
                             walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: point.point)
                         } label: {
@@ -857,12 +838,6 @@ struct CatalogView: View {
                 Button("Ir a la parada") { walkingDestination = WalkingDestination(id: feature.id, name: feature.name, point: GeoPoint(latitude: point.latitude, longitude: point.longitude)) }
             }
             if feature.kind == .route {
-                if !feature.geometry.routeDisplayLines.isEmpty, let catalog, catalog.readyForDistribution,
-                   let scenario = catalog.journeyScenario(for: feature) {
-                    Button("Planear este recorrido") {
-                        plannedRoute = PlannedRoute(id: feature.id, scenario: scenario)
-                    }.frame(minHeight: 44)
-                }
                 Text("Distancia al trazado en línea recta.")
                     .font(AppDesign.note).foregroundStyle(.primary)
             }
@@ -929,7 +904,7 @@ struct CatalogView: View {
                 }
             }
             .navigationTitle(routeID == nil ? "Mis listas" : "Guardar en listas")
-            .modifier(AppFavoritesToolbar(darkHeader: false))
+
             .toolbar { Button("Listo") { savingToLists = false; showingLists = false } }
         }
         .tint(colorScheme == .dark ? Color(red: 0.65, green: 0.81, blue: 1) : AppDesign.primary)
@@ -990,7 +965,7 @@ struct CatalogView: View {
                 .padding(20)
             }
             .navigationTitle("Información")
-            .modifier(AppFavoritesToolbar(darkHeader: false))
+
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

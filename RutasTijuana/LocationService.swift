@@ -8,6 +8,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     @Published private(set) var message: String?
     @Published private(set) var isRequesting = false
     private let manager = CLLocationManager()
+    private var tracking = false
     private var timeout: DispatchWorkItem?
 
     override init() {
@@ -16,8 +17,9 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
-    func request() {
+    func request(continuously: Bool = false) {
         cancel()
+        tracking = continuously
         horizontalAccuracy = nil
         point = nil
         message = nil
@@ -29,6 +31,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         timeout?.cancel()
         timeout = nil
         isRequesting = false
+        tracking = false
         manager.stopUpdatingLocation()
     }
 
@@ -36,13 +39,13 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         switch manager.authorizationStatus {
         case .notDetermined: manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
-            guard timeout == nil else { return }
+            guard timeout == nil, isRequesting else { return }
             let work = DispatchWorkItem { [weak self] in
                 self?.fail("No pudimos obtener tu ubicación. Puedes elegir el origen en el mapa.")
             }
             timeout = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: work)
-            manager.requestLocation()
+            if tracking { manager.startUpdatingLocation() } else { manager.requestLocation() }
         case .denied, .restricted: fail("La ubicación no está disponible. Elige el origen en el mapa.")
         @unknown default: fail("Elige el origen en el mapa.")
         }
@@ -55,19 +58,34 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if isRequesting { resolveAuthorization() }
+        if isRequesting || tracking {
+            if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
+                point = nil
+                horizontalAccuracy = nil
+                cancel()
+                message = "La ubicación no está disponible. Puedes elegir tu origen."
+            } else {
+                resolveAuthorization()
+            }
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard isRequesting, let location = locations.last,
+        guard isRequesting || tracking, let location = locations.last,
               location.horizontalAccuracy >= 0,
               abs(location.timestamp.timeIntervalSinceNow) < 60 else { return }
-        cancel()
+        if tracking {
+            timeout?.cancel()
+            timeout = nil
+            isRequesting = false
+            message = nil
+        } else { cancel() }
         horizontalAccuracy = location.horizontalAccuracy
         point = GeoPoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if tracking, (error as? CLError)?.code == .locationUnknown { return }
         fail("No pudimos obtener tu ubicación. Puedes elegir el origen en el mapa.")
     }
 }
